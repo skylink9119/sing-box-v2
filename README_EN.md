@@ -1,4 +1,4 @@
-# SKYBYTE Manager V2.2
+# SKYBYTE Manager V2.3
 
 A Bash-based Ubuntu/Debian VPS manager with Simplified Chinese and English interfaces.
 
@@ -29,8 +29,9 @@ The manager downloads an official stable sing-box binary and verifies its SHA-25
 | 2 | Nodes and subscriptions | Information / exports / custom names / QR codes / account management |
 | 3 | Services and logs | Controls / logs / Argo status |
 | 4 | Server and network | Initialization / UFW / firewall / BBR / hopping / traffic / diagnostics |
-| 5 | Updates and backups | Manual / weekly / backup / restore |
+| 5 | Updates and backups | Core updates / weekly core updates / backup / restore / manager updates / certificates |
 | 6 | Settings and uninstall | Language / privacy / uninstall |
+| 7 | Users and quotas | Accounts / usage / quota / expiry / diagnostics / resources |
 | 0 | Exit | |
 
 Initialization updates apt indexes, upgrades packages, installs administration tools and checks time synchronization, DNS, HTTPS, SSH and UFW. It preserves an active time-sync service and does not enable UFW, change SSH, configure BBR or reboot. Package upgrades may restart services; retain console access.
@@ -94,7 +95,7 @@ Menu **6 → 3** requires case-insensitive `YES` confirmation and first backs up
 Backups, external certificates, unknown user files, reports, UFW allow rules, BBR/FQ settings and system packages such as vnStat remain. It does not reset the firewall or delete unrelated nftables tables. Backups contain private keys; protect permissions and disk space. To restore after uninstall, deploy again and restore the retained backup through menu 5 → 4.
 
 ```bash
-bash -n install.sh singbox-v2.sh
+for file in install.sh singbox-v2.sh src/*.sh; do bash -n "$file"; done
 shellcheck install.sh singbox-v2.sh
 python3 -m unittest discover -s tests -v
 ```
@@ -128,9 +129,9 @@ Interactive startup and language changes show a bold green version/system summar
 
 ## Account limits, traffic quotas and expiry
 
-Open **2 → 5**, initialize management (default 10 accounts, configurable 1–100), then add accounts with a name, total upload-plus-download quota in GiB and validity days. Controls include per-account upload/download/total usage, quota/validity edits, enable/disable, deletion, explicit usage reset, personal exports and Shadowrocket QR codes. Expired or exhausted accounts lose their listeners and existing connections. Renewal does not reset usage automatically.
+Open **main menu 7** (legacy **2 → 5** remains), initialize management (default 10 accounts, configurable 1–100), then add accounts with a name, total upload-plus-download quota in GiB and validity days. Controls include per-account upload/download/total usage, quota/validity edits, enable/disable, deletion, explicit usage reset, personal exports and Shadowrocket QR codes. Expired or exhausted accounts lose their listeners and existing connections. Renewal does not reset usage automatically.
 
-The limit counts undeleted accounts, including disabled/expired ones; it does not count actual people or prevent credential sharing. Validity starts at creation/edit and is displayed in UTC. There is no automatic billing-cycle reset; `1 GiB = 1024³ bytes`.
+The limit counts undeleted accounts, including disabled/expired ones; it does not count actual people or prevent credential sharing. Quota edits retain expiry; validity edits retain quota and usage. Validity starts at creation or validity edit and is displayed in UTC. There is no automatic billing-cycle reset; `1 GiB = 1024³ bytes`.
 
 Quota-managed accounts support **Reality + Vision, HY2 or both**, matching the installed admin protocol combination. Each gets independent credentials, an isolated sing-box process and free port, sharing the VPS egress IP. A dual account's protocol traffic is combined. Existing admin configuration/credentials remain **outside account limits, quotas and expiry**. Argo is not included in quota-managed accounts. Give users their personal nodes, not admin credentials.
 
@@ -143,3 +144,18 @@ Personal files live in `/etc/singbox-v2/users/<account-ID>/`, with existing clie
 Active UFW permits account node ports; enabling UFW later includes existing accounts. Permit actual TCP/UDP node ports in provider security groups yourself and keep controller ports private. Allocation avoids enabled HY2 hopping ranges; new hopping ranges cannot overlap account HY2 ports. Account nodes do not use admin hopping rules. Deletion/uninstall leaves UFW rules for manual cleanup.
 
 Backups include policies, usage, configurations and certificates. Restore retains current accounts and their latest policies/usage instead of rewinding counters or reviving deleted records, and preserves supervisor pause state. Older backups without account data keep current accounts. Updates validate account configs and restart previously active account services. The systemd supervisor is `skybyte-users.service`; limited private error logs for the current run are stored as `core.log` in each account directory.
+
+## Manager operations (V2.3)
+
+- **5 → 1** updates the sing-box core; **5 → 5** checks/updates SKYBYTE Manager itself. Manager updates use the latest stable GitHub Release asset, verify its SHA256, Bash/embedded Python syntax and version, and atomically replace owned script copies. Configurations, credentials and usage are retained. Script backups live in `/etc/singbox-v2/manager-backups/`. Previously active user supervisors and Argo tunnels briefly restart; failure rolls script copies back. Successful updates reopen the new menu. Development versions are not downgraded.
+- **Main menu 7** opens user management; the main menu shows account count/limit, ready accounts and supervisor status. **User menu 4** changes quota only, retaining expiry and usage. **13** changes validity from now only, retaining quota and usage. Resulting expiry is displayed in UTC.
+- **User menu 14** reports safe failure categories, timestamps, exit codes, configuration checks and local log paths, without API secrets or raw logs. Authentication, timeout, invalid response, counter or core-exit failures stop the affected account. Repair the cause and explicitly enable it; enabling validates the core/controller configuration and does not bypass expiry or quota exhaustion.
+- **4 → 10** or **user menu 15** shows managed core/process counts, RSS memory, available system memory and load. RSS includes shared memory; this snapshot cannot guarantee account capacity.
+- Startup shows HY2 certificate days remaining and warns within 30 days. **5 → 6** checks expiry, synchronizes renewed certificates to user nodes and reloads previously active services, or enables/disables daily monitoring. Expired certificates and mismatched keys/identities are rejected.
+- Daily monitoring is **off by default**, uses `skybyte-certificate.timer` and logs to systemd. It does not issue or renew certificates. A valid changed domain certificate at the configured paths is synchronized/reloaded. Renewal tools can call `/bin/bash /usr/local/sbin/singbox-v2 --certificate-reload` as a deploy hook. The first check establishes a fingerprint baseline; manually reload once if renewal happened before that baseline. Changed self-signed certificates require manual reload and updated client trust; TLS verification remains enabled.
+
+## Source modules and build
+
+Edit `src/manager.sh` (base services/install), `subscriptions.sh` (exports), `users.sh` (user UI/services), `users.py` (accounting/diagnostics), `operations.sh` (updates/certificates/resources), and `menu.sh` (menu/entry point). Run `python3 scripts/build.py` to produce the self-contained `singbox-v2.sh`; CI uses `--check` to reject stale bundles. Do not edit the generated bundle directly.
+
+The original `install.sh` entry remains sufficient: deployed scripts contain all modules and require no runtime module downloads. `bash singbox-v2.sh --self-check` checks embedded Python syntax and outputs the version without root. systemd/UFW operations are tested through isolated mocks; actual VPS deployment still needs verification.

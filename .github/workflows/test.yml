@@ -20,7 +20,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: Bash syntax and ShellCheck
         run: |
-          bash -n install.sh singbox-v2.sh
+          python3 scripts/build.py --check
+          bash singbox-v2.sh --self-check
+          for file in install.sh singbox-v2.sh src/*.sh; do bash -n "$file"; done
           shellcheck install.sh singbox-v2.sh
       - name: Download pinned protocol engines
         shell: bash

@@ -45,7 +45,7 @@ Local development result: 58 tests passed, including real HY2 forwarding with bo
 Local development validation: macOS arm64, Bash 3.2, ShellCheck 0.11.0, OpenSSL 3.6.2, sing-box 1.14.3, Mihomo 1.19.32. CI pins the same protocol engine releases on Ubuntu 24.04 / Debian 12 with the distributions' Bash/OpenSSL/ShellCheck.
 
 ```bash
-bash -n install.sh singbox-v2.sh
+for file in install.sh singbox-v2.sh src/*.sh; do bash -n "$file"; done
 shellcheck install.sh singbox-v2.sh
 SING_BOX_BIN=/path/to/sing-box MIHOMO_BIN=/path/to/mihomo python3 -m unittest discover -s tests -v
 ```
@@ -101,3 +101,9 @@ New accounts use isolated official sing-box instances with loopback authenticate
 Validation uses the bundled Python with TLS 1.3 for the Reality decoy test; older Apple Python skips that test. Enforcement is periodic and not byte-exact: sampling/shutdown/crash gaps and traffic overshoot remain practical limits. Systemd/UFW/nftables mutations are mocked; live VPS deployment and graphical client imports remain user checks.
 
 Local result: 80 tests passed with the bundled Python/TLS 1.3 runtime, sing-box 1.14.3 and Mihomo 1.19.32. bash -n, ShellCheck 0.11.0 and git diff --check passed. User live tests bind proxy and controller listeners only to loopback.
+
+## V2.3 manager operations
+
+93 tests passed locally. The additional operations suite verifies current module/bundle consistency and rootless self-check, stable release metadata and asset digest rejection, owned/atomic script updates with untouched node configuration/usage, rollback when the active supervisor cannot restart, independent quota/validity edits, safe fault diagnostics and validated recovery, direct main-menu access, scoped process/RSS reporting, expiry warnings, fingerprint-based domain-certificate reload selection, manual self-signed handling, certificate/key synchronization and client export regeneration, mismatched key rejection, and opt-in owned certificate timers. The real controller failure test additionally verifies persisted authentication reasons and secret-free diagnostics.
+
+The source modules are assembled with `python3 scripts/build.py`. CI requires `python3 scripts/build.py --check`, bundle `--self-check`, Bash syntax checks for every source shell file, ShellCheck of the complete installer/bundle, and the full test suite. Keys and passwords are generated in temporary fixtures; no customer data is checked in. Release network responses, systemd service updates and resource snapshots use mocks; cryptography and filesystem operations are real. Actual VPS renewal hooks, service restart/rollback, daily timer execution and resource capacity still require deployment validation.

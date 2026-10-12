@@ -378,7 +378,7 @@ printf '%s' "$SSH_PORTS"''')
         for language, text in [('en_US','Nodes and subscriptions'), ('zh_CN','节点与订阅')]:
             result = self.shell('need_root(){ :; }; flock(){ :; }; LANGUAGE_CHOICE='+language+'; main', input='0\n')
             self.assertIn('███████╗', result.stdout)
-            self.assertIn('SKYBYTE Manager v2.2.0', result.stdout)
+            self.assertIn('SKYBYTE Manager v2.3.0', result.stdout)
             self.assertIn('https://www.youtube.com/@SKYBYTE9119', result.stdout)
             self.assertIn(text, result.stdout)
 
@@ -1006,6 +1006,10 @@ time.sleep(60)
             deadline=time.monotonic()+5
             while time.monotonic()<deadline and self.user_db()['users'][0]['running']:time.sleep(.1)
             self.assertTrue(self.user_db()['users'][0]['metering_blocked']);self.assertFalse(listening())
+            self.assertEqual(self.user_db()['users'][0]['failure_reason'],'api_auth')
+            diagnostic=self.shell('users_engine diagnose').stdout
+            self.assertIn('Controller authentication failed',diagnostic)
+            self.assertNotIn(actual,diagnostic)
             worker.terminate();worker.communicate(timeout=10)
             d=self.user_db();d['users'][0]['api_secret']=actual;self.save_user_db(d)
             self.shell('users_engine enable '+a);worker=start();node_port=self.user_db()['users'][0]['port']
