@@ -17,3 +17,8 @@ shadowrocket-nodes.txt
 shadowrocket-subscription.txt
 sing-box-client.json
 clash-verge.yaml
+argo-state.json
+argo-server.json
+argo.token
+argo-empty.yml
+cloudflared

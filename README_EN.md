@@ -17,38 +17,31 @@ sudo bash install.sh
 
 Until the development branch is merged, that command installs the main version. To test this branch, clone the repository, switch to the branch and run `sudo bash ./singbox-v2.sh`. Review downloaded scripts before execution.
 
-The manager downloads an official stable sing-box binary and verifies its SHA-256 digest against GitHub Release metadata. It does not run a remote package installer. Choose a language at first launch; it is saved in `/etc/singbox-v2/language.conf`. Menu **21** changes language.
+The manager downloads an official stable sing-box binary and verifies its SHA-256 digest against GitHub Release metadata. It does not run a remote package installer. Choose a language at first launch; it is saved in `/etc/singbox-v2/language.conf`. Menu **6 → 1** changes language.
 
 **Installation refuses to overwrite an existing configuration, manager state, sing-box binary, service or occupied protocol port.** Management and updates preserve UUIDs, passwords and server configuration. New deployments use TCP 443 / UDP 443. Configure the provider firewall separately.
 
 ## Menu and features
 
-| Menu | Function |
-| --- | --- |
-| 1 / 2 / 3 | VLESS + Reality + Vision / Hysteria2 / both |
-| 4 / 5 | Node links / local subscription export |
-| 6 / 7 | UFW installation, controls and rules / UDP rule audit |
-| 8 | Service status, start, stop, restart, boot enable and config check |
-| 9 | vnStat VPS interface daily/monthly traffic and live speed |
-| 10 | BBR + FQ, after checking kernel BBR support |
-| 11 | HY2 IPv4 UDP hopping with a dedicated nftables table and systemd service |
-| 12 / 13 | Manual update / optional weekly automatic update |
-| 14 / 15 | Configuration, certificate and binary backup / confirmed restore |
-| 16 / 17 / 18 | IP information / basic network diagnostics / logs |
-| 19 / 20 / 21 | Legal/privacy notice / new-server initialization / language |
-| 22 | HY2/Shadowrocket diagnostics: config, service, actual UDP port, certificate and UFW |
-| 23 | Uninstall the manager and managed sing-box after backup and confirmation |
-| 24 | Customize node names and regenerate client exports |
+| Menu | Category | Functions |
+| --- | --- | --- |
+| 1 | Protocol installation and Argo tunnels | Reality / HY2 / dual; Quick / Named |
+| 2 | Nodes and subscriptions | Information / exports / custom names |
+| 3 | Services and logs | Controls / logs / Argo status |
+| 4 | Server and network | Initialization / UFW / firewall / BBR / hopping / traffic / diagnostics |
+| 5 | Updates and backups | Manual / weekly / backup / restore |
+| 6 | Settings and uninstall | Language / privacy / uninstall |
+| 0 | Exit | |
 
 Initialization updates apt indexes, upgrades packages, installs administration tools and checks time synchronization, DNS, HTTPS, SSH and UFW. It preserves an active time-sync service and does not enable UFW, change SSH, configure BBR or reboot. Package upgrades may restart services; retain console access.
 
-Before enabling UFW, the manager detects SSH ports from sshd listeners, `sshd -T` and `SSH_CONNECTION`, then asks you to verify the port. Detected ports and the verified port are allowed, together with deployed protocol ports and active HY2 hopping ranges. Menu 7 audits UDP 443 and range rules. Complex UFW rules require manual inspection; provider security groups cannot be inspected by this script.
+Before enabling UFW, the manager detects SSH ports from sshd listeners, `sshd -T` and `SSH_CONNECTION`, then asks you to verify the port. Detected ports and the verified port are allowed, together with deployed protocol ports and active HY2 hopping ranges. Menu 4 → 3 audits UDP 443 and range rules. Complex UFW rules require manual inspection; provider security groups cannot be inspected by this script.
 
 vnStat reports **total VPS interface traffic**, never separate Reality/HY2 traffic. History starts when vnStat begins collecting data.
 
 ## HY2 and verified TLS
 
-Installation accepts a node name prefix; press Enter for `SKYBYTE`. Existing deployments can use menu **24**. Exports append `-Reality` or `-HY2` to avoid duplicate protocol names. Names support up to 64 characters, including Chinese, spaces and ordinary symbols; URI fragments are percent-encoded. All client formats use the same names. Renaming preserves server configuration, UUIDs and passwords and does not restart the service. Node names, client headings, file paths and instructions use bold yellow on color terminals; links and configuration contents remain red.
+Installation accepts a node name prefix; press Enter for `SKYBYTE`. Existing deployments can use menu **2 → 3**. Exports append `-Reality` or `-HY2` to avoid duplicate protocol names. Names support up to 64 characters, including Chinese, spaces and ordinary symbols; URI fragments are percent-encoded. All client formats use the same names. Renaming preserves server configuration, UUIDs and passwords and does not restart the service. Node names, client headings, file paths and instructions use bold yellow on color terminals; links and configuration contents remain red.
 
 Choose either:
 
@@ -57,7 +50,7 @@ Choose either:
 
 Server and client passwords match; URI credentials are percent-encoded. Certificate verification stays enabled. Self-signed certificates are not trusted by default, so importing only a URI is insufficient.
 
-Menu 5 exports:
+Menu 2 → 2 exports:
 
 | File | Purpose |
 | --- | --- |
@@ -86,7 +79,7 @@ Node information is grouped into v2rayN, Clash Verge/Mihomo YAML, sing-box JSON 
 
 On iPhone, install `hy2-client-ca.mobileconfig`, then enable full trust under **Settings > General > About > Certificate Trust Settings**. Install only a certificate securely obtained from your own VPS via SSH/SFTP after verifying its fingerprint. This profile adds system root trust; remove it when no longer needed. It contains no node password or private key. Root profiles are not generated for leaf-only certificates, and existing server certificates are preserved. System trust does not prove Shadowrocket HY2 uses that trust store; verify with connection logs. Use a trusted CA certificate if unsupported. See [Apple certificate trust instructions](https://support.apple.com/en-us/102390).
 
-Menu **22** checks config, service, actual UDP listener and certificate, and prints a read-only packet check command. A local listener does not prove provider/mobile-network UDP reachability. Use actual connections or URL tests in Shadowrocket; ICMP latency does not validate HY2.
+Menu **4 → 9** checks config, service, actual UDP listener and certificate, and prints a read-only packet check command. A local listener does not prove provider/mobile-network UDP reachability. Use actual connections or URL tests in Shadowrocket; ICMP latency does not validate HY2.
 
 Hopping is off by default. Ranges must be within 1024–65535 and contain at most 10001 ports. The manager owns only the `ip singbox_v2_hop` table, checks for collisions, persists IPv4 UDP redirects to 443 through systemd and permits the range in active UFW. sing-box/Mihomo exports include the range and a 30-second interval; basic URIs retain the base port. Allow the range in your provider firewall. Disabling hopping leaves UFW rules for manual cleanup to avoid deleting rules used by other applications.
 
@@ -96,9 +89,9 @@ New backups use separate `config/`, `state.json` and `sing-box.bin` paths, inclu
 
 ## Validation
 
-Menu **23** requires case-insensitive `YES` confirmation and first backs up configuration, certificates and the binary. Backup failure cancels removal. It stops automatic updates, managed hopping and sing-box, then removes owned units, the binary, node configuration, generated certificates/exports and identifiable manager executable copies. Changed unit ownership/start paths or symlinked key files cause refusal. Successful uninstall exits the menu.
+Menu **6 → 3** requires case-insensitive `YES` confirmation and first backs up configuration, certificates and the binary. Backup failure cancels removal. It stops automatic updates, managed hopping and sing-box, then removes owned units, the binary, node configuration, generated certificates/exports and identifiable manager executable copies. Changed unit ownership/start paths or symlinked key files cause refusal. Successful uninstall exits the menu.
 
-Backups, external certificates, unknown user files, reports, UFW allow rules, BBR/FQ settings and system packages such as vnStat remain. It does not reset the firewall or delete unrelated nftables tables. Backups contain private keys; protect permissions and disk space. To restore after uninstall, deploy again and restore the retained backup through menu 15.
+Backups, external certificates, unknown user files, reports, UFW allow rules, BBR/FQ settings and system packages such as vnStat remain. It does not reset the firewall or delete unrelated nftables tables. Backups contain private keys; protect permissions and disk space. To restore after uninstall, deploy again and restore the retained backup through menu 5 → 4.
 
 ```bash
 bash -n install.sh singbox-v2.sh
@@ -118,3 +111,11 @@ For lawful networking education and server administration, subject to applicable
 - [sing-box TLS](https://sing-box.sagernet.org/configuration/shared/tls/)
 - [Hysteria URI scheme](https://v2.hysteria.network/docs/developers/URI-Scheme/)
 - [Mihomo TLS](https://wiki.metacubex.one/en/config/proxies/tls/)
+
+## Argo Quick / Named Tunnels
+
+Menu **1 → 4** adds a separate VLESS + WebSocket node to an existing managed Reality/HY2 deployment. The origin listens only on loopback; existing credentials and configuration are preserved. All client exports use verified HTTPS/WSS. Cloudflare terminates outer TLS and can inspect WebSocket payloads.
+
+Quick mode needs no account/domain; restart changes the hostname, requiring refreshed imports. [Cloudflare documents Quick Tunnels as testing services without uptime guarantees](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/). Named mode requires a remotely managed tunnel and published hostname configured in your account: route HTTP to `http://127.0.0.1:8080` (use your selected local port), enable WebSocket support, and avoid interactive Access login. Enter hostname and Token locally; account DNS/routes are not provisioned by this script.
+
+Controls include status/start/stop/restart/refresh/removal. Registration does not establish end-to-end reachability. Disconnected Quick nodes are omitted. Tokens use mode 600 and `--token-file`, are excluded from exports, and included in private backups. Removal preserves account tunnels/DNS. Restore re-registers before export. Official cloudflared downloads are SHA-256 verified.

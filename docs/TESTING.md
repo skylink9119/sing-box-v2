@@ -40,7 +40,7 @@ The regression suite invokes actual Bash functions with isolated filesystem path
 - Real sing-box client → HY2 server → local HTTP forwarding; removing certificate trust fails.
 - Real Mihomo YAML validation and Mihomo client → sing-box HY2 server → local HTTP forwarding.
 
-Local development result: 43 tests passed, including real HY2 forwarding with both clients and rejection without certificate trust; `bash -n`, ShellCheck and `git diff --check` passed.
+Local development result: 58 tests passed, including real HY2 forwarding with both clients and rejection without certificate trust; `bash -n`, ShellCheck and `git diff --check` passed.
 
 Local development validation: macOS arm64, Bash 3.2, ShellCheck 0.11.0, OpenSSL 3.6.2, sing-box 1.14.3, Mihomo 1.19.32. CI pins the same protocol engine releases on Ubuntu 24.04 / Debian 12 with the distributions' Bash/OpenSSL/ShellCheck.
 
@@ -62,13 +62,13 @@ On a disposable Ubuntu/Debian VPS, verify all three installation modes, real cer
 
 Added per-protocol separators, translated trust notes, PEM/DER public certificate exports and iOS root profiles for CA certificates. Profiles contain no passwords or private keys. Leaf-only certificates do not get root profiles, and stale trust exports are removed. Existing server certificates and credentials are preserved.
 
-Menu 22 checks configuration, service, actual UDP listener, certificate identity/key/expiry and UFW. It prints timeout/auth/trust guidance without printing node passwords. Tests cover profile schema, public DER content, CA-versus-leaf behavior, translated separators, changed ports and stopped services.
+Menu 4 → 9 checks configuration, service, actual UDP listener, certificate identity/key/expiry and UFW. It prints timeout/auth/trust guidance without printing node passwords. Tests cover profile schema, public DER content, CA-versus-leaf behavior, translated separators, changed ports and stopped services.
 
 User evidence confirms an active sing-box service and a UDP 443 listener. This does not establish external UDP reachability or client TLS trust. Shadowrocket screenshots show TLS enabled but not its inner trust settings. The user later reported working connectivity; the exact cause of the earlier failure was not established.
 
 ## Managed uninstall
 
-Menu 23 requires confirmation and a successful backup before removing owned services/files. Tests cover cancellation, changed unit ownership, symlinked binaries, backup/stop failures, auxiliary service cleanup, script-copy identification and retention of external certificates, unrelated files, unowned hopping tables and backups. System mutations are mocked in these tests; no development-host or production VPS services are actually uninstalled.
+Menu 6 → 3 requires confirmation and a successful backup before removing owned services/files. Tests cover cancellation, changed unit ownership, symlinked binaries, backup/stop failures, auxiliary service cleanup, script-copy identification and retention of external certificates, unrelated files, unowned hopping tables and backups. System mutations are mocked in these tests; no development-host or production VPS services are actually uninstalled.
 
 ## Client-specific exports
 
@@ -76,4 +76,8 @@ Terminal sections show v2rayN URIs, full Clash Verge/Mihomo YAML, full sing-box 
 
 ## Custom names and output colors
 
-Installation and menu 24 accept a persisted node-name prefix, defaulting to SKYBYTE on Enter. Protocol suffixes keep names unique. Tests cover Chinese/spaces/URI punctuation, all exported names and routing references, unchanged server config, reset to default, length/control-character rejection and real engine config validation. Node metadata and instructions use yellow ANSI styles while credential/config content stays red; NO_COLOR/non-terminal output remains plain.
+Installation and menu 2 → 3 accept a persisted node-name prefix, defaulting to SKYBYTE on Enter. Protocol suffixes keep names unique. Tests cover Chinese/spaces/URI punctuation, all exported names and routing references, unchanged server config, reset to default, length/control-character rejection and real engine config validation. Node metadata and instructions use yellow ANSI styles while credential/config content stays red; NO_COLOR/non-terminal output remains plain.
+
+## Argo and grouped menus
+
+58 tests cover both tunnel modes, token-file privacy, registration/address lifecycle, removal/backup/restore, ownership guards, download verification, unchanged credentials and bilingual grouped dispatch. Actual sing-box and Mihomo clients passed local verified TLS/WebSocket forwarding. A separate live Quick Tunnel check with cloudflared 2026.10.0 passed HTTPS/WebSocket forwarding. The local resolver returned NXDOMAIN for the new hostname; public DNS supplied the address while original SNI/Host and TLS verification were retained. Named account routes were not live-tested. Systemd mutations are mocked; VPS startup and graphical client imports remain deployment checks.

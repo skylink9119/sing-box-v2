@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import secrets
 import shlex
+import signal
 import socket
 import ssl
 import subprocess
@@ -62,7 +63,7 @@ class ManagerTest(unittest.TestCase):
             keys = dict(line.split(': ', 1) for line in result.strip().splitlines())
             self.private, self.public = keys['PrivateKey'], keys['PublicKey']
 
-    def shell(self, command, input=None, ok=True):
+    def script(self, command):
         quote = shlex.quote
         variables = dict(BASE=self.base, CONF=self.config / 'config.json',
                          META=self.base / 'state.json', BACKUP=self.backups, BIN=self.bin,
@@ -74,7 +75,10 @@ class ManagerTest(unittest.TestCase):
         script = 'source ' + quote(str(ROOT / 'singbox-v2.sh')) + '\n'
         script += '\n'.join(k + '=' + quote(str(v)) for k, v in variables.items()) + '\n'
         script += 'openssl(){ command ' + quote(OPENSSL) + ' "$@"; }\n'
-        result = subprocess.run([BASH, '-c', script + command], input=input, text=True,
+        return script + command
+
+    def shell(self, command, input=None, ok=True):
+        result = subprocess.run([BASH, '-c', self.script(command)], input=input, text=True, errors='replace',
                                 capture_output=True)
         if ok and result.returncode:
             self.fail(result.stderr + result.stdout)
@@ -363,7 +367,7 @@ printf '%s' "$SSH_PORTS"''')
         self.assertIn('SYSTEMCTL restart sing-box', result.stdout)
 
     def test_ascii_brand_and_bilingual_menus(self):
-        for language, text in [('en_US','View node information'), ('zh_CN','查看节点信息')]:
+        for language, text in [('en_US','Nodes and subscriptions'), ('zh_CN','节点与订阅')]:
             result = self.shell('need_root(){ :; }; flock(){ :; }; LANGUAGE_CHOICE='+language+'; main', input='0\n')
             self.assertIn('███████╗', result.stdout)
             self.assertIn('SKYBYTE Manager V2.1', result.stdout)
@@ -574,6 +578,286 @@ if [[ $url == *.tar.gz ]]; then cp """+shlex.quote(str(archive))+""" "$out"; els
             if mode!='1': self.assertEqual(parsed['tls']['custom-certifactes'],[self.cert.read_text()])
             subprocess.run([MIHOMO,'-t','-d',str(self.root/'mihomo-data'),'-f',str(self.base/'mihomo-proxies.yaml')],
                            check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+
+    def prepare_argo(self, mode='quick', connected=True):
+        self.configure('3')
+        self.shell('argo_write_config "$BASE" '+mode+' node.example 8080 SKYBYTE')
+        state=json.loads((self.base/'argo-state.json').read_text())
+        state.update(connected=connected,domain='node.example' if mode=='named' else 'test-route.trycloudflare.com' if connected else '')
+        (self.base/'argo-state.json').write_text(json.dumps(state))
+        (self.base/'cloudflared').write_text('#!/bin/sh\nexit 0\n');(self.base/'cloudflared').chmod(0o700)
+        if mode=='named':
+            (self.base/'argo.token').write_text(secrets.token_urlsafe(48));(self.base/'argo.token').chmod(0o600)
+
+    def test_argo_configs_and_all_exports_keep_existing_protocols(self):
+        import yaml,urllib.parse
+        for mode in ['quick','named']:
+            self.prepare_argo(mode)
+            original=(self.config/'config.json').read_bytes()
+            self.shell('exports')
+            self.assertEqual(original,(self.config/'config.json').read_bytes())
+            origin=json.loads((self.base/'argo-server.json').read_text())['inbounds'][0]
+            self.assertEqual(origin['listen'],'127.0.0.1')
+            self.assertNotIn('flow',origin['users'][0]);self.assertNotIn('tls',origin)
+            out=json.loads((self.base/'outbounds.json').read_text())['outbounds']
+            self.assertEqual(len(out),3)
+            node=out[-1]
+            self.assertEqual(node['transport']['type'],'ws')
+            self.assertTrue(node['tls']['enabled']);self.assertFalse(node['tls'].get('insecure',False))
+            self.assertNotIn('flow',node);self.assertNotIn('reality',node['tls'])
+            self.assertEqual(node['transport']['path'],origin['transport']['path'])
+            uri=urllib.parse.urlsplit((self.base/'nodes.txt').read_text().splitlines()[-1])
+            fields=urllib.parse.parse_qs(uri.query)
+            self.assertEqual(fields['security'],['tls']);self.assertEqual(fields['type'],['ws'])
+            self.assertEqual(urllib.parse.unquote(uri.username),origin['users'][0]['uuid'])
+            clash=yaml.safe_load((self.base/'clash-verge.yaml').read_text())
+            self.assertEqual(clash['proxies'][-1]['ws-opts']['path'],origin['transport']['path'])
+            if SB:
+                for file in ['argo-server.json','sing-box-client.json']:
+                    subprocess.run([SB,'check','-c',str(self.base/file)],check=True)
+            if MIHOMO:
+                subprocess.run([MIHOMO,'-t','-d',str(self.root/'mihomo-data'),'-f',str(self.base/'clash-verge.yaml')],check=True,stdout=subprocess.DEVNULL)
+
+    def test_argo_unready_node_is_not_exported(self):
+        self.prepare_argo(connected=False)
+        self.shell('exports')
+        self.assertEqual(len((self.base/'nodes.txt').read_text().splitlines()),2)
+        self.assertIn('not registered',(self.base/'subscription-notes.txt').read_text())
+
+    def test_argo_domain_validation(self):
+        for value in ['node.example','a-b.example.net','test-route.trycloudflare.com']:
+            self.shell('argo_validate_domain '+shlex.quote(value))
+        for value in ['https://node.example','node.example:443','node..example','-bad.example','127.0.0.1','a.example\nInjected']:
+            self.assertNotEqual(self.shell('argo_validate_domain '+shlex.quote(value),ok=False).returncode,0)
+
+    def test_argo_install_preserves_main_config_and_keeps_token_out_of_units(self):
+        self.configure('1');original=(self.config/'config.json').read_bytes()
+        token=secrets.token_urlsafe(48)
+        mocks='''need_root(){ :; }
+ss(){ :; }
+systemctl(){ if [[ $1 == list-unit-files ]]; then return 0; fi; }
+download_cloudflared(){ printf '#!/bin/sh\nexit 0\n' > "$1"; chmod 700 "$1"; }
+argo_wait(){ :; }
+argo_install named'''
+        result=self.shell(mocks,input='yes\n8080\n香港\nnode.example\n'+token+'\n')
+        self.assertEqual(original,(self.config/'config.json').read_bytes())
+        self.assertEqual((self.base/'argo.token').read_text(),token)
+        self.assertEqual((self.base/'argo.token').stat().st_mode&0o777,0o600)
+        for unit in (self.root/'systemd').iterdir():self.assertNotIn(token,unit.read_text())
+        self.assertNotIn(token,result.stdout+result.stderr)
+        self.assertNotIn(token,(self.base/'argo-state.json').read_text())
+        self.assertIn('--argo-run',(self.root/'systemd'/'skybyte-argo-tunnel.service').read_text())
+
+    def test_argo_quick_install_and_existing_files_refusal(self):
+        self.configure('1')
+        code='''need_root(){ :; }; ss(){ :; }
+systemctl(){ :; }
+download_cloudflared(){ printf '#!/bin/sh\nexit 0\n' > "$1"; chmod 700 "$1"; }
+argo_wait(){ :; }
+argo_install quick'''
+        self.shell(code,input='yes\n\n\n')
+        self.assertEqual(json.loads((self.base/'argo-state.json').read_text())['mode'],'quick')
+        self.assertFalse((self.base/'argo.token').exists())
+        before=(self.base/'argo-state.json').read_bytes()
+        self.assertNotEqual(self.shell(code,input='yes\n',ok=False).returncode,0)
+        self.assertEqual(before,(self.base/'argo-state.json').read_bytes())
+
+    def test_argo_worker_publishes_on_registration_and_clears_on_stop(self):
+        for mode in ['quick','named']:
+            self.prepare_argo(mode,False)
+            token=(self.base/'argo.token').read_text() if mode=='named' else ''
+            args_file=self.root/'cloud-args.json'
+            cloud='''#!/usr/bin/env python3
+import json,pathlib,sys,time
+pathlib.Path(%r).write_text(json.dumps(sys.argv))
+print('https://fresh-route.trycloudflare.com',flush=True)
+print('Registered tunnel connection',flush=True)
+time.sleep(60)
+''' % str(args_file)
+            (self.base/'cloudflared').write_text(cloud);(self.base/'cloudflared').chmod(0o700)
+            (self.root/'manager-command').write_text('#!/bin/bash\nexit 0\n')
+            proc=subprocess.Popen([BASH,'-c',self.script('argo_run')],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,start_new_session=True)
+            try:
+                deadline=time.monotonic()+8
+                while time.monotonic()<deadline:
+                    state=json.loads((self.base/'argo-state.json').read_text())
+                    if state['connected']:break
+                    if proc.poll() is not None: self.fail(proc.communicate()[1])
+                    time.sleep(.05)
+                self.assertTrue(state['connected'])
+                self.assertEqual(state['domain'],'fresh-route.trycloudflare.com' if mode=='quick' else 'node.example')
+                args=json.loads(args_file.read_text())
+                if mode=='named':
+                    self.assertIn('--token-file',args);self.assertNotIn(token,args)
+                else:self.assertIn('--url',args)
+            finally:
+                os.killpg(proc.pid,signal.SIGTERM);proc.wait(timeout=10);proc.communicate(timeout=10)
+            deadline=time.monotonic()+3
+            while time.monotonic()<deadline and json.loads((self.base/'argo-state.json').read_text())['connected']:time.sleep(.05)
+            state=json.loads((self.base/'argo-state.json').read_text())
+            self.assertFalse(state['connected'])
+            if mode=='quick':self.assertEqual(state['domain'],'')
+
+    def test_argo_backup_restore_and_removal_keep_token_private(self):
+        self.prepare_argo('named')
+        self.shell('systemctl(){ :; }; argo_setup_units')
+        token=(self.base/'argo.token').read_text()
+        snapshot=Path(self.shell('backup').stdout.strip())
+        self.assertEqual((snapshot/'argo.token').read_text(),token)
+        self.assertEqual((snapshot/'argo.token').stat().st_mode&0o777,0o600)
+        self.shell('systemctl(){ :; }; argo_remove_internal')
+        self.assertFalse((self.base/'argo.token').exists())
+        self.shell('systemctl(){ :; }; argo_restore_snapshot '+shlex.quote(str(snapshot)))
+        self.assertEqual((self.base/'argo.token').read_text(),token)
+        self.assertFalse(json.loads((self.base/'argo-state.json').read_text())['connected'])
+        self.shell('systemctl(){ :; }; argo_remove_internal')
+        self.assertTrue((self.config/'config.json').exists())
+        self.assertTrue((snapshot/'argo.token').exists())
+
+    def test_argo_guards_preserve_unowned_services(self):
+        self.prepare_argo()
+        unit=self.root/'systemd'/'skybyte-argo-node.service';unit.write_text('Description=another service\n')
+        self.assertNotEqual(self.shell('argo_remove_internal',ok=False).returncode,0)
+        self.assertTrue(unit.exists());self.assertTrue((self.base/'argo-server.json').exists())
+
+    def test_uninstall_also_removes_owned_argo_with_backup(self):
+        self.prepare_argo('named')
+        self.shell('systemctl(){ :; }; setup_service; argo_setup_units')
+        self.shell('need_root(){ :; }; systemctl(){ :; }; uninstall_manager',input='yes\n')
+        self.assertFalse((self.base/'argo-state.json').exists());self.assertFalse((self.base/'argo.token').exists())
+        self.assertFalse((self.root/'systemd'/'skybyte-argo-node.service').exists())
+        snapshots=list(self.backups.iterdir());self.assertEqual(len(snapshots),1)
+        self.assertTrue((snapshots[0]/'argo.token').exists())
+
+    def test_grouped_menu_dispatches_without_renumbering_function_logic(self):
+        for language,label in [('en_US','Nodes and subscriptions'),('zh_CN','节点与订阅')]:
+            code='need_root(){ :; }; flock(){ :; }; exports(){ echo EXPORTED; }; LANGUAGE_CHOICE='+language+'; main'
+            result=self.shell(code,input='2\n1\n0\n')
+            self.assertIn(label,result.stdout);self.assertIn('EXPORTED',result.stdout)
+            self.assertNotIn('printf:',result.stderr)
+            self.assertNotIn('24.',result.stdout)
+        result=self.shell('need_root(){ :; }; flock(){ :; }; exports(){ echo BAD; }; main',input='2\n0\n0\n')
+        self.assertNotIn('BAD',result.stdout)
+
+    def test_cloudflared_download_digest_is_required(self):
+        asset='cloudflared-linux-amd64'
+        payload=self.root/'cloud-payload';payload.write_text('#!/bin/sh\nexit 0\n')
+        manifest=self.root/'cloud-release.json'
+        metadata={'tag_name':'2026.10.0','draft':False,'prerelease':False,
+                  'assets':[{'name':asset,'digest':'sha256:'+hashlib.sha256(payload.read_bytes()).hexdigest()}]}
+        manifest.write_text(json.dumps(metadata))
+        mocks='''uname(){ printf x86_64; }
+sha256sum(){ shasum -a 256 "$@"; }
+curl(){ local url= out=; while (($#)); do if [[ $1 == -o ]]; then out=$2; shift 2; else url=$1; shift; fi; done
+if [[ $url == */latest ]]; then cp '''+shlex.quote(str(manifest))+''' "$out"; else cp '''+shlex.quote(str(payload))+''' "$out"; fi; }
+'''
+        target=self.root/'cloud-target'
+        self.shell(mocks+'download_cloudflared '+shlex.quote(str(target)))
+        original=target.read_bytes();metadata['assets'][0]['digest']='sha256:'+'0'*64;manifest.write_text(json.dumps(metadata))
+        self.assertNotEqual(self.shell(mocks+'download_cloudflared '+shlex.quote(str(target)),ok=False).returncode,0)
+        self.assertEqual(target.read_bytes(),original)
+
+    def test_argo_rename_keeps_credentials_and_routes_consistent(self):
+        self.prepare_argo('named')
+        before=(self.base/'argo-server.json').read_bytes()
+        self.shell('rename_node',input='香港新节点\n')
+        self.assertEqual(before,(self.base/'argo-server.json').read_bytes())
+        self.assertEqual(json.loads((self.base/'argo-state.json').read_text())['node_name'],'香港新节点')
+        out=json.loads((self.base/'outbounds.json').read_text())['outbounds']
+        self.assertEqual(out[-1]['tag'],'香港新节点-Argo')
+        self.assertTrue(json.loads((self.base/'argo-state.json').read_text())['connected'])
+
+    def test_update_rejects_candidate_that_cannot_read_argo_config(self):
+        self.prepare_argo()
+        original=self.bin.read_bytes()
+        code='''download_binary(){ printf '#!/bin/sh\ncase "$*" in *argo-server.json*) exit 1;; *) exit 0;; esac\n' > "$2"; chmod 700 "$2"; }
+apply_update 1.14.3'''
+        self.assertNotEqual(self.shell(code,ok=False).returncode,0)
+        self.assertEqual(self.bin.read_bytes(),original)
+
+    def test_restore_snapshot_without_argo_removes_only_owned_addon(self):
+        self.configure('1')
+        snapshot=Path(self.shell('backup').stdout.strip())
+        self.prepare_argo('named');self.shell('systemctl(){ :; }; argo_setup_units')
+        self.shell('systemctl(){ :; }; argo_restore_snapshot '+shlex.quote(str(snapshot)))
+        self.assertFalse((self.base/'argo-state.json').exists())
+        self.assertTrue((self.config/'config.json').exists())
+
+    @unittest.skipUnless(SB, 'Set SING_BOX_BIN for real Argo WebSocket forwarding')
+    def test_argo_exported_ws_configs_forward_through_verified_tls(self):
+        import select,socketserver,yaml
+        self.prepare_argo('named')
+        origin=json.loads((self.base/'argo-server.json').read_text());origin_port=port()
+        origin['inbounds'][0]['listen_port']=origin_port
+        origin_file=self.root/'ws-origin.json';origin_file.write_text(json.dumps(origin))
+        self.shell('exports')
+        class HTTP(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200);self.end_headers();self.wfile.write(b'SKYBYTE Argo verified')
+            def log_message(self,*_):pass
+        target=http.server.ThreadingHTTPServer(('127.0.0.1',0),HTTP)
+        threading.Thread(target=target.serve_forever,daemon=True).start()
+        self.addCleanup(target.server_close);self.addCleanup(target.shutdown)
+        context=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER);context.load_cert_chain(self.cert,self.key)
+        class Forward(socketserver.BaseRequestHandler):
+            def handle(self):
+                with socket.create_connection(('127.0.0.1',origin_port)) as upstream:
+                    pair=[self.request,upstream]
+                    try:
+                        while True:
+                            ready,_,_=select.select(pair,[],[],8)
+                            if not ready:return
+                            for src in ready:
+                                data=src.recv(65536)
+                                if not data:return
+                                (upstream if src is self.request else self.request).sendall(data)
+                    except (OSError,ssl.SSLError):pass
+        class Edge(socketserver.ThreadingTCPServer):
+            allow_reuse_address=True;daemon_threads=True
+            def get_request(self):
+                request,address=super().get_request()
+                return context.wrap_socket(request,server_side=True),address
+        edge=Edge(('127.0.0.1',0),Forward)
+        threading.Thread(target=edge.serve_forever,daemon=True).start()
+        self.addCleanup(edge.server_close);self.addCleanup(edge.shutdown)
+        with contextlib.ExitStack() as stack:
+            def run_engine(args,name):
+                log=stack.enter_context(open(self.root/(name+'.log'),'w+'))
+                proc=subprocess.Popen(args,stdout=log,stderr=log)
+                def stop():
+                    proc.terminate()
+                    try:proc.wait(timeout=5)
+                    except subprocess.TimeoutExpired:proc.kill();proc.wait()
+                stack.callback(stop)
+                return log
+            run_engine([SB,'run','-c',str(origin_file)],'origin')
+            sb=json.loads((self.base/'sing-box-client.json').read_text())
+            node=sb['outbounds'][-2]
+            sb['route']['final']=node['tag'];node['server']='127.0.0.1';node['server_port']=edge.server_address[1]
+            node['tls']['certificate']=self.cert.read_text().splitlines()
+            sb['inbounds'][0]['listen_port']=client_port=port()
+            config=self.root/'ws-client.json';config.write_text(json.dumps(sb))
+            log=run_engine([SB,'run','-c',str(config)],'client')
+            def request(proxy_port):
+                deadline=time.monotonic()+8
+                while time.monotonic()<deadline:
+                    result=subprocess.run(['curl','--silent','--show-error','--max-time','2','--noproxy','',
+                                          '--proxy','socks5h://127.0.0.1:'+str(proxy_port),'http://127.0.0.1:'+str(target.server_port)],capture_output=True)
+                    if result.returncode==0:return result
+                    time.sleep(.1)
+                return result
+            result=request(client_port);log.flush();log.seek(0)
+            self.assertEqual(result.stdout,b'SKYBYTE Argo verified',log.read())
+            if MIHOMO:
+                clash=yaml.safe_load((self.base/'clash-verge.yaml').read_text());proxy=clash['proxies'][-1]
+                proxy.update(server='127.0.0.1',port=edge.server_address[1])
+                clash['rules']=['MATCH,'+proxy['name']]
+                clash['tls']={'custom-certifactes':[self.cert.read_text()]}
+                clash['mixed-port']=client_port=port();clash['external-controller']=''
+                config=self.root/'ws-client.yaml';config.write_text(yaml.safe_dump(clash))
+                log=run_engine([MIHOMO,'-d',str(self.root/'mihomo-data'),'-f',str(config)],'mihomo-ws')
+                result=request(client_port);log.flush();log.seek(0)
+                self.assertEqual(result.stdout,b'SKYBYTE Argo verified',log.read())
 
     @unittest.skipUnless(SB, 'Set SING_BOX_BIN to run real HY2 connectivity tests')
     def test_hy2_handshake_with_trust_and_reject_untrusted(self):
