@@ -89,3 +89,7 @@ Installation and menu 2 → 3 accept a persisted node-name prefix, defaulting to
 ## Shadowrocket native VLESS links
 
 62 tests passed locally. Dedicated native exports preserve standard exports; roundtrip checks cover Base64 authority, Unicode/punctuation names, Vision, Reality public key/short ID/fingerprint, WS host/path and enabled certificate verification. QR input tests now use native files. Schema follows the Xboard Shadowrocket exporter linked in both READMEs; actual Shadowrocket GUI import/scanning still needs user verification.
+
+## Startup summary
+
+64 tests passed locally. The bilingual green startup summary reads local OS/kernel/architecture/virtualization/interface addresses and checks real service state, with fallbacks for missing probes. Tests cover translated output, running/inactive/uninstalled distinctions and lack of startup network requests. New changes are consolidated into PR #7.

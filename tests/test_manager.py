@@ -729,6 +729,27 @@ time.sleep(60)
         snapshots=list(self.backups.iterdir());self.assertEqual(len(snapshots),1)
         self.assertTrue((snapshots[0]/'argo.token').exists())
 
+    def test_startup_info_uses_local_system_and_actual_service_state(self):
+        code="""uname(){ case "$1" in -r) echo test-kernel;; -m) echo x86_64;; esac; }
+systemd-detect-virt(){ echo kvm; }
+ip(){ case "$*" in *-4*) echo '2: eth0 inet 192.0.2.10/24 scope global eth0';; *-6*) echo '2: eth0 inet6 2001:db8::10/64 scope global';; esac; }
+systemctl(){ [[ "$*" == 'is-active --quiet sing-box.service' ]]; }
+nginx(){ :; }
+curl(){ echo SHOULD_NOT_QUERY_NETWORK; return 1; }
+startup_info"""
+        for lang,os_label,running in [('en_US','OS','Running'),('zh_CN','操作系统','运行中')]:
+            result=self.shell('LANGUAGE_CHOICE='+lang+'; '+code)
+            self.assertIn(os_label+': Debian',result.stdout)
+            for value in ['test-kernel','amd64','kvm','192.0.2.10/24','2001:db8::10/64','sing-box: '+running]:
+                self.assertIn(value,result.stdout)
+            self.assertNotIn('SHOULD_NOT_QUERY_NETWORK',result.stdout)
+
+    def test_startup_info_handles_unavailable_optional_commands(self):
+        result=self.shell('OS_RELEASE=/nonexistent; BIN=/nonexistent; systemctl(){ return 1; }; ip(){ return 1; }; systemd-detect-virt(){ return 1; }; startup_info')
+        self.assertIn('OS: Unknown',result.stdout)
+        self.assertIn('IPv4: Not detected',result.stdout)
+        self.assertIn('sing-box: Not installed',result.stdout)
+
     def test_shadowrocket_native_links_roundtrip_credentials_and_security(self):
         import urllib.parse
         self.configure('3');self.shell('rename_node',input='香港 #1 & /\n')

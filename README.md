@@ -123,3 +123,5 @@ GitHub Actions 在 Ubuntu 24.04 和 Debian 12 容器执行检查。详见 [审�
 菜单 **2 → 4** 显示小火箭节点二维码，每个已安装且可导出的节点单独生成，用虚线分隔。使用小火箭扫码导入；缺少工具时安装 Ubuntu/Debian 的 `qrencode` 软件包。链接通过标准输入在本机编码，不保存二维码图片。HY2 自签名仍需配置信任证书，二维码请勿公开。
 
 新增小火箭专用链接文件 `shadowrocket-native-nodes.txt` 及 Base64 列表 `shadowrocket-native-subscription.txt`。VLESS 使用 Base64 地址和 remarks/peer/xtls 参数，参考 [Xboard 小火箭导出实现](https://github.com/cedar2025/Xboard/blob/master/app/Protocols/Shadowrocket.php)。菜单 2 → 4 使用专用链接生成二维码。原有标准文件保留，HY2 沿用开启验证的链接；专用格式尚未进行小火箭图形客户端实测。
+
+进入交互菜单及切换语言后显示绿色加粗的版本和系统概览：操作系统、内核、架构、虚拟化、网卡 IPv4/IPv6，以及服务安装/运行状态。启动不查询第三方归属地；公网出口和归属地使用 IP 信息菜单查询。可选探测命令缺失不影响打开菜单。

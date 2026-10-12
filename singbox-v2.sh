@@ -3,6 +3,7 @@
 set -Eeuo pipefail
 umask 077
 SCRIPT_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
+MANAGER_VERSION=2.1.4
 BASE=/etc/singbox-v2
 CONF=/etc/sing-box/config.json
 SYSTEMD_DIR=/etc/systemd/system
@@ -48,6 +49,45 @@ warn(){ printf '%s⚠ %s%s\n' "$YELLOW" "$*" "$RESET"; }
 err(){ printf '%s✖ %s%s\n' "$RED" "$*" "$RESET" >&2; }
 need_root(){ [[ $EUID == 0 ]] || { err "$(L '需要 root 权限' 'Root privileges required')"; exit 1; }; }
 confirm(){ local answer; read -r -p "$1 $(L '[输入 YES 确认]' '[Type YES to confirm]'): " answer || return 1; [[ $answer =~ ^[[:space:]]*[Yy][Ee][Ss][[:space:]]*$ ]]; }
+startup_service_info(){
+ local label=$1 installed=$2 unit=$3 value
+ if command -v systemctl >/dev/null && systemctl is-active --quiet "$unit" 2>/dev/null; then
+  value=$(L '运行中' 'Running')
+ elif [[ $installed == true ]]; then value=$(L '已安装，未运行' 'Installed, inactive')
+ else value=$(L '未安装' 'Not installed'); fi
+ printf '  %s: %s\n' "$label" "$value"
+}
+startup_info(){
+ local os kernel arch virtual ipv4 ipv6 sb=false argo=false nginx=false
+ # shellcheck disable=SC1090
+ os=$( ( . "$OS_RELEASE"; printf '%s' "${PRETTY_NAME:-${ID:-}}" ) 2>/dev/null) || os=''
+ os=${os:-$(L '未知' 'Unknown')}
+ kernel=$(uname -r 2>/dev/null) || kernel=$(L '未知' 'Unknown')
+ arch=$(uname -m 2>/dev/null) || arch=$(L '未知' 'Unknown')
+ case $arch in x86_64) arch=amd64;; aarch64) arch=arm64;; esac
+ virtual=$(L '未知' 'Unknown')
+ if command -v systemd-detect-virt >/dev/null; then virtual=$(systemd-detect-virt 2>/dev/null) || virtual=${virtual:-none}; fi
+ ipv4=''; ipv6=''
+ if command -v ip >/dev/null; then
+  ipv4=$(ip -o -4 addr show scope global 2>/dev/null | awk '{print $4}' | paste -sd ', ' -) || ipv4=''
+  ipv6=$(ip -o -6 addr show scope global 2>/dev/null | awk '{print $4}' | paste -sd ', ' -) || ipv6=''
+ fi
+ [[ ! -x $BIN ]] || sb=true
+ if [[ -x $BASE/cloudflared ]] || command -v cloudflared >/dev/null; then argo=true; fi
+ if command -v nginx >/dev/null; then nginx=true; fi
+ printf '%s\n----------------------------------------------\n' "$GREEN"
+ say "脚本版本：SKYBYTE Manager v$MANAGER_VERSION" "Script version: SKYBYTE Manager v$MANAGER_VERSION"
+ say '功能更新：小火箭专用链接与二维码、分类菜单、Argo 临时/固定隧道' 'Features: native Shadowrocket links and QR codes, grouped menus, Quick/Named Argo'
+ say '系统信息：' 'System information:'
+ printf '  %s: %s\n' "$(L '操作系统' 'OS')" "$os" "$(L '内核' 'Kernel')" "$kernel" "$(L '处理器架构' 'Architecture')" "$arch" "$(L '虚拟化' 'Virtualization')" "$virtual"
+ printf '  IPv4: %s\n  IPv6: %s\n' "${ipv4:-$(L '未检测到' 'Not detected')}" "${ipv6:-$(L '未检测到' 'Not detected')}"
+ startup_service_info sing-box "$sb" sing-box.service
+ startup_service_info Argo "$argo" skybyte-argo-tunnel.service
+ startup_service_info Nginx "$nginx" nginx.service
+ say 'IP 为本机网卡地址；公网出口和归属地可在 IP 信息菜单查询。' 'IPs are local interface addresses; use IP information for public egress and location.'
+ printf '%s\n' "$RESET"
+}
+
 notice(){ if [[ "$LANGUAGE_CHOICE" == en_US ]]; then cat <<'EOF_EN'
 [LEGAL & PRIVACY NOTICE] Use only for lawful networking education and server administration. You must comply with applicable law and service terms. Updating software or changing firewall/network settings may interrupt service or cause data loss; make backups first. Provided as-is to the extent permitted by law. Third-party components retain their licenses.
 Installation and updates can contact github.com, api.github.com and GitHub release CDNs; these services can see your source IP. Installation queries api.ipify.org for your public IPv4. The optional IP report queries ipinfo.io, which may retain your IP and request metadata; reports are stored locally in /etc/singbox-v2/reports and deleted after 30 days. No developer telemetry and no intentional upload of node credentials. Auto-update is opt-in. HY2 requires TLS. A no-domain self-signed certificate mode is available, but clients must securely trust the certificate.
@@ -1241,12 +1281,13 @@ dispatch_action(){
  initialize) initialize_server;; firewall) firewall;; audit) firewall_audit;; bbr) bbr;; hop) hop;; traffic) traffic;;
  ip) ipcheck;; network) netcheck;; hy2_check) hy2_diagnostics;;
  update) update;; auto) configure_auto;; backup) backup;; restore) restore;;
- language) select_language;; notice) notice;; uninstall) uninstall_manager;;
+ language) select_language && startup_info;; notice) notice;; uninstall) uninstall_manager;;
  esac
 }
 main(){
  need_root; require_cmd flock
  local group action_status
+ startup_info
  while :; do
   printf '%s\n==============================================\n' "$CYAN"
   cat <<'LOGO'
