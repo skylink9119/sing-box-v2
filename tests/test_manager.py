@@ -910,12 +910,16 @@ apply_update 1.14.3'''
             client['inbounds'][0]['listen_port']=mixed=port()
             client_file.write_text(json.dumps(client))
             proc, log = start(client_file)
-            time.sleep(.5)
-            result = subprocess.run(['curl','--silent','--show-error','--max-time','3','--noproxy','',
-                                     '--proxy','socks5h://127.0.0.1:'+str(mixed),url],capture_output=True)
-            self.assertNotEqual(result.returncode,0)
-            log.flush(); log.seek(0)
-            self.assertIn('certificate',log.read())
+            deadline = time.monotonic()+12
+            rejection_log = ''
+            while time.monotonic()<deadline:
+                result = subprocess.run(['curl','--silent','--show-error','--max-time','3','--noproxy','',
+                                         '--proxy','socks5h://127.0.0.1:'+str(mixed),url],capture_output=True)
+                self.assertNotEqual(result.returncode,0, 'Untrusted TLS unexpectedly connected')
+                log.seek(0); rejection_log = log.read()
+                if 'certificate' in rejection_log: break
+                time.sleep(.2)
+            self.assertIn('certificate',rejection_log)
             if MIHOMO:
                 import yaml
                 config=yaml.safe_load((self.base/'clash-verge.yaml').read_text())
