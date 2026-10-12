@@ -940,7 +940,9 @@ time.sleep(60)
         self.user_setup(mode='1',real=True)
         context=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         context.minimum_version=ssl.TLSVersion.TLSv1_3
-        context.set_ecdh_curve('X25519');context.set_alpn_protocols(['h2','http/1.1'])
+        try:context.set_ecdh_curve('X25519')
+        except ssl.SSLError:pass  # Python 3.11 legacy EC setter; TLS 1.3 defaults include X25519.
+        context.set_alpn_protocols(['h2','http/1.1'])
         context.load_cert_chain(self.cert,self.key)
         class Decoy(socketserver.BaseRequestHandler):
             def handle(self):
