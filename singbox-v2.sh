@@ -1872,7 +1872,7 @@ users_summary(){
 }
 users_diagnostics(){
  users_guard || return 1
- users_engine diagnose "${1:-}"
+ users_engine diagnose
  say '恢复步骤：修复配置/端口冲突后，选择启用用户；服务未启动时选择启动用户服务。' 'Recovery: fix config/port conflicts, then enable the account; start the supervisor if inactive.'
  say '日志可能含节点地址，请在本机检查，不要公开完整日志。' 'Logs may contain node addresses; inspect locally and avoid publishing full logs.'
  systemctl --no-pager status skybyte-users.service || :
