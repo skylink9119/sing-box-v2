@@ -74,7 +74,7 @@ Shadowrocket/v2rayN 使用自签名证书时：通过可信 SSH/SFTP 通道取�
 
 ## 端口跳跃、更新与恢复
 
-节点信息按 v2rayN、Clash Verge/Mihomo YAML、sing-box JSON、小火箭订阅四块显示，并用虚线隔开。终端直接显示对应链接、完整 YAML/JSON 或 Base64 内容，并列出文件路径。客户端配置仅作为新的本地配置导入，不覆盖已有客户端配置；完整 sing-box JSON 默认使用首个节点，可修改 `route.final` 选择其他出站。经典 Clash 内核不支持这些协议，应使用 Mihomo。订阅文件仍保留原始 URI/Base64 格式，未部署在线订阅 URL。
+节点信息按 v2rayN、Clash Verge/Mihomo YAML、sing-box JSON、小火箭专用链接四块显示，并用虚线隔开。终端显示对应链接、完整 YAML/JSON 和文件路径，不再显示重复的小火箭 Base64 订阅段；兼容订阅文件仍保存在本地。客户端配置仅作为新的本地配置导入，不覆盖已有客户端配置；完整 sing-box JSON 默认使用首个节点，可修改 `route.final` 选择其他出站。经典 Clash 内核不支持这些协议，应使用 Mihomo。订阅文件仍保留原始 URI/Base64 格式，未部署在线订阅 URL。
 
 **“无域名”不等于“无证书”。** 默认链接保留 `insecure=0`；只导入链接并不能建立自签名证书信任。TLS 开启也不表示信任已建立。
 
@@ -159,3 +159,5 @@ GitHub Actions 在 Ubuntu 24.04 和 Debian 12 容器执行检查。详见 [审�
 维护源码在 `src/`：`manager.sh` 为基础服务及安装逻辑，`subscriptions.sh` 为订阅导出，`users.sh` 为用户界面/服务，`users.py` 为配额与诊断，`operations.sh` 为更新/证书/资源，`menu.sh` 为主菜单及启动入口。运行 `python3 scripts/build.py` 生成完整 `singbox-v2.sh`；`python3 scripts/build.py --check` 检查是否同步。不要直接修改生成文件。
 
 安装仍只需 `install.sh`，部署的脚本自带所有模块，不在运行时下载或加载额外文件。`bash singbox-v2.sh --self-check` 无需 root，可检查内嵌 Python 语法并输出版本。systemd/UFW 操作使用隔离模拟测试；实际 VPS 部署仍需验证。
+
+V2.3.1：交互问题、选择提示和 YES 确认统一绿色加粗，输入前恢复正常颜色；隐藏 Token 输入保持隐藏。非终端或设置 `NO_COLOR` 时使用纯文本。小火箭专用链接和二维码保留。

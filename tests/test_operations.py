@@ -20,9 +20,9 @@ class OperationsTest(unittest.TestCase):
     user_db = manager.ManagerTest.user_db
     save_user_db = manager.ManagerTest.save_user_db
 
-    def candidate(self, version='2.3.1'):
+    def candidate(self, version='2.3.2'):
         path=self.root/'candidate'
-        path.write_text((manager.ROOT/'singbox-v2.sh').read_text().replace('MANAGER_VERSION=2.3.0','MANAGER_VERSION='+version))
+        path.write_text((manager.ROOT/'singbox-v2.sh').read_text().replace('MANAGER_VERSION=2.3.1','MANAGER_VERSION='+version))
         return path
 
     def update_mocks(self, manifest, candidate):
@@ -33,7 +33,7 @@ if [[ $url == */latest ]]; then cp '''+shlex.quote(str(manifest))+''' "$out"; el
     def test_bundle_is_current_and_self_check_needs_no_root_or_bootstrap(self):
         subprocess.run(['python3',str(manager.ROOT/'scripts/build.py'),'--check'],check=True)
         r=subprocess.run([manager.BASH,str(manager.ROOT/'singbox-v2.sh'),'--self-check'],capture_output=True,text=True,check=True)
-        self.assertEqual(r.stdout.strip(),'2.3.0')
+        self.assertEqual(r.stdout.strip(),'2.3.1')
         candidate=self.candidate();candidate.write_text(candidate.read_text().replace("import concurrent.futures,",'import !!! concurrent.futures,'))
         r=subprocess.run([manager.BASH,str(candidate),'--self-check'],capture_output=True,text=True)
         self.assertNotEqual(r.returncode,0)
@@ -45,7 +45,7 @@ if [[ $url == */latest ]]; then cp '''+shlex.quote(str(manifest))+''' "$out"; el
         command=self.root/'manager-command';command.write_bytes(old)
         cfg=(self.config/'config.json').read_bytes();ledger=(self.base/'users.json').read_bytes()
         candidate=self.candidate();manifest=self.root/'release.json'
-        data={'tag_name':'v2.3.1','draft':False,'prerelease':False,'assets':[{'name':'singbox-v2.sh','digest':'sha256:'+hashlib.sha256(candidate.read_bytes()).hexdigest()}]}
+        data={'tag_name':'v2.3.2','draft':False,'prerelease':False,'assets':[{'name':'singbox-v2.sh','digest':'sha256:'+hashlib.sha256(candidate.read_bytes()).hexdigest()}]}
         manifest.write_text(json.dumps(data))
         mocks=self.update_mocks(manifest,candidate)+'systemctl(){ return 1; }; '
         self.shell(mocks+'manager_update',input='YES\n')
@@ -59,11 +59,11 @@ if [[ $url == */latest ]]; then cp '''+shlex.quote(str(manifest))+''' "$out"; el
 
     def test_manager_update_refuses_foreign_scripts_symlinks_and_missing_digest(self):
         candidate=self.candidate();lib=self.root/'manager-lib';lib.write_text('other tool')
-        cmd='manager_update_apply '+shlex.quote(str(candidate))+' 2.3.1 '+shlex.quote(str(self.root/'snapshot'))
+        cmd='manager_update_apply '+shlex.quote(str(candidate))+' 2.3.2 '+shlex.quote(str(self.root/'snapshot'))
         self.assertNotEqual(self.shell(cmd,ok=False).returncode,0);self.assertEqual(lib.read_text(),'other tool')
         lib.unlink();lib.symlink_to(candidate)
         self.assertNotEqual(self.shell(cmd,ok=False).returncode,0)
-        manifest=self.root/'release.json';manifest.write_text(json.dumps({'tag_name':'v2.3.1','assets':[{'name':'singbox-v2.sh'}]}))
+        manifest=self.root/'release.json';manifest.write_text(json.dumps({'tag_name':'v2.3.2','assets':[{'name':'singbox-v2.sh'}]}))
         self.assertNotEqual(self.shell(self.update_mocks(manifest,candidate)+'manager_latest '+shlex.quote(str(self.root/'manifest-copy')),ok=False).returncode,0)
 
     def test_manager_update_rolls_back_active_supervisor_on_restart_failure(self):
@@ -73,9 +73,9 @@ if [[ $url == */latest ]]; then cp '''+shlex.quote(str(manifest))+''' "$out"; el
         candidate=self.candidate();snap=self.root/'snapshot'
         code='''systemctl(){
  if [[ $1 == is-active ]]; then return 0; fi
- if [[ $1 == start && $2 == skybyte-users.service ]] && grep -q 'MANAGER_VERSION=2.3.1' "$MANAGER_BIN"; then return 1; fi
+ if [[ $1 == start && $2 == skybyte-users.service ]] && grep -q 'MANAGER_VERSION=2.3.2' "$MANAGER_BIN"; then return 1; fi
  echo "$*" >> '''+shlex.quote(str(self.root/'events'))+'''; }
-manager_update_apply '''+shlex.quote(str(candidate))+' 2.3.1 '+shlex.quote(str(snap))
+manager_update_apply '''+shlex.quote(str(candidate))+' 2.3.2 '+shlex.quote(str(snap))
         self.assertNotEqual(self.shell(code,ok=False).returncode,0)
         self.assertEqual(command.read_bytes(),old);self.assertEqual(lib.read_bytes(),old)
         self.assertIn('start skybyte-users.service',(self.root/'events').read_text())

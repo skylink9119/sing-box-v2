@@ -74,7 +74,7 @@ Exports contain credentials, remain local under `/etc/singbox-v2/` and use mode 
 
 ## Hopping, updates and restore
 
-Node information is grouped into v2rayN, Clash Verge/Mihomo YAML, sing-box JSON and Shadowrocket subscription sections with dashed separators. The terminal displays actual URI, complete YAML/JSON or Base64 content plus file paths. Import full configurations as new local client profiles; existing client configurations are not overwritten. sing-box uses the first node by default; change `route.final` to another outbound tag when needed. Use Mihomo rather than classic Clash, which does not support these protocols. URI/Base64 formats remain compatible; no hosted subscription URL is deployed.
+Node information is grouped into v2rayN, Clash Verge/Mihomo YAML, sing-box JSON and Shadowrocket native link sections with dashed separators. The terminal displays URIs, complete YAML/JSON and file paths; the duplicate Shadowrocket Base64 display section is removed. Compatibility subscription files remain local. Import full configurations as new local client profiles; existing client configurations are not overwritten. sing-box uses the first node by default; change `route.final` to another outbound tag when needed. Use Mihomo rather than classic Clash, which does not support these protocols. URI/Base64 formats remain compatible; no hosted subscription URL is deployed.
 
 **No domain does not mean no certificate.** Default URIs retain `insecure=0`. Importing a URI does not establish self-signed certificate trust, and enabling TLS does not establish trust.
 
@@ -159,3 +159,5 @@ Backups include policies, usage, configurations and certificates. Restore retain
 Edit `src/manager.sh` (base services/install), `subscriptions.sh` (exports), `users.sh` (user UI/services), `users.py` (accounting/diagnostics), `operations.sh` (updates/certificates/resources), and `menu.sh` (menu/entry point). Run `python3 scripts/build.py` to produce the self-contained `singbox-v2.sh`; CI uses `--check` to reject stale bundles. Do not edit the generated bundle directly.
 
 The original `install.sh` entry remains sufficient: deployed scripts contain all modules and require no runtime module downloads. `bash singbox-v2.sh --self-check` checks embedded Python syntax and outputs the version without root. systemd/UFW operations are tested through isolated mocks; actual VPS deployment still needs verification.
+
+V2.3.1: interactive questions, selection hints and YES confirmations use bold green, reset before typed input. Hidden Token input remains hidden. Non-terminal and `NO_COLOR` output stays plain. Shadowrocket native links and QR codes remain available.

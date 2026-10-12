@@ -189,9 +189,11 @@ class ManagerTest(unittest.TestCase):
         for lang, label in [('zh_CN','节点：'),('en_US','Node: ')]:
             result=self.shell('LANGUAGE_CHOICE='+lang+'; exports')
             lines=result.stdout.splitlines()
-            for title in ['v2rayN','Clash Verge / Mihomo YAML','sing-box JSON', '小火箭 / Shadowrocket 订阅' if lang=='zh_CN' else 'Shadowrocket subscription']:
+            for title in ['v2rayN','Clash Verge / Mihomo YAML','sing-box JSON', '小火箭专用链接 / Shadowrocket' if lang=='zh_CN' else 'Shadowrocket native links']:
                 self.assertEqual(lines[lines.index(title)-1],'-'*64)
             self.assertEqual(sum(i.startswith(label) for i in lines),2)
+            self.assertNotIn('Shadowrocket subscription',lines)
+            self.assertNotIn('小火箭 / Shadowrocket 订阅',lines)
             notes=(self.base/'subscription-notes.txt').read_text()
             self.assertIn('无域名模式仍使用 TLS' if lang=='zh_CN' else 'No-domain mode still uses self-signed TLS',notes)
 
@@ -378,7 +380,7 @@ printf '%s' "$SSH_PORTS"''')
         for language, text in [('en_US','Nodes and subscriptions'), ('zh_CN','节点与订阅')]:
             result = self.shell('need_root(){ :; }; flock(){ :; }; LANGUAGE_CHOICE='+language+'; main', input='0\n')
             self.assertIn('███████╗', result.stdout)
-            self.assertIn('SKYBYTE Manager v2.3.0', result.stdout)
+            self.assertIn('SKYBYTE Manager v2.3.1', result.stdout)
             self.assertIn('https://www.youtube.com/@SKYBYTE9119', result.stdout)
             self.assertIn(text, result.stdout)
 

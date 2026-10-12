@@ -42,7 +42,7 @@ sub_menu(){
    say ' 7. IP 信息' ' 7. IP information'
    say ' 8. 基础网络诊断' ' 8. Basic network checks'
    say ' 9. HY2 / 小火箭连接诊断' ' 9. HY2 / Shadowrocket checks'
-   say '10. 进程、内存与负载' '10. Processes, memory and load'
+   prompt_options '10. 进程、内存与负载' '10. Processes, memory and load'
    ;;
   5)
    say ' 1. 手动更新 sing-box' ' 1. Update sing-box'
@@ -60,7 +60,7 @@ sub_menu(){
  esac
  say ' 0. 返回主菜单' ' 0. Back to main menu'
  printf -- '----------------------------------------------%s\n' "$RESET"
- read -r -p "$(L '请选择：' 'Select: ')" choice || return 1
+ prompt_read "$(L '请选择：' 'Select: ')" choice || return 1
  case "$group:$choice" in
   1:1) MAIN_ACTION=install_reality;;
   1:2) MAIN_ACTION=install_hy2;;
@@ -137,7 +137,7 @@ LOGO
   say ' 0. 退出' ' 0. Exit'
   printf '%s' "$RESET"
   printf '%sYouTube: %s%s\n' "$CYAN" "$YOUTUBE" "$RESET"
-  read -r -p "$(L '请选择：' 'Select: ')" group || return 0
+  prompt_read "$(L '请选择：' 'Select: ')" group || return 0
   [[ $group != 0 ]] || return 0
   case $group in 7) MAIN_ACTION=users;; 1|2|3|4|5|6) sub_menu "$group" || return 0;; *) err "$(L '无效选项' 'Invalid choice')"; continue;; esac
   [[ -n $MAIN_ACTION ]] || continue

@@ -5,7 +5,7 @@
 set -Eeuo pipefail
 umask 077
 SCRIPT_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
-MANAGER_VERSION=2.3.0
+MANAGER_VERSION=2.3.1
 BASE=/etc/singbox-v2
 CONF=/etc/sing-box/config.json
 SYSTEMD_DIR=/etc/systemd/system
@@ -33,13 +33,19 @@ select_language() {
   local choice
   while :; do
     printf '%s\n========== Language / 语言 ==========\n 1. 简体中文\n 2. English\n=======================================\n%s' "$GREEN" "$RESET"
-    read -r -p '请选择语言 / Select language [1/2]: ' choice || return 1
+    prompt_read '请选择语言 / Select language [1/2]: ' choice || return 1
     case "$choice" in 1) LANGUAGE_CHOICE=zh_CN;; 2) LANGUAGE_CHOICE=en_US;; *) continue;; esac
     printf '%s\n' "$LANGUAGE_CHOICE" > "$LANG_FILE"
     chmod 600 "$LANG_FILE"
     break
   done
 }
+# Keep input prompts green, resetting before the user types. Hidden token input stays hidden.
+prompt_read(){
+ if [[ ${3:-} == secret ]]; then read -rs -p "${GREEN}$1${RESET}" "$2"
+ else read -r -p "${GREEN}$1${RESET}" "$2"; fi
+}
+prompt_options(){ printf '%s%s%s\n' "$GREEN" "$(L "$1" "$2")" "$RESET"; }
 say(){ printf '%s\n' "$(L "$1" "$2")"; }
 L() { if [[ "$LANGUAGE_CHOICE" == en_US ]]; then printf '%s' "$2"; else printf '%s' "$1"; fi; }
 if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
@@ -50,7 +56,7 @@ ok(){ printf '%s✔ %s%s\n' "$GREEN" "$*" "$RESET"; }
 warn(){ printf '%s⚠ %s%s\n' "$YELLOW" "$*" "$RESET"; }
 err(){ printf '%s✖ %s%s\n' "$RED" "$*" "$RESET" >&2; }
 need_root(){ [[ $EUID == 0 ]] || { err "$(L '需要 root 权限' 'Root privileges required')"; exit 1; }; }
-confirm(){ local answer; read -r -p "$1 $(L '[输入 YES 确认]' '[Type YES to confirm]'): " answer || return 1; [[ $answer =~ ^[[:space:]]*[Yy][Ee][Ss][[:space:]]*$ ]]; }
+confirm(){ local answer; prompt_read "$1 $(L '[输入 YES 确认]' '[Type YES to confirm]'): " answer || return 1; [[ $answer =~ ^[[:space:]]*[Yy][Ee][Ss][[:space:]]*$ ]]; }
 startup_service_info(){
  local label=$1 installed=$2 unit=$3 value
  if command -v systemctl >/dev/null && systemctl is-active --quiet "$unit" 2>/dev/null; then
@@ -204,7 +210,7 @@ EOF
 # Installation requires a clean deployment; configuration generation is separately testable.
 choose_node_name(){
  local value
- read -r -p "$(L '节点名称前缀 [SKYBYTE]（回车默认）：' 'Node name prefix [SKYBYTE] (Enter for default): ')" value || return 1
+ prompt_read "$(L '节点名称前缀 [SKYBYTE]（回车默认）：' 'Node name prefix [SKYBYTE] (Enter for default): ')" value || return 1
  python3 - "$value" <<'PY'
 import sys,unicodedata
 name=sys.argv[1].strip() or 'SKYBYTE'
@@ -256,8 +262,8 @@ install_protocol(){
  . "$OS_RELEASE"
  case ${ID:-} in ubuntu|debian) ;; *) err "$(L '仅支持 Ubuntu/Debian' 'Ubuntu/Debian required')"; return 1;; esac
  local mode="${1:-}" cert_mode="" 
- if [[ -z "$mode" ]]; then printf '\033[1;32m%s\033[0m\n' "$(L '1 Reality 单协议 | 2 HY2 单协议 | 3 双协议 | 0 返回' '1 Reality only | 2 HY2 only | 3 Dual | 0 Back')"
- read -r -p '> ' mode || return; fi
+ if [[ -z "$mode" ]]; then prompt_options '1 Reality 单协议 | 2 HY2 单协议 | 3 双协议 | 0 返回' '1 Reality only | 2 HY2 only | 3 Dual | 0 Back'
+ prompt_read '> ' mode || return; fi
  [[ "$mode" == 0 ]] && return 0
  [[ "$mode" =~ ^[123]$ ]] || { err "Invalid selection"; return 1; }
  notice; confirm "$(L '同意声明并安装所选协议？' 'Accept notice and install selected protocol(s)?')" || return 0
@@ -269,20 +275,20 @@ install_protocol(){
  local domain="" cert="" key="" sni="" node_name
  node_name=$(choose_node_name) || { err "$(L '节点名称无效' 'Invalid node name')"; return 1; }
  if [[ $mode != 1 ]]; then
-  say 'HY2证书: 1 无域名(自动自签名)  2 已有证书' 'HY2 certificate: 1 No domain (self-signed)  2 Existing certificate'
-  read -r -p '> ' cert_mode
+  prompt_options 'HY2证书: 1 无域名(自动自签名)  2 已有证书' 'HY2 certificate: 1 No domain (self-signed)  2 Existing certificate'
+  prompt_read '> ' cert_mode
   case "$cert_mode" in
    1) say '需要客户端安全地导入证书并启用验证。' 'Client must securely import and verify the certificate.';;
-   2) read -r -p "$(L '证书域名：' 'Certificate domain: ')" domain
+   2) prompt_read "$(L '证书域名：' 'Certificate domain: ')" domain
       [[ $domain =~ ^[a-zA-Z0-9.-]+$ && $domain == *.* ]] || { err "$(L '域名无效' 'Invalid domain')"; return 1; }
-      read -r -p "$(L 'TLS 完整证书路径：' 'TLS fullchain path: ')" cert
-      read -r -p "$(L 'TLS 私钥路径：' 'TLS key path: ')" key
+      prompt_read "$(L 'TLS 完整证书路径：' 'TLS fullchain path: ')" cert
+      prompt_read "$(L 'TLS 私钥路径：' 'TLS key path: ')" key
       [[ -f $cert && -f $key ]] || { err "$(L '证书或私钥不存在' 'Certificate/key missing')"; return 1; };;
    *) err "$(L '无效证书选项' 'Invalid certificate option')"; return 1;;
   esac
  fi
  if [[ $mode != 2 ]]; then
-  read -r -p "$(L 'Reality 握手域名 [addons.mozilla.org]：' 'Reality handshake [addons.mozilla.org]: ')" sni
+  prompt_read "$(L 'Reality 握手域名 [addons.mozilla.org]：' 'Reality handshake [addons.mozilla.org]: ')" sni
   sni=${sni:-addons.mozilla.org}
   [[ $sni =~ ^[a-zA-Z0-9.-]+$ ]] || { err "$(L '无效 SNI' 'Invalid SNI')"; return 1; }
  fi
@@ -324,10 +330,10 @@ PY
 }
 # @include subscriptions.sh
 
-hop(){ check_owned || return; [[ "$(protocol_mode)" != 1 ]] || { err "$(L '未安装 HY2' 'HY2 not installed')"; return 1; }; require_cmd nft || return 1; say '端口跳跃仅支持 IPv4，规则通过专属 systemd 服务持久化。请同步修改云防火墙。' 'Port hopping is IPv4 only and uses a dedicated systemd service. Also configure your provider firewall.'; say '1 开启  2 关闭' '1 Enable  2 Disable'; read -r -p '> ' choice
+hop(){ check_owned || return; [[ "$(protocol_mode)" != 1 ]] || { err "$(L '未安装 HY2' 'HY2 not installed')"; return 1; }; require_cmd nft || return 1; say '端口跳跃仅支持 IPv4，规则通过专属 systemd 服务持久化。请同步修改云防火墙。' 'Port hopping is IPv4 only and uses a dedicated systemd service. Also configure your provider firewall.'; prompt_options '1 开启  2 关闭' '1 Enable  2 Disable'; prompt_read '> ' choice
  if [[ $choice == 2 ]]; then confirm "$(L '关闭端口跳跃？' 'Disable HY2 port hopping?')" && { systemctl disable --now singbox-v2-hop.service 2>/dev/null || :; hop_disable; }; return; fi
  [[ $choice == 1 ]] || return 0
- read -r -p "$(L '起始端口 [20000]: ' 'Start port [20000]: ')" start; start=${start:-20000}; read -r -p "$(L '结束端口 [30000]: ' 'End port [30000]: ')" end; end=${end:-30000}
+ prompt_read "$(L '起始端口 [20000]: ' 'Start port [20000]: ')" start; start=${start:-20000}; prompt_read "$(L '结束端口 [30000]: ' 'End port [30000]: ')" end; end=${end:-30000}
  if ! valid_port "$start" || ! valid_port "$end" || ! (( 10#$start<=10#$end && 10#$start>=1024 && 10#$end-10#$start<=10000 )); then err "$(L '端口范围非法（最多10001个）' 'Invalid range (maximum 10001 ports)')"; return 1; fi
  start=$((10#$start)); end=$((10#$end))
  if [[ -f $BASE/users.json ]]; then users_guard && users_engine hop_check "$start" "$end" || return 1; fi
@@ -402,7 +408,7 @@ update_auto(){
  current=$("$BIN" version | awk 'NR==1{print $3}'); new=$(latest) || return 1
  [[ $current == "$new" ]] || apply_update "$new"
 }
-configure_auto(){ need_root; say '1 启用每周自动更新  2 关闭' '1 Enable weekly automatic updates  2 Disable'; read -r -p '> ' x
+configure_auto(){ need_root; prompt_options '1 启用每周自动更新  2 关闭' '1 Enable weekly automatic updates  2 Disable'; prompt_read '> ' x
  if [[ $x == 1 ]]; then
  check_owned || return 1
  warn "$(L '自动更新会短暂中断服务；请保留备份' 'Automatic updates briefly interrupt service; retain backups')"
@@ -482,7 +488,7 @@ restore(){
  check_owned || return 1
  local path snap
  find "$BACKUP" -mindepth 1 -maxdepth 1 -type d | sort -r
- read -r -p "$(L '完整备份路径：' 'Full backup directory path: ')" path || return
+ prompt_read "$(L '完整备份路径：' 'Full backup directory path: ')" path || return
  path=$(realpath "$path") || return 1
  [[ $path == "$(realpath "$BACKUP")/"* && -f $path/config/config.json && -f $path/sing-box.bin && -f $path/state.json ]] || { err "$(L '备份路径错误' 'Invalid backup path')"; return 1; }
  confirm "$(L '恢复配置并重启？' 'Restore configuration and restart?')" || return 0
@@ -565,16 +571,16 @@ detect_ssh_ports(){
 }
 firewall(){
  need_root
- say '1 安装 UFW  2 开启  3 关闭  4 查看状态  5 放行端口  6 删除规则  0 返回' '1 Install UFW  2 Enable  3 Disable  4 Status  5 Allow port  6 Delete rule  0 Back'
+ prompt_options '1 安装 UFW  2 开启  3 关闭  4 查看状态  5 放行端口  6 删除规则  0 返回' '1 Install UFW  2 Enable  3 Disable  4 Status  5 Allow port  6 Delete rule  0 Back'
  local choice port proto
- read -r -p '> ' choice || return
+ prompt_read '> ' choice || return
  case "$choice" in
  1) confirm "$(L '安装 UFW？' 'Install UFW?')" && apt-get update && apt-get install -y ufw ;;
  2)
    require_cmd ufw || return
    say '当前 SSH 监听信息（必须人工核实）：' 'SSH listener information (VERIFY manually):'
    detect_ssh_ports
-   read -r -p "$(L '输入当前 SSH TCP 端口（请核实云控制台/sshd 设置）：' 'Enter verified SSH TCP port: ')" port
+   prompt_read "$(L '输入当前 SSH TCP 端口（请核实云控制台/sshd 设置）：' 'Enter verified SSH TCP port: ')" port
    port=${port:-${SSH_PORTS:-}}
    valid_port "$port" || { err "$(L 'SSH 端口无效' 'Invalid SSH port')"; return 1; }
    warn "$(L '如果 SSH 端口判断错误，开启 UFW 可能导致远程连接断开！请保留 VPS 控制台访问。' 'Wrong SSH port may lock you out. Keep VPS console access.')"
@@ -593,19 +599,19 @@ firewall(){
  3) require_cmd ufw && confirm "$(L '关闭 UFW 会降低保护，确定？' 'Disable UFW and reduce protection?')" && ufw --force disable ;;
  4) require_cmd ufw && ufw status verbose ;;
  5) require_cmd ufw || return
-    read -r -p "$(L '端口：' 'Port: ')" port; valid_port "$port" || return 1
-    read -r -p "$(L '协议 (tcp/udp)：' 'Protocol (tcp/udp): ')" proto; [[ $proto == tcp || $proto == udp ]] || return 1
+    prompt_read "$(L '端口：' 'Port: ')" port; valid_port "$port" || return 1
+    prompt_read "$(L '协议 (tcp/udp)：' 'Protocol (tcp/udp): ')" proto; [[ $proto == tcp || $proto == udp ]] || return 1
     confirm "$(L "放行 $port/${proto}？" "Allow $port/$proto?")" && ufw allow "$port/$proto" ;;
  6) require_cmd ufw || return; ufw status numbered
-    read -r -p "$(L '规则编号：' 'Rule number: ')" port; [[ $port =~ ^[0-9]+$ ]] || return 1
+    prompt_read "$(L '规则编号：' 'Rule number: ')" port; [[ $port =~ ^[0-9]+$ ]] || return 1
     confirm "$(L '删除指定规则？确认不会影响 SSH！' 'Delete rule? Ensure SSH stays reachable!')" && ufw --force delete "$port" ;;
  0) return;; *) err "$(L '无效选择' 'Invalid choice')";;
  esac
  return 0
 }
 service_manager(){
- say '1 状态  2 启动  3 重启  4 停止  5 开机自启  6 配置检查  0 返回' '1 Status  2 Start  3 Restart  4 Stop  5 Enable at boot  6 Config check  0 Back'
- local x; read -r -p '> ' x || return
+ prompt_options '1 状态  2 启动  3 重启  4 停止  5 开机自启  6 配置检查  0 返回' '1 Status  2 Start  3 Restart  4 Stop  5 Enable at boot  6 Config check  0 Back'
+ local x; prompt_read '> ' x || return
  case "$x" in
  1) status;; 2) check_owned && confirm "$(L '启动 sing-box？' 'Start sing-box?')" && systemctl start sing-box;;
  3) check_owned && confirm "$(L '重启 sing-box？' 'Restart sing-box?')" && "$BIN" check -c "$CONF" && systemctl restart sing-box;;
@@ -616,8 +622,8 @@ service_manager(){
 }
 traffic(){
  say 'vnStat 统计 VPS 网卡流量，不能区分 Reality/HY2；历史数据从安装后开始。' 'vnStat tracks VPS interface traffic, NOT Reality/HY2 separately. History starts when installed.'
- say '1 安装 vnStat  2 今日  3 本月  4 实时网速  5 历史汇总  0 返回' '1 Install vnStat  2 Today  3 Monthly  4 Live  5 History  0 Back'
- local x; read -r -p '> ' x || return
+ prompt_options '1 安装 vnStat  2 今日  3 本月  4 实时网速  5 历史汇总  0 返回' '1 Install vnStat  2 Today  3 Monthly  4 Live  5 History  0 Back'
+ local x; prompt_read '> ' x || return
  case "$x" in
  1) confirm "$(L '安装 vnStat？' 'Install vnStat?')" && apt-get update && apt-get install -y vnstat && systemctl enable --now vnstat;;
  2) require_cmd vnstat && vnstat -d;; 3) require_cmd vnstat && vnstat -m;;
@@ -772,15 +778,15 @@ argo_install(){
  done
  warn "$(L '新增 VLESS+WS 隧道节点；Cloudflare 终止公网 TLS，可处理隧道流量。临时隧道仅供测试，重启会换地址。' 'Adds a VLESS+WS node. Cloudflare terminates public TLS and can process tunnel traffic. Quick tunnels are for testing; restarts change the hostname.')"
  confirm "$(L '安装所选 Argo 模式？' 'Install selected Argo mode?')" || return 0
- read -r -p "$(L '本机 WS 端口 [8080]：' 'Local WS port [8080]: ')" port || return 1
+ prompt_read "$(L '本机 WS 端口 [8080]：' 'Local WS port [8080]: ')" port || return 1
  port=${port:-8080}; valid_port "$port" && (( 10#$port>=1024 )) || return 1; port=$((10#$port))
  if ss -H -ltn "( sport = :$port )" | grep -q .; then err "$(L '端口已占用' 'Port is occupied')"; return 1; fi
  name=$(choose_node_name) || return 1
  if [[ $mode == named ]]; then
-  read -r -p "$(L 'Cloudflare 固定公开域名：' 'Cloudflare published hostname: ')" domain || return 1
+  prompt_read "$(L 'Cloudflare 固定公开域名：' 'Cloudflare published hostname: ')" domain || return 1
   argo_validate_domain "$domain" || { err "$(L '域名格式无效' 'Invalid hostname')"; return 1; }
   say "请在 Cloudflare 控制台将该域名的 HTTP 服务指向 http://127.0.0.1:${port}；需要支持 WebSocket，不能要求交互式 Access 登录。" "In Cloudflare, route this hostname to HTTP http://127.0.0.1:$port with WebSocket support; interactive Access login is incompatible."
-  read -rs -p "$(L 'Tunnel Token（隐藏输入）：' 'Tunnel Token (hidden input): ')" token || return 1; printf '\n'
+  prompt_read "$(L 'Tunnel Token（隐藏输入）：' 'Tunnel Token (hidden input): ')" token secret || return 1; printf '\n'
   if [[ ! $token =~ ^[a-zA-Z0-9+/=_-]+$ ]] || (( ${#token}<20 || ${#token}>4096 )); then err "$(L 'Token 格式无效' 'Invalid token format')"; return 1; fi
  fi
  snap=$(backup) || return 1
@@ -928,8 +934,8 @@ argo_restore_snapshot(){
 }
 argo_manager(){
  local choice
- say '1 临时隧道  2 固定隧道  3 状态  4 启动  5 停止  6 重启  7 刷新节点  8 卸载 Argo  0 返回' '1 Quick  2 Named  3 Status  4 Start  5 Stop  6 Restart  7 Refresh nodes  8 Remove Argo  0 Back'
- read -r -p '> ' choice || return 0
+ prompt_options '1 临时隧道  2 固定隧道  3 状态  4 启动  5 停止  6 重启  7 刷新节点  8 卸载 Argo  0 返回' '1 Quick  2 Named  3 Status  4 Start  5 Stop  6 Restart  7 Refresh nodes  8 Remove Argo  0 Back'
+ prompt_read '> ' choice || return 0
  case $choice in
   1) argo_install quick;; 2) argo_install named;; 3) argo_status;; 4) argo_start;;
   5) argo_stop && exports;; 6) argo_stop && argo_start;; 7) exports;; 8) argo_remove;; 0) return 0;; *) err "$(L '无效选项' 'Invalid choice')"; return 1;;
