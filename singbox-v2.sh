@@ -334,6 +334,26 @@ subscription_text=base64.b64encode(node_text.encode()).decode()+'\n'
 write('nodes.txt',node_text); write('subscription-base64.txt',subscription_text)
 write('v2rayn-nodes.txt',node_text); write('v2rayn-subscription.txt',subscription_text)
 write('shadowrocket-nodes.txt',node_text); write('shadowrocket-subscription.txt',subscription_text)
+# Shadowrocket's native VLESS dialect: base64(auto:UUID@host:port).
+# Keep standard exports intact for existing consumers.
+rocket_links=[]
+for link,name in zip(links,link_names):
+ u=urllib.parse.urlsplit(link)
+ if u.scheme!='vless':
+  rocket_links.append(link);continue
+ q=dict(urllib.parse.parse_qsl(u.query));host=u.hostname
+ address='['+host+']' if ':' in host else host
+ authority=base64.b64encode(('auto:'+u.username+'@'+address+':'+str(u.port)).encode()).decode()
+ options={'remarks':name,'tls':'1','allowInsecure':'0','peer':q['sni']}
+ if q.get('security')=='reality':
+  options.update(xtls='2',pbk=q['pbk'],sid=q['sid'],fp=q['fp'])
+ elif q.get('type')=='ws':
+  options.update(obfs='websocket',obfsParam=q['host'],path=q['path'],alpn=q.get('alpn','http/1.1'))
+ rocket_links.append('vless://'+authority+'?'+urllib.parse.urlencode(options,quote_via=urllib.parse.quote))
+rocket_text='\n'.join(rocket_links)+'\n'
+write('shadowrocket-native-nodes.txt',rocket_text)
+write('shadowrocket-native-subscription.txt',base64.b64encode(rocket_text.encode()).decode()+'\n')
+
 out=[];proxy=[]
 if mode!='2':
  out.append({'type':'vless','tag':reality_name,'server':ip,'server_port':vp,'uuid':s['uuid'],'flow':'xtls-rprx-vision','tls':{'enabled':True,'server_name':sni,'utls':{'enabled':True,'fingerprint':'chrome'},'reality':{'enabled':True,'public_key':s['public_key'],'short_id':s['sid']}}})
@@ -444,6 +464,11 @@ sensitive(clash_yaml)
 section('sing-box JSON', ['sing-box-client.json','outbounds.json'])
 info(tr('完整客户端配置，默认使用首个节点；outbounds.json 为合并用片段。','Complete client config using the first node by default; outbounds.json is a merge fragment.'))
 sensitive(client_json)
+section(tr('小火箭专用链接 / Shadowrocket','Shadowrocket native links'), ['shadowrocket-native-nodes.txt','shadowrocket-native-subscription.txt'])
+for link,name in zip(rocket_links,link_names):
+ info(tr('节点名称：','Node name: ')+name)
+ sensitive(link)
+ print(separator)
 section(tr('小火箭 / Shadowrocket 订阅','Shadowrocket subscription'), ['shadowrocket-nodes.txt','shadowrocket-subscription.txt'])
 info(tr('以下为本地 Base64 订阅内容；不是在线订阅 URL。单节点可从 shadowrocket-nodes.txt 复制。','Local Base64 subscription content below; this is not a hosted subscription URL. Copy individual URIs from shadowrocket-nodes.txt.'))
 sensitive(subscription_text)
@@ -770,13 +795,13 @@ shadowrocket_qr(){
  local link name count=0
  while IFS= read -r link; do
   [[ -n $link ]] || continue
-  name=$(printf '%s' "$link" | python3 -c 'import sys,urllib.parse; print(urllib.parse.unquote(urllib.parse.urlsplit(sys.stdin.read()).fragment))') || return 1
+  name=$(printf '%s' "$link" | python3 -c 'import sys,urllib.parse; u=urllib.parse.urlsplit(sys.stdin.read()); print(urllib.parse.unquote(u.fragment) if u.fragment else dict(urllib.parse.parse_qsl(u.query)).get("remarks","Shadowrocket"))') || return 1
   printf '%s\n' '----------------------------------------------'
   printf '%s%s%s\n' "$YELLOW" "$name" "$RESET"
   # Feed credentials via stdin; keep the QR high-contrast for phone cameras.
   printf '%s' "$link" | qrencode -t ANSIUTF8 -m 2 || return 1
   count=$((count+1))
- done < "$BASE/shadowrocket-nodes.txt"
+ done < "$BASE/shadowrocket-native-nodes.txt"
  printf '%s\n' '----------------------------------------------'
  (( count > 0 )) || { err "$(L '没有可生成二维码的节点' 'No nodes available for QR codes')"; return 1; }
 }
@@ -1119,7 +1144,7 @@ PY
  # Remove explicit managed files only; never recursively delete user configuration directories.
  rm -f -- "$unit" "$SYSTEMD_DIR/singbox-v2-update.service" "$SYSTEMD_DIR/singbox-v2-update.timer" "$SYSTEMD_DIR/singbox-v2-hop.service" "$BIN" "$CONF"
  while IFS= read -r file; do if [[ -n $file ]]; then rm -f -- "$file"; fi; done <<<"$managed_certs"
- for file in state.json language.conf hop.nft nodes.txt subscription-base64.txt v2rayn-nodes.txt v2rayn-subscription.txt shadowrocket-nodes.txt shadowrocket-subscription.txt sing-box-client.json clash-verge.yaml outbounds.json mihomo-proxies.yaml subscription-notes.txt hy2-client-ca.pem hy2-client-ca.cer hy2-client-ca.mobileconfig; do rm -f -- "$BASE/$file"; done
+ for file in state.json language.conf hop.nft nodes.txt subscription-base64.txt v2rayn-nodes.txt v2rayn-subscription.txt shadowrocket-nodes.txt shadowrocket-subscription.txt shadowrocket-native-nodes.txt shadowrocket-native-subscription.txt sing-box-client.json clash-verge.yaml outbounds.json mihomo-proxies.yaml subscription-notes.txt hy2-client-ca.pem hy2-client-ca.cer hy2-client-ca.mobileconfig; do rm -f -- "$BASE/$file"; done
  # Remove executable copies only when they are identifiable manager scripts.
  for file in "$MANAGER_BIN" "$MANAGER_LIB"; do
   if [[ -f $file && ! -L $file ]] && grep -q '^# SKYBYTE Manager V2.1 community manager;' "$file"; then rm -f -- "$file"; fi

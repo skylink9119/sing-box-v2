@@ -22,3 +22,5 @@ argo-server.json
 argo.token
 argo-empty.yml
 cloudflared
+shadowrocket-native-nodes.txt
+shadowrocket-native-subscription.txt
