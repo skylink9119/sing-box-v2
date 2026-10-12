@@ -729,6 +729,23 @@ time.sleep(60)
         snapshots=list(self.backups.iterdir());self.assertEqual(len(snapshots),1)
         self.assertTrue((snapshots[0]/'argo.token').exists())
 
+    def test_shadowrocket_qr_uses_exact_links_via_stdin(self):
+        self.exported('3')
+        expected=(self.base/'shadowrocket-nodes.txt').read_text().splitlines()
+        capture=self.root/'qr-input.txt'
+        result=self.shell('qrencode(){ [[ "$*" == "-t ANSIUTF8 -m 2" ]] || return 1; cat >> '+shlex.quote(str(capture))+'; echo >> '+shlex.quote(str(capture))+'; echo QR; }; shadowrocket_qr')
+        self.assertEqual(capture.read_text().splitlines(),expected)
+        self.assertEqual(result.stdout.count('\nQR\n'),len(expected))
+        self.assertIn('certificate trust',result.stdout)
+        self.assertNotIn(self.password,result.stdout)
+        result=self.shell('sub_menu 2; echo "$MAIN_ACTION"',input='4\n')
+        self.assertTrue(result.stdout.rstrip().endswith('qr'))
+
+    def test_shadowrocket_qr_stops_when_encoder_fails(self):
+        self.exported('2')
+        result=self.shell('qrencode(){ return 1; }; shadowrocket_qr',ok=False)
+        self.assertNotEqual(result.returncode,0)
+
     def test_grouped_menu_dispatches_without_renumbering_function_logic(self):
         for language,label in [('en_US','Nodes and subscriptions'),('zh_CN','节点与订阅')]:
             code='need_root(){ :; }; flock(){ :; }; exports(){ echo EXPORTED; }; LANGUAGE_CHOICE='+language+'; main'

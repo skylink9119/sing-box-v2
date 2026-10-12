@@ -81,3 +81,7 @@ Installation and menu 2 → 3 accept a persisted node-name prefix, defaulting to
 ## Argo and grouped menus
 
 58 tests cover both tunnel modes, token-file privacy, registration/address lifecycle, removal/backup/restore, ownership guards, download verification, unchanged credentials and bilingual grouped dispatch. Actual sing-box and Mihomo clients passed local verified TLS/WebSocket forwarding. A separate live Quick Tunnel check with cloudflared 2026.10.0 passed HTTPS/WebSocket forwarding. The local resolver returned NXDOMAIN for the new hostname; public DNS supplied the address while original SNI/Host and TLS verification were retained. Named account routes were not live-tested. Systemd mutations are mocked; VPS startup and graphical client imports remain deployment checks.
+
+## Shadowrocket terminal QR codes
+
+60 local tests passed. New tests verify that each exact exported Shadowrocket URI is fed to qrencode through stdin, separated and named in the terminal, with no credentials in encoder arguments; encoder failure is propagated and the bilingual submenu dispatches the new action. The QR renderer is mocked in these regression tests; physical phone scanning has not been tested. bash -n, ShellCheck and git diff --check passed.

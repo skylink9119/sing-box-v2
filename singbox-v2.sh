@@ -759,6 +759,28 @@ traffic(){
  4) require_cmd vnstat && vnstat -l;; 5) require_cmd vnstat && vnstat;; 0) return;; *) err "$(L '无效选择' 'Invalid choice')";; esac
  return 0
 }
+shadowrocket_qr(){
+ check_owned || return 1
+ if ! command -v qrencode >/dev/null; then
+  say '安装二维码工具 qrencode...' 'Installing qrencode...'
+  apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y qrencode || return 1
+ fi
+ exports >/dev/null || return 1
+ warn "$(L '二维码包含节点凭据，请勿公开。HY2 自签名节点仍需配置信任证书。' 'QR codes contain node credentials; keep them private. Self-signed HY2 still requires certificate trust.')"
+ local link name count=0
+ while IFS= read -r link; do
+  [[ -n $link ]] || continue
+  name=$(printf '%s' "$link" | python3 -c 'import sys,urllib.parse; print(urllib.parse.unquote(urllib.parse.urlsplit(sys.stdin.read()).fragment))') || return 1
+  printf '%s\n' '----------------------------------------------'
+  printf '%s%s%s\n' "$YELLOW" "$name" "$RESET"
+  # Feed credentials via stdin; keep the QR high-contrast for phone cameras.
+  printf '%s' "$link" | qrencode -t ANSIUTF8 -m 2 || return 1
+  count=$((count+1))
+ done < "$BASE/shadowrocket-nodes.txt"
+ printf '%s\n' '----------------------------------------------'
+ (( count > 0 )) || { err "$(L '没有可生成二维码的节点' 'No nodes available for QR codes')"; return 1; }
+}
+
 subscription(){
  check_owned || return
  warn "$(L '仅生成本地订阅文件；不会开启公开的 HTTP/HTTPS 订阅服务。' 'Local subscription files only; no public HTTP/HTTPS service will be started.')"
@@ -1122,6 +1144,7 @@ sub_menu(){
    say ' 1. 查看节点与各客户端格式' ' 1. View nodes and client formats'
    say ' 2. 导出本地订阅' ' 2. Export local subscriptions'
    say ' 3. 自定义节点名称' ' 3. Customize node names'
+   say ' 4. 小火箭节点二维码' ' 4. Shadowrocket node QR codes'
    ;;
   3)
    say ' 1. sing-box 状态与启停' ' 1. sing-box status and controls'
@@ -1162,6 +1185,7 @@ sub_menu(){
   2:1) MAIN_ACTION=nodes;;
   2:2) MAIN_ACTION=subscription;;
   2:3) MAIN_ACTION=rename;;
+  2:4) MAIN_ACTION=qr;;
   3:1) MAIN_ACTION=service;;
   3:2) MAIN_ACTION=logs;;
   3:3) MAIN_ACTION=argo_status;;
@@ -1187,7 +1211,7 @@ sub_menu(){
 dispatch_action(){
  case $1 in
  install_reality) install_protocol 1;; install_hy2) install_protocol 2;; install_dual) install_protocol 3;;
- argo) argo_manager;; nodes) exports;; subscription) subscription;; rename) rename_node;;
+ argo) argo_manager;; nodes) exports;; subscription) subscription;; rename) rename_node;; qr) shadowrocket_qr;;
  service) service_manager;; logs) journalctl -u sing-box -n 80 --no-pager;; argo_status) argo_status;;
  initialize) initialize_server;; firewall) firewall;; audit) firewall_audit;; bbr) bbr;; hop) hop;; traffic) traffic;;
  ip) ipcheck;; network) netcheck;; hy2_check) hy2_diagnostics;;
