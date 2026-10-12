@@ -32,6 +32,14 @@ def port(kind=socket.SOCK_STREAM):
         return sock.getsockname()[1]
 
 
+def quoted_yaml_dump(data):
+    import yaml
+    class QuotedStrings(yaml.SafeDumper):
+        pass
+    QuotedStrings.add_representer(str, lambda dumper,value: dumper.represent_scalar('tag:yaml.org,2002:str',value,style='"'))
+    return yaml.dump(data,Dumper=QuotedStrings)
+
+
 class ManagerTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -370,7 +378,7 @@ printf '%s' "$SSH_PORTS"''')
         for language, text in [('en_US','Nodes and subscriptions'), ('zh_CN','节点与订阅')]:
             result = self.shell('need_root(){ :; }; flock(){ :; }; LANGUAGE_CHOICE='+language+'; main', input='0\n')
             self.assertIn('███████╗', result.stdout)
-            self.assertIn('SKYBYTE Manager V2.1', result.stdout)
+            self.assertIn('SKYBYTE Manager v2.2.0', result.stdout)
             self.assertIn('https://www.youtube.com/@SKYBYTE9119', result.stdout)
             self.assertIn(text, result.stdout)
 
@@ -729,6 +737,341 @@ time.sleep(60)
         snapshots=list(self.backups.iterdir());self.assertEqual(len(snapshots),1)
         self.assertTrue((snapshots[0]/'argo.token').exists())
 
+    def user_setup(self, limit=2, mode='3', real=False):
+        self.configure(mode)
+        if real and SB: self.bin=Path(SB)
+        self.shell('users_engine init '+str(limit))
+
+    def add_user(self, name='Alice', quota='1', days='30'):
+        uid=self.shell('users_engine add '+' '.join(shlex.quote(x) for x in [name,quota,days])).stdout.strip()
+        if SB and self.bin.resolve()==Path(SB).resolve():
+            # Live tests expose only loopback listeners on the development host.
+            p=self.base/'users'/uid/'server.json';c=json.loads(p.read_text())
+            for inbound in c['inbounds']:inbound['listen']='127.0.0.1'
+            p.write_text(json.dumps(c))
+        return uid
+
+    def user_db(self):
+        return json.loads((self.base/'users.json').read_text())
+
+    def save_user_db(self, d):
+        import fcntl
+        with open(self.base/'users.lock','a') as lock:
+            fcntl.flock(lock,fcntl.LOCK_EX)
+            tmp=self.base/'users-test.tmp';tmp.write_text(json.dumps(d));tmp.chmod(0o600)
+            os.replace(tmp,self.base/'users.json')
+
+    def test_users_limit_counts_disabled_accounts_and_frees_deleted_slots(self):
+        self.user_setup(2);a=self.add_user();b=self.add_user('Bob')
+        self.shell('users_engine disable '+a)
+        self.assertNotEqual(self.shell('users_engine add Carol 1 30',ok=False).returncode,0)
+        self.assertNotEqual(self.shell('users_engine limit 1',ok=False).returncode,0)
+        self.shell('users_engine delete '+b);self.add_user('Carol')
+        self.assertEqual(len([u for u in self.user_db()['users'] if not u.get('deleted')]),2)
+
+    def test_users_independent_credentials_ports_and_private_controllers(self):
+        self.user_setup();before=(self.config/'config.json').read_bytes()
+        a=self.add_user('香港 & #1');b=self.add_user('Bob');db=self.user_db()
+        ports=[u[k] for u in db['users'] for k in ['port','api_port']]
+        self.assertEqual(len(ports),len(set(ports)))
+        configs=[json.loads((self.base/'users'/uid/'server.json').read_text()) for uid in [a,b]]
+        self.assertNotEqual(configs[0]['inbounds'][0]['users'][0]['uuid'],configs[1]['inbounds'][0]['users'][0]['uuid'])
+        self.assertNotEqual(configs[0]['inbounds'][1]['users'][0]['password'],configs[1]['inbounds'][1]['users'][0]['password'])
+        for u,c in zip(db['users'],configs):
+            self.assertEqual(c['experimental']['clash_api']['external_controller'],'127.0.0.1:'+str(u['api_port']))
+            self.assertTrue(c['experimental']['clash_api']['secret'])
+            self.assertEqual(len(c['inbounds'][0]['users']),1)
+            self.assertEqual((self.base/'users'/u['id']/'server.json').stat().st_mode & 0o777,0o600)
+            self.assertEqual((self.base/'users'/u['id']/'private.key').stat().st_mode & 0o777,0o600)
+        self.assertEqual((self.config/'config.json').read_bytes(),before)
+        self.assertEqual((self.base/'users.json').stat().st_mode & 0o777,0o600)
+
+    def test_users_validation_and_failed_config_are_atomic(self):
+        self.user_setup();before=(self.base/'users.json').read_bytes()
+        for command in ['users_engine add Alice -1 30','users_engine add Alice NaN 30','users_engine add Alice 1 0','users_engine add Alice 1 36501']:
+            self.assertNotEqual(self.shell(command,ok=False).returncode,0)
+        self.bin.write_text('#!/bin/sh\nexit 1\n')
+        self.assertNotEqual(self.shell('users_engine add Alice 1 30',ok=False).returncode,0)
+        self.assertEqual((self.base/'users.json').read_bytes(),before)
+        self.assertEqual(list((self.base/'users').iterdir()),[])
+        self.assertNotEqual(self.shell('users_engine init 3',ok=False).returncode,0)
+
+    def test_users_expiry_and_quota_prevent_exports_and_allow_explicit_renewal(self):
+        self.user_setup();a=self.add_user();d=self.user_db();d['users'][0]['expires_at']=1;self.save_user_db(d)
+        self.assertIn('Expired',self.shell('users_engine list').stdout)
+        self.assertNotEqual(self.shell('users_export '+a,ok=False).returncode,0)
+        self.shell('users_engine set '+a+' 2 30')
+        d=self.user_db();d['users'][0]['upload']=d['users'][0]['quota_bytes'];self.save_user_db(d)
+        self.assertIn('Quota exceeded',self.shell('users_engine list').stdout)
+        self.assertNotEqual(self.shell('users_export '+a,ok=False).returncode,0)
+        self.shell('users_engine reset '+a);self.shell('users_export '+a)
+        self.assertEqual(self.user_db()['users'][0]['upload'],0)
+
+    def test_users_exports_use_only_that_users_credentials_and_port(self):
+        self.user_setup();a=self.add_user();b=self.add_user('Bob');before=(self.config/'config.json').read_bytes()
+        self.shell('users_export '+a)
+        u=self.user_db()['users'][0];p=self.base/'users'/a
+        out=json.loads((p/'outbounds.json').read_text())['outbounds']
+        server=json.loads((p/'server.json').read_text())
+        self.assertEqual(out[0]['uuid'],server['inbounds'][0]['users'][0]['uuid'])
+        self.assertEqual(out[1]['password'],server['inbounds'][1]['users'][0]['password'])
+        self.assertTrue(all(o['server_port']==u['port'] for o in out))
+        bob=json.loads((self.base/'users'/b/'server.json').read_text())
+        self.assertNotIn(bob['inbounds'][0]['users'][0]['uuid'],(p/'nodes.txt').read_text())
+        self.assertNotIn(u['api_secret'],(p/'shadowrocket-native-nodes.txt').read_text())
+        self.assertEqual((self.config/'config.json').read_bytes(),before)
+        self.assertEqual(self.shell('users_export '+a+' >/dev/null; echo "$BASE"').stdout.strip(),str(self.base))
+
+    def test_users_backup_restore_keeps_latest_usage_policy_and_private_keys(self):
+        self.user_setup();a=self.add_user();backup=Path(self.shell('backup').stdout.strip())
+        d=self.user_db();d['users'][0].update(upload=12345,enabled=False);self.save_user_db(d)
+        b=self.add_user('Bob');self.shell('users_engine service off')
+        self.shell('users_restore_snapshot '+shlex.quote(str(backup)))
+        d=self.user_db();self.assertFalse(d['supervisor_enabled'])
+        self.assertEqual(d['users'][0]['upload'],12345);self.assertFalse(d['users'][0]['enabled'])
+        self.assertIn(b,[u['id'] for u in d['users']])
+        self.assertEqual((backup/'users'/a/'private.key').stat().st_mode & 0o777,0o600)
+
+    def test_users_units_and_uninstall_preserve_unknown_files(self):
+        self.user_setup();a=self.add_user();self.shell('systemctl(){ :; }; users_setup_service')
+        unit=self.root/'systemd'/'skybyte-users.service'
+        self.assertIn('KillMode=mixed',unit.read_text())
+        unit.write_text('Description=other\n')
+        self.assertNotEqual(self.shell('users_remove',ok=False).returncode,0)
+        self.assertTrue((self.base/'users.json').exists())
+        self.shell('systemctl(){ :; }; rm "$SYSTEMD_DIR/skybyte-users.service"; users_setup_service')
+        unknown=self.base/'users'/a/'my-note.txt';unknown.write_text('keep')
+        self.shell('systemctl(){ :; }; users_remove')
+        self.assertTrue(unknown.exists());self.assertFalse((self.base/'users.json').exists())
+        self.assertFalse(unit.exists())
+
+    def test_users_reject_symlinks_before_backup_or_removal(self):
+        self.user_setup();a=self.add_user();p=self.base/'users'/a/'server.json'
+        p.unlink();p.symlink_to(self.config/'config.json')
+        before=(self.config/'config.json').read_bytes()
+        self.assertNotEqual(self.shell('users_guard',ok=False).returncode,0)
+        self.assertNotEqual(self.shell('backup',ok=False).returncode,0)
+        self.assertNotEqual(self.shell('users_remove',ok=False).returncode,0)
+        self.assertEqual((self.config/'config.json').read_bytes(),before)
+
+    def test_users_menu_dispatch_and_translations(self):
+        for language,label in [('zh_CN','用户数量'),('en_US','Account limits')]:
+            r=self.shell('LANGUAGE_CHOICE='+language+'; sub_menu 2; echo "$MAIN_ACTION"',input='5\n')
+            self.assertIn(label,r.stdout);self.assertTrue(r.stdout.rstrip().endswith('users'))
+
+    @unittest.skipUnless(SB,'sing-box required for live per-user tests')
+    def test_users_live_isolation_quota_stop_and_restart_accounting(self):
+        self.user_setup(real=True);a=self.add_user('Alice','0.0001');b=self.add_user('Bob','1')
+        self.shell('users_export '+a+' >/dev/null; users_export '+b+' >/dev/null')
+        payload=b'X'*262144
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200);self.end_headers()
+                try:self.wfile.write(payload)
+                except (BrokenPipeError,ConnectionResetError):pass
+            def log_message(self,*_):pass
+        web=http.server.ThreadingHTTPServer(('127.0.0.1',0),Handler)
+        threading.Thread(target=web.serve_forever,daemon=True).start()
+        self.addCleanup(web.server_close);self.addCleanup(web.shutdown)
+        url='http://127.0.0.1:'+str(web.server_port)
+        worker=subprocess.Popen([BASH,'-c',self.script('users_engine watch')],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+        clients=[]
+        def wait_ready(uid):
+            deadline=time.monotonic()+10
+            while time.monotonic()<deadline:
+                if next(u for u in self.user_db()['users'] if u['id']==uid).get('running'):return
+                time.sleep(.1)
+            self.fail('User worker did not become ready')
+        def request(uid,index=1):
+            config=json.loads((self.base/'users'/uid/'sing-box-client.json').read_text());mixed=port()
+            config['inbounds'][0]['listen_port']=mixed;config['route']['final']=config['outbounds'][index]['tag']
+            f=self.root/('client-'+uid+'-'+str(mixed)+'.json');f.write_text(json.dumps(config))
+            c=subprocess.Popen([SB,'run','-c',str(f)],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL);clients.append(c)
+            deadline=time.monotonic()+3;result=None
+            while time.monotonic()<deadline:
+                result=subprocess.run(['curl','--silent','--max-time','1','--noproxy','','--proxy','socks5h://127.0.0.1:'+str(mixed),url],capture_output=True)
+                if result.returncode==0:break
+                time.sleep(.1)
+            return result
+        try:
+            wait_ready(a);wait_ready(b)
+            self.assertEqual(request(b).stdout,payload)
+            deadline=time.monotonic()+5
+            while time.monotonic()<deadline and self.user_db()['users'][1]['download']<len(payload):time.sleep(.1)
+            d=self.user_db();self.assertEqual(d['users'][0]['upload']+d['users'][0]['download'],0)
+            self.assertGreaterEqual(d['users'][1]['download'],len(payload))
+            self.assertGreater(d['users'][1]['upload'],0)
+            self.shell('users_engine reset '+b)
+            time.sleep(1.2)
+            self.assertEqual(self.user_db()['users'][1]['download'],0)
+            self.assertEqual(request(b).stdout,payload)
+            self.assertEqual(request(a).stdout,payload)
+            deadline=time.monotonic()+6
+            while time.monotonic()<deadline and self.user_db()['users'][0]['running']:time.sleep(.1)
+            self.assertFalse(self.user_db()['users'][0]['running'])
+            self.assertNotEqual(request(a).returncode,0)
+            self.assertEqual(request(b).stdout,payload)
+            before=self.user_db()['users'][1]['download']
+            worker.terminate();worker.communicate(timeout=15)
+            self.assertFalse(self.user_db()['users'][1]['metering_blocked'])
+            self.assertGreaterEqual(self.user_db()['users'][1]['download'],before)
+            worker=subprocess.Popen([BASH,'-c',self.script('users_engine watch')],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+            wait_ready(b);self.assertEqual(request(b).stdout,payload)
+            deadline=time.monotonic()+5
+            while time.monotonic()<deadline and self.user_db()['users'][1]['download']<=before:time.sleep(.1)
+            self.assertGreater(self.user_db()['users'][1]['download'],before)
+            d=self.user_db();d['users'][1]['expires_at']=1;self.save_user_db(d)
+            deadline=time.monotonic()+5
+            while time.monotonic()<deadline and self.user_db()['users'][1]['running']:time.sleep(.1)
+            self.assertFalse(self.user_db()['users'][1]['running'])
+            self.assertNotEqual(request(b).returncode,0)
+        finally:
+            if worker.poll() is None:worker.terminate()
+            try:worker.communicate(timeout=15)
+            except subprocess.TimeoutExpired:worker.kill();worker.communicate(timeout=5)
+            for c in clients:
+                if c.poll() is None:c.terminate()
+                try:c.wait(timeout=5)
+                except subprocess.TimeoutExpired:c.kill();c.wait()
+
+    @unittest.skipUnless(SB and ssl.HAS_TLSv1_3,'sing-box and Python TLS 1.3 required for Reality metering test')
+    def test_users_reality_forwarding_is_metered_with_local_tls_decoy(self):
+        import socketserver
+        self.user_setup(mode='1',real=True)
+        context=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.minimum_version=ssl.TLSVersion.TLSv1_3
+        context.set_ecdh_curve('X25519');context.set_alpn_protocols(['h2','http/1.1'])
+        context.load_cert_chain(self.cert,self.key)
+        class Decoy(socketserver.BaseRequestHandler):
+            def handle(self):
+                try:
+                    self.request.settimeout(3)
+                    with context.wrap_socket(self.request,server_side=True) as conn:conn.recv(1024)
+                except (OSError,ssl.SSLError):pass
+        class Server(socketserver.ThreadingTCPServer):daemon_threads=True
+        tls=Server(('127.0.0.1',0),Decoy)
+        threading.Thread(target=tls.serve_forever,daemon=True).start()
+        self.addCleanup(tls.server_close);self.addCleanup(tls.shutdown)
+        config=json.loads((self.config/'config.json').read_text())
+        config['inbounds'][0]['tls']['server_name']='node.example'
+        config['inbounds'][0]['tls']['reality']['handshake']={'server':'127.0.0.1','server_port':tls.server_address[1]}
+        (self.config/'config.json').write_text(json.dumps(config))
+        a=self.add_user('Reality');self.shell('users_export '+a+' >/dev/null')
+        payload=b'REALITY METERED'*4096
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):self.send_response(200);self.end_headers();self.wfile.write(payload)
+            def log_message(self,*_):pass
+        web=http.server.ThreadingHTTPServer(('127.0.0.1',0),Handler)
+        threading.Thread(target=web.serve_forever,daemon=True).start()
+        self.addCleanup(web.server_close);self.addCleanup(web.shutdown)
+        client=json.loads((self.base/'users'/a/'sing-box-client.json').read_text());mixed=port()
+        client['inbounds'][0]['listen_port']=mixed
+        f=self.root/'reality-client.json';f.write_text(json.dumps(client))
+        worker=subprocess.Popen([BASH,'-c',self.script('users_engine watch')],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+        proxy=subprocess.Popen([SB,'run','-c',str(f)],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        try:
+            deadline=time.monotonic()+10;result=None
+            while time.monotonic()<deadline:
+                result=subprocess.run(['curl','--silent','--max-time','2','--noproxy','','--proxy','socks5h://127.0.0.1:'+str(mixed),'http://127.0.0.1:'+str(web.server_port)],capture_output=True)
+                if result.returncode==0:break
+                time.sleep(.1)
+            self.assertEqual(result.stdout,payload,result.stderr.decode())
+            deadline=time.monotonic()+5
+            while time.monotonic()<deadline and self.user_db()['users'][0]['download']<len(payload):time.sleep(.1)
+            self.assertGreaterEqual(self.user_db()['users'][0]['download'],len(payload))
+        finally:
+            proxy.terminate();proxy.wait(timeout=5)
+            worker.terminate()
+            try:worker.communicate(timeout=15)
+            except subprocess.TimeoutExpired:worker.kill();worker.communicate(timeout=5)
+
+    @unittest.skipUnless(SB,'sing-box required for fail-closed user tests')
+    def test_users_metering_failure_and_corrupt_ledger_stop_child_cores(self):
+        self.user_setup(mode='1',real=True);a=self.add_user()
+        worker=None
+        def start():
+            proc=subprocess.Popen([BASH,'-c',self.script('users_engine watch')],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+            deadline=time.monotonic()+8
+            while time.monotonic()<deadline:
+                if self.user_db()['users'][0].get('running'):return proc
+                time.sleep(.1)
+            proc.terminate();proc.communicate(timeout=10);self.fail('Worker not ready')
+        def listening():
+            with socket.socket() as s:s.settimeout(.3);return s.connect_ex(('127.0.0.1',self.user_db()['users'][0]['port']))==0
+        try:
+            worker=start();self.assertTrue(listening())
+            d=self.user_db();actual=d['users'][0]['api_secret'];d['users'][0]['api_secret']='wrong-token';self.save_user_db(d)
+            deadline=time.monotonic()+5
+            while time.monotonic()<deadline and self.user_db()['users'][0]['running']:time.sleep(.1)
+            self.assertTrue(self.user_db()['users'][0]['metering_blocked']);self.assertFalse(listening())
+            worker.terminate();worker.communicate(timeout=10)
+            d=self.user_db();d['users'][0]['api_secret']=actual;self.save_user_db(d)
+            self.shell('users_engine enable '+a);worker=start();node_port=self.user_db()['users'][0]['port']
+            # Simulate damaged local state: all child listeners must disappear.
+            import fcntl
+            with open(self.base/'users.lock','a') as lock:
+                fcntl.flock(lock,fcntl.LOCK_EX)
+                (self.base/'users.json').write_text('{broken')
+            worker.communicate(timeout=10)
+            with socket.socket() as s:
+                s.settimeout(.3);self.assertNotEqual(s.connect_ex(('127.0.0.1',node_port)),0)
+        finally:
+            if worker is not None:
+                if worker.poll() is None:worker.terminate()
+                try:worker.communicate(timeout=10)
+                except subprocess.TimeoutExpired:worker.kill();worker.communicate(timeout=5)
+
+    def test_users_firewall_and_hopping_rules_use_only_user_node_ports(self):
+        self.user_setup();meta=json.loads((self.base/'state.json').read_text())
+        meta.update(hop=True,hop_start=20000,hop_end=30000)
+        (self.base/'state.json').write_text(json.dumps(meta))
+        a=self.add_user();u=self.user_db()['users'][0]
+        self.assertFalse(20000<=u['port']<=30000)
+        rules=self.shell('ufw(){ echo RULE "$*"; }; users_firewall_allow').stdout
+        self.assertIn('RULE allow '+str(u['port'])+'/tcp',rules)
+        self.assertIn('RULE allow '+str(u['port'])+'/udp',rules)
+        self.assertNotIn(str(u['api_port']),rules)
+        result=self.shell('nft(){ return 1; }; hop',input='1\n'+str(u['port'])+'\n'+str(u['port'])+'\nYES\n',ok=False)
+        self.assertNotEqual(result.returncode,0);self.assertIn('overlaps',result.stderr)
+        self.assertFalse((self.root/'systemd'/'singbox-v2-hop.service').exists())
+
+    def test_users_full_uninstall_keeps_private_backup_and_unknown_files(self):
+        self.user_setup();a=self.add_user();d=self.user_db();d['users'][0]['download']=1234;self.save_user_db(d)
+        note=self.base/'users'/a/'keep.txt';note.write_text('keep')
+        self.shell('systemctl(){ :; }; setup_service; users_setup_service')
+        self.shell('need_root(){ :; }; systemctl(){ :; }; nft(){ return 1; }; uninstall_manager',input='yEs\n')
+        self.assertTrue(note.exists());self.assertFalse((self.base/'users.json').exists())
+        self.assertFalse((self.config/'config.json').exists())
+        saved=next(self.backups.glob('*/users.json'))
+        self.assertEqual(json.loads(saved.read_text())['users'][0]['download'],1234)
+        self.assertEqual(saved.stat().st_mode & 0o777,0o600)
+        self.assertTrue((saved.parent/'users'/a/'private.key').exists())
+
+    def test_update_rejects_candidate_incompatible_with_user_configs(self):
+        self.user_setup();self.add_user();before=self.bin.read_bytes()
+        code="""download_binary(){ printf '%s\\n' '#!/usr/bin/env bash' '[[ $3 != */users/* ]]' > "$2"; chmod 755 "$2"; }
+apply_update 9.9.9"""
+        self.assertNotEqual(self.shell(code,ok=False).returncode,0)
+        self.assertEqual(self.bin.read_bytes(),before)
+
+    def test_users_controller_redirect_never_forwards_secret_or_resets_usage(self):
+        self.user_setup();a=self.add_user();hits=[]
+        class Sink(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):hits.append(self.headers.get('Authorization'));self.send_response(200);self.end_headers();self.wfile.write(b'{"uploadTotal":0,"downloadTotal":0}')
+            def log_message(self,*_):pass
+        sink=http.server.ThreadingHTTPServer(('127.0.0.1',0),Sink)
+        class Redirect(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):self.send_response(302);self.send_header('Location','http://127.0.0.1:'+str(sink.server_port));self.end_headers()
+            def log_message(self,*_):pass
+        origin=http.server.ThreadingHTTPServer(('127.0.0.1',0),Redirect)
+        for server in [sink,origin]:
+            threading.Thread(target=server.serve_forever,daemon=True).start()
+            self.addCleanup(server.server_close);self.addCleanup(server.shutdown)
+        d=self.user_db();d['users'][0].update(api_port=origin.server_port,running=True,generation='test',upload=1234)
+        self.save_user_db(d)
+        self.assertNotEqual(self.shell('users_engine reset '+a,ok=False).returncode,0)
+        self.assertEqual(hits,[]);self.assertEqual(self.user_db()['users'][0]['upload'],1234)
+
     def test_startup_info_uses_local_system_and_actual_service_state(self):
         code="""uname(){ case "$1" in -r) echo test-kernel;; -m) echo x86_64;; esac; }
 systemd-detect-virt(){ echo kvm; }
@@ -926,7 +1269,7 @@ apply_update 1.14.3'''
                 clash['rules']=['MATCH,'+proxy['name']]
                 clash['tls']={'custom-certifactes':[self.cert.read_text()]}
                 clash['mixed-port']=client_port=port();clash['external-controller']=''
-                config=self.root/'ws-client.yaml';config.write_text(yaml.safe_dump(clash))
+                config=self.root/'ws-client.yaml';config.write_text(quoted_yaml_dump(clash))
                 log=run_engine([MIHOMO,'-d',str(self.root/'mihomo-data'),'-f',str(config)],'mihomo-ws')
                 result=request(client_port);log.flush();log.seek(0)
                 self.assertEqual(result.stdout,b'SKYBYTE Argo verified',log.read())
@@ -1000,7 +1343,7 @@ apply_update 1.14.3'''
                 config.update({'mixed-port':proxy_port,'mode':'rule',
                                'external-controller':'','ipv6':False})
                 config_file=self.root/'mihomo.yaml'
-                config_file.write_text(yaml.safe_dump(config))
+                config_file.write_text(quoted_yaml_dump(config))
                 mh_log=stack.enter_context(open(self.root/'mihomo.log','w+'))
                 mh=subprocess.Popen([MIHOMO,'-d',str(self.root/'mihomo-data'),'-f',str(config_file)],
                                     stdout=mh_log,stderr=mh_log)

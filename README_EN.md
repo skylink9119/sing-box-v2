@@ -1,4 +1,4 @@
-# SKYBYTE Manager V2.1
+# SKYBYTE Manager V2.2
 
 A Bash-based Ubuntu/Debian VPS manager with Simplified Chinese and English interfaces.
 
@@ -26,7 +26,7 @@ The manager downloads an official stable sing-box binary and verifies its SHA-25
 | Menu | Category | Functions |
 | --- | --- | --- |
 | 1 | Protocol installation and Argo tunnels | Reality / HY2 / dual; Quick / Named |
-| 2 | Nodes and subscriptions | Information / exports / custom names |
+| 2 | Nodes and subscriptions | Information / exports / custom names / QR codes / account management |
 | 3 | Services and logs | Controls / logs / Argo status |
 | 4 | Server and network | Initialization / UFW / firewall / BBR / hopping / traffic / diagnostics |
 | 5 | Updates and backups | Manual / weekly / backup / restore |
@@ -125,3 +125,21 @@ Menu **2 → 4** displays one Shadowrocket node QR code per installed/exportable
 Shadowrocket native links are additionally saved in `shadowrocket-native-nodes.txt`, with a Base64 list in `shadowrocket-native-subscription.txt`. VLESS uses Base64 authority plus native remarks/peer/xtls parameters, following the [Xboard Shadowrocket exporter](https://github.com/cedar2025/Xboard/blob/master/app/Protocols/Shadowrocket.php). Menu 2 → 4 encodes these links. Standard files remain unchanged; HY2 keeps its existing verified-TLS URI. Native links have not been GUI-tested in Shadowrocket.
 
 Interactive startup and language changes show a bold green version/system summary: OS, kernel, architecture, virtualization, local IPv4/IPv6 interface addresses and service installation/running state. No startup geolocation request is made; use the IP information menu for public egress/location. Missing optional probes do not prevent opening the menu.
+
+## Account limits, traffic quotas and expiry
+
+Open **2 → 5**, initialize management (default 10 accounts, configurable 1–100), then add accounts with a name, total upload-plus-download quota in GiB and validity days. Controls include per-account upload/download/total usage, quota/validity edits, enable/disable, deletion, explicit usage reset, personal exports and Shadowrocket QR codes. Expired or exhausted accounts lose their listeners and existing connections. Renewal does not reset usage automatically.
+
+The limit counts undeleted accounts, including disabled/expired ones; it does not count actual people or prevent credential sharing. Validity starts at creation/edit and is displayed in UTC. There is no automatic billing-cycle reset; `1 GiB = 1024³ bytes`.
+
+Quota-managed accounts support **Reality + Vision, HY2 or both**, matching the installed admin protocol combination. Each gets independent credentials, an isolated sing-box process and free port, sharing the VPS egress IP. A dual account's protocol traffic is combined. Existing admin configuration/credentials remain **outside account limits, quotas and expiry**. Argo is not included in quota-managed accounts. Give users their personal nodes, not admin credentials.
+
+Accounting reads cumulative totals from each isolated instance's [Clash API](https://sing-box.sagernet.org/configuration/experimental/clash-api/), never vnStat or VPS-wide totals. Every controller binds to `127.0.0.1` with its own secret. Admin and account services have separate start/stop controls; full uninstall stops all owned services.
+
+Enforcement is periodic, usually around one second and longer under load; it is not a byte-exact hard cap. Overshoot depends on transfer rate and polling delay. Sampled totals are atomically persisted across restarts. Unsampled bytes may be lost during power failure, forced termination or the final shutdown window. An unavailable controller, invalid counters or unexpected child exit blocks the affected account until explicitly re-enabled after repair; damaged ledgers close quota-managed nodes. This is suitable for personal quota administration, not precise billing. Each account consumes additional memory, CPU and ports; set limits for your VPS capacity.
+
+Personal files live in `/etc/singbox-v2/users/<account-ID>/`, with existing client formats and Shadowrocket QR support. Share only required **client exports**; never share `server.json`, `state.json`, `private.key`, `users.json` or backups. Files are mode 600 and directories 700. No hosted subscription service is enabled.
+
+Active UFW permits account node ports; enabling UFW later includes existing accounts. Permit actual TCP/UDP node ports in provider security groups yourself and keep controller ports private. Allocation avoids enabled HY2 hopping ranges; new hopping ranges cannot overlap account HY2 ports. Account nodes do not use admin hopping rules. Deletion/uninstall leaves UFW rules for manual cleanup.
+
+Backups include policies, usage, configurations and certificates. Restore retains current accounts and their latest policies/usage instead of rewinding counters or reviving deleted records, and preserves supervisor pause state. Older backups without account data keep current accounts. Updates validate account configs and restart previously active account services. The systemd supervisor is `skybyte-users.service`; limited private error logs for the current run are stored as `core.log` in each account directory.

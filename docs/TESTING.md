@@ -93,3 +93,11 @@ Installation and menu 2 → 3 accept a persisted node-name prefix, defaulting to
 ## Startup summary
 
 64 tests passed locally. The bilingual green startup summary reads local OS/kernel/architecture/virtualization/interface addresses and checks real service state, with fallbacks for missing probes. Tests cover translated output, running/inactive/uninstalled distinctions and lack of startup network requests. New changes are consolidated into PR #7.
+
+## Per-account quotas and expiry
+
+New accounts use isolated official sing-box instances with loopback authenticated Clash controllers. Actual Reality (with a local TLS 1.3 decoy) and HY2 forwarding are metered. Tests verify independent credentials/ports/totals, upload and download accounting, live reset without recounting old bytes, quota exhaustion while another account continues, persisted totals after supervisor restart, expiry rejection, controller failure and corrupted-ledger shutdown. Additional cases cover account caps, disabled/deleted records, atomic creation failures, private files/exports, current-policy/usage retention on restore, ownership/symlink safeguards, bilingual dispatch, firewall rules and hopping conflicts. Existing admin/Argo nodes are deliberately outside account quotas.
+
+Validation uses the bundled Python with TLS 1.3 for the Reality decoy test; older Apple Python skips that test. Enforcement is periodic and not byte-exact: sampling/shutdown/crash gaps and traffic overshoot remain practical limits. Systemd/UFW/nftables mutations are mocked; live VPS deployment and graphical client imports remain user checks.
+
+Local result: 80 tests passed with the bundled Python/TLS 1.3 runtime, sing-box 1.14.3 and Mihomo 1.19.32. bash -n, ShellCheck 0.11.0 and git diff --check passed. User live tests bind proxy and controller listeners only to loopback.

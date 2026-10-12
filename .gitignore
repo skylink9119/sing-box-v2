@@ -24,3 +24,7 @@ argo-empty.yml
 cloudflared
 shadowrocket-native-nodes.txt
 shadowrocket-native-subscription.txt
+users.json
+users/
+users.lock
+users-worker.lock
