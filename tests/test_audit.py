@@ -51,7 +51,7 @@ class AuditTest(unittest.TestCase):
         self.assertNotEqual(self.shell(self.installer(),ok=False).returncode,0);self.assertEqual(list(outside.iterdir()),[])
 
     def test_bootstrap_refuses_directory_and_language_symlinks_before_chmod(self):
-        outside=self.root/'outside';outside.mkdir(mode=0o755);link=self.root/'linked';link.symlink_to(outside)
+        outside=self.root/'outside';outside.mkdir(mode=0o755);outside.chmod(0o755);link=self.root/'linked';link.symlink_to(outside)
         result=self.shell('need_root(){ :; };flock(){ :; };BASE='+shlex.quote(str(link))+';REPORT="$BASE/reports";BACKUP="$BASE/backups";bootstrap',ok=False)
         self.assertNotEqual(result.returncode,0);self.assertIn('Unsafe manager directory',result.stderr)
         self.assertEqual(outside.stat().st_mode&0o777,0o755);self.assertEqual(list(outside.iterdir()),[])

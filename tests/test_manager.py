@@ -60,7 +60,9 @@ class ManagerTest(unittest.TestCase):
         self.bin.chmod(0o700)
         self.cert = self.root / 'server.crt'
         self.key = self.root / 'server.key'
-        subprocess.run([OPENSSL, 'req', '-x509', '-newkey', 'rsa:2048', '-nodes',
+        self.request_config=self.root/'openssl-request.cnf'
+        self.request_config.write_text('[req]\ndistinguished_name=dn\nx509_extensions=ids\n[dn]\n[ids]\nsubjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid:always\n')
+        subprocess.run([OPENSSL, 'req', '-config',str(self.request_config), '-x509', '-newkey', 'rsa:2048', '-nodes',
                         '-days', '2', '-subj', '/CN=127.0.0.1', '-addext',
                         'subjectAltName=IP:127.0.0.1,DNS:node.example', '-addext', 'basicConstraints=critical,CA:TRUE',
                         '-keyout', str(self.key), '-out', str(self.cert)],
@@ -218,7 +220,7 @@ class ManagerTest(unittest.TestCase):
     def test_leaf_cert_does_not_get_root_profile_or_leave_stale_profile(self):
         self.exported('2')
         self.assertTrue((self.base/'hy2-client-ca.mobileconfig').exists())
-        subprocess.run([OPENSSL,'req','-x509','-key',str(self.key),'-days','2','-subj','/CN=127.0.0.1',
+        subprocess.run([OPENSSL,'req','-config',str(self.request_config),'-x509','-key',str(self.key),'-days','2','-subj','/CN=127.0.0.1',
                         '-addext','subjectAltName=IP:127.0.0.1','-addext','basicConstraints=critical,CA:FALSE',
                         '-out',str(self.cert)],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
         self.shell('exports')

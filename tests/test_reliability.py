@@ -40,6 +40,17 @@ download_binary(){ cp '''+shlex.quote(manager.SB)+''' "$2";chmod 755 "$2"; }
   self.assertNotEqual(self.shell(code,input='yes\n\n1\n',ok=False).returncode,0)
   self.assertFalse(self.bin.exists());self.assertFalse((self.config/'config.json').exists());self.assertFalse((self.root/'systemd/sing-box.service').exists());self.assertEqual(note.read_text(),'preserve')
  @unittest.skipUnless(manager.SB,'real engine required')
+ def test_hy2_certificate_ignores_conflicting_system_request_extensions(self):
+  request=self.root/'system-req.cnf';text='[req]\ndistinguished_name=dn\nx509_extensions=custom\n[dn]\n[custom]\nbasicConstraints=critical,CA:FALSE\nsubjectAltName=DNS:wrong.example\n'
+  request.write_text(text)
+  self.shell(self.install_mocks()+'OPENSSL_CONF='+shlex.quote(str(request))+' install_protocol 2',input='yes\n\n1\n')
+  cert=self.config/'hy2-selfsigned.crt'
+  details=subprocess.check_output([manager.OPENSSL,'x509','-in',str(cert),'-noout','-text'],text=True)
+  self.assertEqual(details.count('X509v3 Basic Constraints'),1)
+  self.assertEqual(details.count('X509v3 Subject Alternative Name'),1)
+  self.assertIn('CA:TRUE',details);self.assertIn('IP Address:8.8.8.8',details);self.assertNotIn('wrong.example',details)
+  self.assertEqual(request.read_text(),text);self.assertEqual((self.config/'hy2-selfsigned.key').stat().st_mode&0o777,0o600)
+ @unittest.skipUnless(manager.SB,'real engine required')
  def test_install_exclusive_commit_preserves_file_created_during_preparation(self):
   code=self.install_mocks('curl(){ echo foreign > "$final_meta";printf 8.8.8.8; };install_protocol 2')
   self.assertNotEqual(self.shell(code,input='yes\n\n1\n',ok=False).returncode,0)

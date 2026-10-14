@@ -553,7 +553,9 @@ try:ipaddress.ip_address(sys.argv[1]);print('IP:'+sys.argv[1])
 except ValueError:print('DNS:'+sys.argv[1])
 PY_INSTALL_SAN
   ) || return 1
-  openssl req -x509 -newkey rsa:3072 -sha256 -nodes -days 365 -subj "/CN=$ip" -addext "subjectAltName=$san" -addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,digitalSignature,keyEncipherment,keyCertSign" -keyout "$key" -out "$cert" >/dev/null 2>&1 || return 1
+  # OpenSSL 1.1.1 appends -addext to system x509_extensions instead of replacing
+  # duplicate OIDs. An explicit minimal request config avoids invalid HY2 certs.
+  openssl req -config <(printf '[req]\ndistinguished_name=dn\nx509_extensions=ids\n[dn]\n[ids]\nsubjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid:always\n') -x509 -newkey rsa:3072 -sha256 -nodes -days 365 -subj "/CN=$ip" -addext "subjectAltName=$san" -addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,digitalSignature,keyEncipherment,keyCertSign" -keyout "$key" -out "$cert" >/dev/null 2>&1 || return 1
   chmod 600 "$key"; chmod 644 "$cert"
  fi
  if [[ $mode != 1 ]]; then validate_certificate "$cert" "$key" "$domain" || return 1; fi
@@ -4648,7 +4650,7 @@ configuration_guard(){
 configuration_engine(){
  python3 - "$BASE" "$CONF" "$BIN" "$@" <<'PY_CONFIG'
 """Stage administrator/user inbound edits; preserve route ownership, credentials and usage."""
-import copy,ipaddress,json,os,pathlib,re,secrets,shutil,socket,subprocess,sys,uuid
+import copy,ipaddress,json,os,pathlib,re,secrets,shutil,socket,subprocess,sys,tempfile,uuid
 base,conf,binary,stage,action,*args=sys.argv[1:];base=pathlib.Path(base);conf=pathlib.Path(conf);stage=pathlib.Path(stage)
 def load(p):
  if p.is_symlink() or p.parent.is_symlink():raise ValueError('Refusing config symlink')
@@ -4763,7 +4765,10 @@ elif action in ('add','remove'):
     cert=str(stage/'hy2-added.crt');key=str(stage/'hy2-added.key');exe=os.environ.get('OPENSSL_BIN','openssl')
     try:ipaddress.ip_address(domain);san='IP:'+domain
     except ValueError:san='DNS:'+domain
-    result=subprocess.run([exe,'req','-x509','-newkey','rsa:3072','-sha256','-nodes','-days','365','-subj','/CN='+domain,'-addext','subjectAltName='+san,'-addext','basicConstraints=critical,CA:TRUE','-addext','keyUsage=critical,digitalSignature,keyEncipherment,keyCertSign','-keyout',key,'-out',cert],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+    # OpenSSL 1.1.1 can duplicate system CA extensions when using -addext.
+    with tempfile.NamedTemporaryFile(mode='w',dir=stage) as request:
+     request.write('[req]\ndistinguished_name=dn\nx509_extensions=ids\n[dn]\n[ids]\nsubjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid:always\n');request.flush()
+     result=subprocess.run([exe,'req','-config',request.name,'-x509','-newkey','rsa:3072','-sha256','-nodes','-days','365','-subj','/CN='+domain,'-addext','subjectAltName='+san,'-addext','basicConstraints=critical,CA:TRUE','-addext','keyUsage=critical,digitalSignature,keyEncipherment,keyCertSign','-keyout',key,'-out',cert],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
     if result.returncode:raise ValueError('Self-signed certificate generation failed')
     pathlib.Path(cert).chmod(0o600);pathlib.Path(key).chmod(0o600)
     generated=[[cert,str(dest_cert)],[key,str(dest_key)]];generated_cert=(str(dest_cert),str(dest_key));cert_mode='1'

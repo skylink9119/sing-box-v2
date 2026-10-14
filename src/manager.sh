@@ -402,7 +402,9 @@ try:ipaddress.ip_address(sys.argv[1]);print('IP:'+sys.argv[1])
 except ValueError:print('DNS:'+sys.argv[1])
 PY_INSTALL_SAN
   ) || return 1
-  openssl req -x509 -newkey rsa:3072 -sha256 -nodes -days 365 -subj "/CN=$ip" -addext "subjectAltName=$san" -addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,digitalSignature,keyEncipherment,keyCertSign" -keyout "$key" -out "$cert" >/dev/null 2>&1 || return 1
+  # OpenSSL 1.1.1 appends -addext to system x509_extensions instead of replacing
+  # duplicate OIDs. An explicit minimal request config avoids invalid HY2 certs.
+  openssl req -config <(printf '[req]\ndistinguished_name=dn\nx509_extensions=ids\n[dn]\n[ids]\nsubjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid:always\n') -x509 -newkey rsa:3072 -sha256 -nodes -days 365 -subj "/CN=$ip" -addext "subjectAltName=$san" -addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,digitalSignature,keyEncipherment,keyCertSign" -keyout "$key" -out "$cert" >/dev/null 2>&1 || return 1
   chmod 600 "$key"; chmod 644 "$cert"
  fi
  if [[ $mode != 1 ]]; then validate_certificate "$cert" "$key" "$domain" || return 1; fi
