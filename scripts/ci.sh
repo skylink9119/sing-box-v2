@@ -16,6 +16,7 @@ source /etc/os-release
 if [[ ${VERSION_ID:-} != 11 || ${ID:-} != debian ]];then
  curl -fsSL --proto '=https' --max-time 30 https://pkg.cloudflareclient.com/pubkey.gpg -o /tmp/warp-key
  gpg --batch --dearmor --output /usr/share/keyrings/skybyte-warp-ci.gpg /tmp/warp-key
+ chmod 644 /usr/share/keyrings/skybyte-warp-ci.gpg
  printf 'deb [signed-by=/usr/share/keyrings/skybyte-warp-ci.gpg] https://pkg.cloudflareclient.com/ %s main\n' "$VERSION_CODENAME" > /etc/apt/sources.list.d/skybyte-warp-ci.list
  apt_install cloudflare-warp
  warp-cli mode --help
@@ -26,7 +27,23 @@ certbot certonly --help standalone
 certbot certonly --help dns-cloudflare
 certbot renew --help
 mkdir -p work/tools
+# Shared hosted-runner IPs can exhaust the anonymous GitHub API quota. The CI
+# token is used only for API metadata, through a private curl config, not argv.
+github_config=$(mktemp)
+trap 'rm -f -- "$github_config"' EXIT
+if [[ -n ${GH_TOKEN:-} ]];then
+ printf 'header = "Authorization: Bearer %s"\n' "$GH_TOKEN" > "$github_config"
+ curl(){
+  local argument
+  for argument in "$@";do
+   if [[ $argument == https://api.github.com/* ]];then command curl -q -K "$github_config" "$@";return;fi
+  done
+  command curl "$@"
+ }
+fi
 download_binary 1.14.3 "$PWD/work/tools/sing-box"
+if [[ -n ${GH_TOKEN:-} ]];then unset -f curl;fi
+rm -f -- "$github_config";trap - EXIT;unset GH_TOKEN
 curl -fsSL --retry 2 https://github.com/MetaCubeX/mihomo/releases/download/v1.19.32/mihomo-linux-amd64-compatible-v1.19.32.gz -o work/tools/mihomo.gz
 printf '%s\n' 'ba3ce607747a07f948fc35780e108a4a7c7f552a38b9bd4d115f313ebcb89c20  work/tools/mihomo.gz' | sha256sum -c -
 gzip -d work/tools/mihomo.gz
