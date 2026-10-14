@@ -81,6 +81,7 @@ class ManagerTest(unittest.TestCase):
                          REPORT=self.base / 'reports', SYSTEMD_DIR=self.root/'systemd',
                          OS_RELEASE=self.root/'os-release', MANAGER_BIN=self.root/'manager-command',
                          MANAGER_LIB=self.root/'manager-lib',
+                         MANAGER_SHORTCUT=self.root/'sb-command',SB_FILE_SENDER=self.root/'system-sb',APT_ROOT=self.root/'apt',
                          WARP_REPO_FILE=self.root/'warp.list', WARP_KEY_FILE=self.root/'warp.gpg',
                          SYSCTL_FILE=self.root/'bbr.conf')
         script = 'source ' + quote(str(ROOT / 'singbox-v2.sh')) + '\n'

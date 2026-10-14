@@ -35,8 +35,8 @@ acme_issue(){
  esac
  say '申请公开证书会公开域名；请阅读并同意 CA 条款 https://letsencrypt.org/repository/ 。DNS Token 需仅授权对应区域 DNS 编辑。' 'Public issuance publishes the domain. Review CA terms: https://letsencrypt.org/repository/ . Scope DNS tokens to the target zone.'
  confirm "$(L '接受 CA 条款并申请证书？' 'Accept CA terms and request certificate?')" || return 0
- apt-get update && apt-get install -y certbot || return 1
- if [[ $method == cloudflare ]];then apt-get install -y python3-certbot-dns-cloudflare || return 1;fi
+ apt_install certbot || return 1
+ if [[ $method == cloudflare ]];then apt_install python3-certbot-dns-cloudflare || return 1;fi
  mkdir -m 700 "$BASE/acme" || return 1
  printf 'SKYBYTE ACME v1\n' > "$BASE/acme/.skybyte-owner"
  acme_options

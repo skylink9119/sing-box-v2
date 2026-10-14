@@ -175,6 +175,7 @@ LOGO
 
 bootstrap(){
  need_root
+ if ! command -v python3 >/dev/null || ! command -v flock >/dev/null;then apt_install python3 util-linux ca-certificates || return 1;fi
  require_cmd flock || return 1
  local directory
  for directory in "$BASE" "$REPORT" "$BACKUP";do
@@ -183,6 +184,9 @@ bootstrap(){
  [[ ! -L $LANG_FILE && ( ! -e $LANG_FILE || -f $LANG_FILE ) && ! -L $LOCK && ( ! -e $LOCK || -f $LOCK ) ]] || { err "$(L '语言或锁文件异常，拒绝写入' 'Language/lock file is unsafe; refusing writes')";return 1; }
  mkdir -p "$BASE" "$REPORT" "$BACKUP"; chmod 700 "$BASE" "$REPORT" "$BACKUP"
  exec 9>"$LOCK"; flock -n 9 || { err "$(L '其他管理任务正在运行' 'Another manager is running')"; return 1; }
+ if [[ -z ${1:-} ]];then
+  manager_shortcut_install || warn "$(L 'sb 快捷入口注册失败，已保留原有文件；可继续使用当前脚本。' 'Could not register sb shortcut; existing files retained. Current script remains usable.')"
+ fi
  load_language
  if [[ -z $LANGUAGE_CHOICE ]]; then
   if [[ ${1:-} == --auto-update || ${1:-} == --certificate-check || ${1:-} == --certificate-reload || ${1:-} == --acme-renew || ${1:-} == --notice ]]; then LANGUAGE_CHOICE=en_US; else select_language || return 1; fi

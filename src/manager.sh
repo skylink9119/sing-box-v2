@@ -8,7 +8,7 @@
 set -Eeuo pipefail
 umask 077
 SCRIPT_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
-MANAGER_VERSION=2.8.1
+MANAGER_VERSION=2.8.2
 CORE_RECOMMENDED=1.14.3
 BASE=/etc/singbox-v2
 CONF=/etc/sing-box/config.json
@@ -63,6 +63,8 @@ YOUTUBE='https://www.youtube.com/@SKYBYTE9119'
 ok(){ printf '%s✔ %s%s\n' "$GREEN" "$*" "$RESET"; }
 warn(){ printf '%s⚠ %s%s\n' "$YELLOW" "$*" "$RESET"; }
 err(){ printf '%s✖ %s%s\n' "$RED" "$*" "$RESET" >&2; }
+# @include packages.sh
+# @include shortcut.sh
 need_root(){ [[ $EUID == 0 ]] || { err "$(L '需要 root 权限' 'Root privileges required')"; exit 1; }; }
 confirm(){ local answer; prompt_read "$1 $(L '[输入 YES 确认]' '[Type YES to confirm]'): " answer || return 1; [[ $answer =~ ^[[:space:]]*[Yy][Ee][Ss][[:space:]]*$ ]]; }
 startup_service_info(){
@@ -321,7 +323,7 @@ install_protocol() (
  notice; confirm "$(L '同意声明并安装所选协议？' 'Accept notice and install selected protocol(s)?')" || return 0
  if [[ -e $CONF || -L $CONF || -e $META || -L $META || -e $BIN || -L $BIN || -e $SYSTEMD_DIR/sing-box.service || -L $SYSTEMD_DIR/sing-box.service ]] || command -v sing-box >/dev/null; then err "$(L '发现已有配置，拒绝覆盖' 'Existing configuration or binary found; refusing to overwrite')"; return 1; fi
  if systemctl list-unit-files sing-box.service --no-legend 2>/dev/null | grep -q sing-box; then err "$(L '已有 sing-box 服务，拒绝覆盖' 'Existing sing-box service found; refusing to overwrite')"; return 1; fi
- require_cmd ss || { apt-get update && apt-get install -y iproute2 || return 1; }
+ require_cmd ss || { apt_install iproute2 || return 1; }
  if [[ ${2:-} == custom ]];then
   if [[ $mode != 2 ]];then prompt_read "$(L '本机 Reality TCP 端口 [443]：' 'Local Reality TCP port [443]: ')" vp || return 1;vp=${vp:-443};fi
   if [[ $mode != 1 ]];then prompt_read "$(L '本机 HY2 UDP 端口 [443]：' 'Local HY2 UDP port [443]: ')" hp || return 1;hp=${hp:-443};fi
@@ -363,7 +365,7 @@ install_protocol() (
   [[ $sni =~ ^[a-zA-Z0-9.-]+$ ]] || { err "$(L '无效 SNI' 'Invalid SNI')"; return 1; }
  fi
  if [[ -z ${SKYBYTE_ASSET_DIR:-} ]];then
-  say '安装依赖...' 'Installing dependencies...'; apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y curl openssl ca-certificates python3 iproute2 util-linux nftables procps || return 1
+  say '安装依赖...' 'Installing dependencies...'; apt_install curl openssl ca-certificates python3 iproute2 util-linux nftables procps || return 1
   require_cmd getent; getent ahosts github.com >/dev/null || { err "$(L 'GitHub DNS 解析失败，请先修复 DNS或使用离线包' 'GitHub DNS lookup failed; repair DNS or use offline assets')"; return 1; }
  else rescue_dependencies && require_cmd openssl || return 1;fi
  mkdir -p "$(dirname "$BIN")"
@@ -631,11 +633,11 @@ initialize_server(){
  # Installing chrony can remove timesyncd; keep an existing active time-sync service.
  if ! systemctl is-active --quiet chrony && ! systemctl is-active --quiet systemd-timesyncd && ! systemctl is-active --quiet ntp && ! systemctl is-active --quiet ntpsec; then packages+=(chrony); fi
  say '更新软件索引...' 'Updating package indexes...'
- apt-get update || { err "$(L '软件索引更新失败' 'Package index update failed')"; return 1; }
+ apt_refresh || { err "$(L '软件索引更新失败' 'Package index update failed')"; return 1; }
  say '升级已安装软件（不会自动执行 full-upgrade）...' 'Upgrading packages (not full-upgrade)...'
  DEBIAN_FRONTEND=noninteractive apt-get upgrade -y || { err "$(L '系统升级失败；请检查 apt/dpkg 状态' 'Upgrade failed; check apt/dpkg status')"; return 1; }
  say '安装基础工具...' 'Installing essential tools...'
- DEBIAN_FRONTEND=noninteractive apt-get install -y "${packages[@]}" || { err "$(L '工具安装失败' 'Tool installation failed')"; return 1; }
+ apt_install "${packages[@]}" || { err "$(L '工具安装失败' 'Tool installation failed')"; return 1; }
  say '检测时间同步服务...' 'Checking time synchronization...'
  if command -v timedatectl >/dev/null 2>&1; then timedatectl status --no-pager 2>/dev/null || :; fi
  # Do not forcibly disable an existing time-sync daemon.
@@ -678,7 +680,7 @@ firewall(){
  local choice port proto
  prompt_read '> ' choice || return
  case "$choice" in
- 1) confirm "$(L '安装 UFW？' 'Install UFW?')" && apt-get update && apt-get install -y ufw ;;
+ 1) confirm "$(L '安装 UFW？' 'Install UFW?')" && apt_install ufw ;;
  2)
    require_cmd ufw || return
    say '当前 SSH 监听信息（必须人工核实）：' 'SSH listener information (VERIFY manually):'
@@ -725,7 +727,7 @@ traffic(){
  prompt_options '1 安装 vnStat  2 今日  3 本月  4 实时网速  5 历史汇总  0 返回' '1 Install vnStat  2 Today  3 Monthly  4 Live  5 History  0 Back'
  local x; prompt_read '> ' x || return
  case "$x" in
- 1) confirm "$(L '安装 vnStat？' 'Install vnStat?')" && apt-get update && apt-get install -y vnstat && systemctl enable --now vnstat;;
+ 1) confirm "$(L '安装 vnStat？' 'Install vnStat?')" && apt_install vnstat && systemctl enable --now vnstat;;
  2) require_cmd vnstat && vnstat -d;; 3) require_cmd vnstat && vnstat -m;;
  4) require_cmd vnstat && vnstat -l;; 5) require_cmd vnstat && vnstat;; 0) return;; *) err "$(L '无效选择' 'Invalid choice')";; esac
  return 0
@@ -734,7 +736,7 @@ shadowrocket_qr(){
  check_owned || return 1
  if ! command -v qrencode >/dev/null; then
   say '安装二维码工具 qrencode...' 'Installing qrencode...'
-  apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y qrencode || return 1
+  apt_install qrencode || return 1
  fi
  exports >/dev/null || return 1
  warn "$(L '二维码包含节点凭据，请勿公开。HY2 自签名节点仍需配置信任证书。' 'QR codes contain node credentials; keep them private. Self-signed HY2 still requires certificate trust.')"
@@ -1119,6 +1121,7 @@ PY
  while IFS= read -r file; do if [[ -n $file ]]; then rm -f -- "$file"; fi; done <<<"$managed_certs"
  for file in state.json language.conf hop.nft hop-iptables.sh core-version.json warp-rules.json warp-rules.previous.json nodes.txt subscription-base64.txt v2rayn-nodes.txt v2rayn-subscription.txt shadowrocket-nodes.txt shadowrocket-subscription.txt shadowrocket-native-nodes.txt shadowrocket-native-subscription.txt sing-box-client.json clash-verge.yaml outbounds.json mihomo-proxies.yaml subscription-notes.txt hy2-client-ca.pem hy2-client-ca.cer hy2-client-ca.mobileconfig; do rm -f -- "$BASE/$file"; done
  # Remove executable copies only when they are identifiable manager scripts.
+ manager_shortcut_remove || return 1
  for file in "$MANAGER_BIN" "$MANAGER_LIB"; do
   if [[ -f $file && ! -L $file ]] && grep -q '^# SKYBYTE Manager V2.1 community manager;' "$file"; then rm -f -- "$file"; fi
  done

@@ -70,7 +70,7 @@ backup_tools(){
    backup_engine preflight "$path" || return 1
    prompt_read "$(L '新导出文件绝对路径（.gpg）：' 'New absolute export path (.gpg): ')" output || return 0
    [[ $output == /* && ! -e $output && ! -L $output ]] || return 1
-   command -v gpg >/dev/null || { apt-get update && apt-get install -y gnupg || return 1; }
+   command -v gpg >/dev/null || { apt_install gnupg || return 1; }
    prompt_read "$(L '加密口令（隐藏，至少12字符）：' 'Encryption passphrase (hidden, minimum 12 characters): ')" pass secret || return 0;echo
    [[ ${#pass} -ge 12 ]] || return 1
    tmp=$(mktemp "$BASE/archive.XXXXXX") || return 1

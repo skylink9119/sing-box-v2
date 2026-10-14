@@ -94,14 +94,14 @@ warp_install_client(){
  valid_port "$port" && ((10#$port>=1024)) || return 1; port=$((10#$port))
  haproxy_engine check_port "$port" || return 1
  if ss -H -ltn "( sport = :$port )" | grep -q .; then err "$(L '端口已被占用' 'Port already occupied')"; return 1; fi
- apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates gnupg || return 1
+ apt_install curl ca-certificates gnupg || return 1
  tmp=$(mktemp -d "$BASE/warp-install.XXXXXX") || return 1
  if ! curl -q -fsSL --proto '=https' --max-time 30 https://pkg.cloudflareclient.com/pubkey.gpg -o "$tmp/key" ||
     ! gpg --batch --yes --dearmor --output "$tmp/keyring" "$tmp/key"; then rm -rf "$tmp"; return 1; fi
  command install -m 644 "$tmp/keyring" "$WARP_KEY_FILE" || { rm -rf "$tmp"; return 1; }
  printf 'deb [signed-by=%s] https://pkg.cloudflareclient.com/ %s main\n' "$WARP_KEY_FILE" "$code" > "$WARP_REPO_FILE"
  chmod 644 "$WARP_REPO_FILE"; rm -rf "$tmp"
- apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y cloudflare-warp || return 1
+ apt_install cloudflare-warp || return 1
  systemctl enable --now warp-svc.service || return 1
  if warp-cli --accept-tos registration show >/dev/null 2>&1; then err "$(L '发现已有 WARP 注册信息，保留不修改；请手动配置本机代理' 'Existing WARP registration found; retained. Configure a local proxy manually.')"; return 1; fi
  warp-cli --accept-tos registration new >/dev/null && warp-cli --accept-tos mode proxy && warp-cli --accept-tos proxy port "$port" && warp-cli --accept-tos connect || return 1

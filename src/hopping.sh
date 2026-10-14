@@ -41,7 +41,7 @@ hop(){
  start=$((10#$start));end=$((10#$end));target=$(protocol_port hysteria2) || return 1
  if [[ -f $BASE/users.json ]]; then users_guard && users_engine hop_check "$start" "$end" || return 1; fi
  confirm "$(L "将 UDP $start-$end 转发到 HY2 监听端口 ${target}？" "Forward UDP $start-$end to HY2 listener $target?")" || return 0
- if [[ $backend == nftables ]]; then require_cmd nft || return 1; else command -v iptables >/dev/null || { apt-get update && apt-get install -y iptables || return 1; }; fi
+ if [[ $backend == nftables ]]; then require_cmd nft || return 1; else command -v iptables >/dev/null || { apt_install iptables || return 1; }; fi
  if command -v nft >/dev/null && nft list table ip singbox_v2_hop >/dev/null 2>&1; then err "$(L '已有跳跃规则，请先关闭' 'Hopping rules exist; disable first')"; return 1; fi
  if command -v iptables >/dev/null && iptables -w 5 -t nat -S SKYBYTE_HY2_HOP >/dev/null 2>&1; then err "$(L '已有跳跃链，请先关闭，拒绝覆盖' 'Hopping chain exists; disable first; refusing overwrite')"; return 1; fi
  if [[ $backend == nftables ]]; then

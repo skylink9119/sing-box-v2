@@ -1,4 +1,4 @@
-# SKYBYTE Manager V2.8.1 — sing-box Installer and Ubuntu/Debian VPS Management
+# SKYBYTE Manager V2.8.2 — sing-box Installer and Ubuntu/Debian VPS Management
 
 **SKYBYTE Manager** is a Bash-based Ubuntu/Debian VPS manager with Simplified Chinese and English interfaces. It installs sing-box with **VLESS + Reality + Vision, Hysteria2 (HY2), or both protocols**, manages Cloudflare Argo tunnels and WARP routing, and provides per-user traffic quotas and expiry. Client exports support Shadowrocket, v2rayN, Clash Verge/Mihomo/OpenClash and sing-box JSON.
 
@@ -37,6 +37,10 @@ bash install.sh
 Until the development branch is merged, that command installs the main version. To test this branch, clone the repository, switch to the branch and run `bash ./singbox-v2.sh` as root. Review downloaded scripts before execution.
 
 The entry point updates only identifiable SKYBYTE Manager files and preserves the current copy on download/validation failure. The installation directory, target script and operation lock must not be symlinks. Retry after any active management operation completes.
+
+After installing/updating, log in again and run **`sb`** to open the main menu. The owned `/usr/local/bin/sb` launches SKYBYTE without arguments; `sb filename` still delegates to the original `/usr/bin/sb` file sender. Foreign same-name launchers and symlinks are preserved. Run `hash -r` or reconnect if the current shell cached the old command. Uninstall removes only the owned shortcut.
+
+**Debian 11/12 compatibility:** refresh APT indexes strictly, permit authenticated Suite-only changes, abort on index errors, and retry package download failures once after another refresh. Bullseye archive repair supports legacy `.list` and deb822 `.sources`, backing up originals under `/etc/apt/skybyte-source-backup.*`. Existing HTTP/HTTPS transport, Signed-By, third-party repositories and custom mirrors are preserved. Only archive entries disable metadata expiry checking; package signatures and HTTPS verification remain enabled. Debian 12/13 are not redirected to the archive. Debian 11 official LTS has ended; historical packages do not restore security maintenance. See [Debian lifecycle](https://www.debian.org/releases/bullseye/) and [official archive](https://www.debian.org/distrib/archive).
 
 Fresh installation uses the official sing-box 1.14.3 binary tested for this manager release and verifies its SHA-256 digest against GitHub Release metadata. It does not run a remote package installer. Choose a language at first launch; it is saved in `/etc/singbox-v2/language.conf`. Menu **6 → 1** changes language.
 
@@ -126,7 +130,7 @@ Set `SING_BOX_BIN` and `MIHOMO_BIN` to include real engine validation: all three
 
 Local tests require Python 3.9+, PyYAML and OpenSSL with `x509 -checkhost/-checkip`. The old macOS system LibreSSL is unsuitable; select OpenSSL 3 through `OPENSSL_BIN` and the executable search path. Set `HAPROXY_BIN` for real TCP passthrough tests. Tests requiring unavailable protocol engines, HAProxy or GnuPG are skipped, which does not establish that functionality was verified.
 
-GitHub Actions runs checks in Ubuntu 24.04 and Debian 12 containers. See [audit and testing notes](docs/TESTING.md). Local handshakes do not replace live VPS tests of provider firewalls, UDP NAT, systemd startup or Shadowrocket/v2rayN GUI imports. Validate these on a disposable VPS with snapshots and console access.
+GitHub Actions runs checks in Ubuntu 24.04 and Debian 11, 12 and 13 containers. See [audit and testing notes](docs/TESTING.md). Local handshakes do not replace live VPS tests of provider firewalls, UDP NAT, systemd startup or Shadowrocket/v2rayN GUI imports. Validate these on a disposable VPS with snapshots and console access.
 
 ## Privacy, legal notice and references
 
@@ -193,7 +197,7 @@ Backups include policies, usage, configurations and certificates. Restore retain
 
 ## Source modules and build
 
-Edit `src/manager.sh` (base services/install), `subscriptions.sh` (exports), `users.sh` (user UI/services), `users.py` (accounting/diagnostics), `operations.sh` (updates/certificates/resources), `menu.sh` (menu/entry point), `rescue.sh`/`rescue.py` (restricted networks, Argo rescue, offline assets and IPv6/NAT helpers), `hopping.sh` (UDP hopping), `media.sh`/`media.py` (media probes), `warp.sh`/`warp.py` (gateway/owned routing), `relay.sh` (sing-box residential relay), `haproxy.sh`/`haproxy.py` (independent TCP passthrough), `configuration.sh`/`configuration.py` (node edits), `acme.sh` (issuance), `online.sh`/`online.py` (HTTPS delivery), `reliability.sh`/`backup.py` (transactions/versions/backups) and `help.sh` (guide). Run `python3 scripts/build.py` to produce the self-contained `singbox-v2.sh`; CI uses `--check` to reject stale bundles. Do not edit the generated bundle directly.
+Edit `src/installer.sh` (entry point), `packages.sh` (APT/archive compatibility), `shortcut.sh` (`sb` launcher), `manager.sh` (base services/install), `subscriptions.sh` (exports), `users.sh` (user UI/services), `users.py` (accounting/diagnostics), `operations.sh` (updates/certificates/resources), `menu.sh` (menu/entry point), `rescue.sh`/`rescue.py` (restricted networks, Argo rescue, offline assets and IPv6/NAT helpers), `hopping.sh` (UDP hopping), `media.sh`/`media.py` (media probes), `warp.sh`/`warp.py` (gateway/owned routing), `relay.sh` (sing-box residential relay), `haproxy.sh`/`haproxy.py` (independent TCP passthrough), `configuration.sh`/`configuration.py` (node edits), `acme.sh` (issuance), `online.sh`/`online.py` (HTTPS delivery), `reliability.sh`/`backup.py` (transactions/versions/backups) and `help.sh` (guide). Run `python3 scripts/build.py` to produce the self-contained `singbox-v2.sh` and `install.sh`; CI uses `--check` to reject stale bundles. Do not edit the generated bundle directly.
 
 The original `install.sh` entry remains sufficient: deployed scripts contain all modules and require no runtime module downloads. `bash singbox-v2.sh --self-check` checks embedded Python syntax and outputs the version without root. systemd/UFW operations are tested through isolated mocks; actual VPS deployment still needs verification.
 
@@ -371,7 +375,7 @@ TCP forwarding and validation follow the [HAProxy TCP documentation](https://www
 
 ### Which VPS operating systems does SKYBYTE Manager support?
 
-Ubuntu/Debian VPS instances using systemd. Official asset mappings cover amd64, arm64, armv7 and 386; management requires root. Automated tests cover Ubuntu 24.04 and Debian 12 on amd64; validate other versions and architectures before deployment.
+Ubuntu/Debian VPS instances using systemd. Official asset mappings cover amd64, arm64, armv7 and 386; management requires root. The automated test matrix covers Ubuntu 24.04 and Debian 11, 12 and 13 on amd64; validate other versions and architectures before deployment.
 
 ### Does Hysteria2 require a domain and a purchased certificate?
 

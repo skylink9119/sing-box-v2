@@ -24,7 +24,7 @@ haproxy_install_binary() (
   ln -s /dev/null "$mask" || return 1;created=true
   systemctl daemon-reload || return 1
  fi
- apt-get update && DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=--force-confold install -y --no-install-recommends haproxy || return 1
+ apt_install -o Dpkg::Options::=--force-confold --no-install-recommends haproxy || return 1
  [[ -x $HAPROXY_BIN ]] || return 1
  # A newly installed package must not start its default listener at the next boot.
  if [[ $enabled == false ]];then systemctl disable haproxy.service || return 1;fi

@@ -1,4 +1,4 @@
-# SKYBYTE Manager V2.8.1 — sing-box 一键脚本与 Ubuntu/Debian VPS 管理
+# SKYBYTE Manager V2.8.2 — sing-box 一键脚本与 Ubuntu/Debian VPS 管理
 
 **SKYBYTE Manager** 是基于 Bash 的 Ubuntu/Debian VPS 管理工具，提供简体中文和 English 界面，支持 sing-box 的 **VLESS + Reality + Vision、Hysteria2（HY2）及双协议部署**。通过交互菜单管理 Cloudflare Argo 隧道、WARP 出站分流、用户流量配额与有效期，并导出 Shadowrocket（小火箭）、v2rayN、Clash Verge/Mihomo/OpenClash 和 sing-box JSON 客户端配置。
 
@@ -37,6 +37,10 @@ bash install.sh
 开发分支未合并时，上述命令仍安装 main 版本。测试当前分支可先克隆仓库并切换到对应分支，再以 root 账号运行 `bash ./singbox-v2.sh`。建议先审阅下载的脚本。
 
 一键入口只更新可识别的 SKYBYTE Manager 脚本，下载/语法检查失败保留原副本；安装目录、目标脚本和操作锁不能为软链接。已有管理任务执行中时，请等待任务完成后重试。
+
+安装或更新后，重新登录 SSH，输入 **`sb`** 即可打开主菜单，无需再次下载安装脚本。不带参数的 `/usr/local/bin/sb` 启动 SKYBYTE；`sb 文件名` 仍转交原来的 `/usr/bin/sb` 文件发送工具。现有同名自定义入口、未知文件和符号链接不覆盖；当前终端若缓存了旧命令，可执行 `hash -r` 或重新登录。卸载只删除本工具创建的快捷入口。
+
+**Debian 11/12 安装兼容：** 安装前严格刷新 APT 索引，允许经过签名验证的 Suite 信息变化，索引失败立即停止；安装包 404 时刷新并只重试一次。Debian 11 官方源的归档修复支持 `.list` 和 `.sources`，修改前备份到 `/etc/apt/skybyte-source-backup.*`，保留原来的 HTTP/HTTPS 传输、Signed-By、第三方源和自定义镜像。只对归档条目关闭有效期检查，不关闭包签名或 HTTPS 验证。Debian 12/13 不会改成归档源。Debian 11 的官方 LTS 已结束，归档只帮助取得历史软件包，不能恢复安全维护。[Debian 支持周期](https://www.debian.org/releases/bullseye/)、[官方归档](https://www.debian.org/distrib/archive)。
 
 首次安装使用本版已测试的 sing-box 1.14.3 官方二进制，按 GitHub Release API 的 SHA-256 摘要检查下载，不执行远程软件包安装脚本。首次启动选择语言，保存于 `/etc/singbox-v2/language.conf`，菜单 **6 → 1** 切换语言。
 
@@ -126,7 +130,7 @@ python3 -m unittest discover -s tests -v
 
 本地测试需 Python 3.9+、PyYAML 和支持 `x509 -checkhost/-checkip` 的 OpenSSL；macOS 自带旧 LibreSSL 不适合作为该测试环境，可通过 `OPENSSL_BIN` 和命令搜索路径选择 OpenSSL 3。设置 `HAPROXY_BIN` 可运行真实 TCP 透传测试。缺少协议引擎、HAProxy 或 GnuPG 时相应实测会跳过，不能视为已验证。
 
-GitHub Actions 在 Ubuntu 24.04 和 Debian 12 容器执行检查。详见 [审计与测试记录](docs/TESTING.md)。本地握手不能代替真实 VPS 的云防火墙、UDP NAT、systemd 启动和 Shadowrocket/v2rayN 图形客户端导入测试；这些项目须在有快照和控制台的 VPS 上验证。
+GitHub Actions 在 Ubuntu 24.04 和 Debian 11、12、13 容器执行检查。详见 [审计与测试记录](docs/TESTING.md)。本地握手不能代替真实 VPS 的云防火墙、UDP NAT、systemd 启动和 Shadowrocket/v2rayN 图形客户端导入测试；这些项目须在有快照和控制台的 VPS 上验证。
 
 ## 隐私、法律与参考
 
@@ -193,7 +197,7 @@ GitHub Actions 在 Ubuntu 24.04 和 Debian 12 容器执行检查。详见 [审�
 
 ## 源码模块与构建
 
-维护源码在 `src/`：`manager.sh` 为基础服务及安装逻辑，`subscriptions.sh` 为订阅导出，`users.sh` 为用户界面/服务，`users.py` 为配额与诊断，`operations.sh` 为更新/证书/资源，`menu.sh` 为主菜单及启动入口；`rescue.sh`/`rescue.py` 管理受限网络、Argo 应急、离线资产及 IPv6/NAT 辅助，`hopping.sh` 管理 UDP 跳跃，`media.sh`/`media.py` 检测流媒体，`warp.sh`/`warp.py` 管理 WARP 网关与托管路由，`relay.sh` 提供 sing-box 住宅落地中转界面，`haproxy.sh`/`haproxy.py` 提供独立 TCP 透传；`configuration.sh`/`configuration.py` 编辑节点，`acme.sh` 管理证书申请，`online.sh`/`online.py` 提供 HTTPS 订阅，`reliability.sh`/`backup.py` 管理安装事务、版本与备份，`help.sh` 提供使用说明。运行 `python3 scripts/build.py` 生成完整 `singbox-v2.sh`；`python3 scripts/build.py --check` 检查是否同步。不要直接修改生成文件。
+维护源码在 `src/`：`installer.sh` 为一键入口，`packages.sh` 为 APT 兼容与归档修复，`shortcut.sh` 为 `sb` 快捷入口；`manager.sh` 为基础服务及安装逻辑，`subscriptions.sh` 为订阅导出，`users.sh` 为用户界面/服务，`users.py` 为配额与诊断，`operations.sh` 为更新/证书/资源，`menu.sh` 为主菜单及启动入口；`rescue.sh`/`rescue.py` 管理受限网络、Argo 应急、离线资产及 IPv6/NAT 辅助，`hopping.sh` 管理 UDP 跳跃，`media.sh`/`media.py` 检测流媒体，`warp.sh`/`warp.py` 管理 WARP 网关与托管路由，`relay.sh` 提供 sing-box 住宅落地中转界面，`haproxy.sh`/`haproxy.py` 提供独立 TCP 透传；`configuration.sh`/`configuration.py` 编辑节点，`acme.sh` 管理证书申请，`online.sh`/`online.py` 提供 HTTPS 订阅，`reliability.sh`/`backup.py` 管理安装事务、版本与备份，`help.sh` 提供使用说明。运行 `python3 scripts/build.py` 生成完整 `singbox-v2.sh` 和 `install.sh`；`python3 scripts/build.py --check` 检查是否同步。不要直接修改生成文件。
 
 安装仍只需 `install.sh`，部署的脚本自带所有模块，不在运行时下载或加载额外文件。`bash singbox-v2.sh --self-check` 无需 root，可检查内嵌 Python 语法并输出版本。systemd/UFW 操作使用隔离模拟测试；实际 VPS 部署仍需验证。
 
@@ -371,7 +375,7 @@ TCP 转发能力与配置校验参考 [HAProxy TCP 文档](https://www.haproxy.c
 
 ### SKYBYTE Manager 支持哪些 VPS 系统？
 
-支持使用 systemd 的 Ubuntu/Debian VPS，官方资产映射支持 amd64、arm64、armv7 和 386，运行管理功能需要 root 权限。自动化测试覆盖 Ubuntu 24.04 和 Debian 12 的 amd64 环境；其他系统版本与架构需自行验证。
+支持使用 systemd 的 Ubuntu/Debian VPS，官方资产映射支持 amd64、arm64、armv7 和 386，运行管理功能需要 root 权限。自动化测试配置覆盖 Ubuntu 24.04 和 Debian 11、12、13 的 amd64 环境；其他系统版本与架构需自行验证。
 
 ### Hysteria2 必须购买域名和证书吗？
 

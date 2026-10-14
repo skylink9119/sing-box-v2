@@ -28,13 +28,14 @@ def main():
     tree=ast.parse((ROOT/'src/warp.py').read_text())
     values={node.targets[0].id:ast.literal_eval(node.value) for node in tree.body if isinstance(node,ast.Assign) and isinstance(node.targets[0],ast.Name) and node.targets[0].id in ('MEDIA','AI','RULE_VERSION')}
     if catalog['media']!=values['MEDIA'] or catalog['ai']!=values['AI'] or catalog['version']!=values['RULE_VERSION']:parser.exit(1,'WARP catalog and source defaults differ\n')
-    result = assemble('manager.sh')
-    target = ROOT / 'singbox-v2.sh'
-    if args.check:
-        if target.read_text() != result:
-            parser.exit(1, 'singbox-v2.sh is stale; run python3 scripts/build.py\n')
-    else:
-        target.write_text(result)
+    for source,filename in [('manager.sh','singbox-v2.sh'),('installer.sh','install.sh')]:
+        result = assemble(source)
+        target = ROOT / filename
+        if args.check:
+            if target.read_text() != result:
+                parser.exit(1, filename+' is stale; run python3 scripts/build.py\n')
+        else:
+            target.write_text(result)
 
 
 if __name__ == '__main__':

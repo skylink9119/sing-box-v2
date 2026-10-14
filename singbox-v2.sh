@@ -8,7 +8,7 @@
 set -Eeuo pipefail
 umask 077
 SCRIPT_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
-MANAGER_VERSION=2.8.1
+MANAGER_VERSION=2.8.2
 CORE_RECOMMENDED=1.14.3
 BASE=/etc/singbox-v2
 CONF=/etc/sing-box/config.json
@@ -63,6 +63,158 @@ YOUTUBE='https://www.youtube.com/@SKYBYTE9119'
 ok(){ printf '%s✔ %s%s\n' "$GREEN" "$*" "$RESET"; }
 warn(){ printf '%s⚠ %s%s\n' "$YELLOW" "$*" "$RESET"; }
 err(){ printf '%s✖ %s%s\n' "$RED" "$*" "$RESET" >&2; }
+# APT compatibility helpers. Archive conversion only targets official Bullseye entries.
+APT_ROOT=${APT_ROOT:-/etc/apt}
+apt_archive_filter(){
+ local format=$1 file=$2
+ awk -v format="$format" '
+ function official(uri) {return uri ~ /^https?:\/\/(deb|security|ftp)\.debian\.org\/debian(-security)?\/?$/}
+ # Keep the existing transport: minimal Bullseye images may not yet have CA roots.
+ # APT still verifies the signed Release and package hashes over either transport.
+ function archived(uri) {sub(/\/\/(deb|security|ftp)\.debian\.org/,"//archive.debian.org",uri);return uri}
+ function listline(line, code,tail,hash,prefix,rest,option,end,fields,count,i,url,suite) {
+  hash=index(line,"#");code=hash?substr(line,1,hash-1):line;tail=hash?substr(line,hash):""
+  if (code !~ /^[ \t]*deb(-src)?[ \t]+/) return line
+  match(code,/^[ \t]*deb(-src)?[ \t]+/);prefix=substr(code,1,RLENGTH);rest=substr(code,RLENGTH+1);option=""
+  if (substr(rest,1,1)=="[") {end=index(rest,"]");if(!end)return line;option=substr(rest,1,end);rest=substr(rest,end+1);sub(/^[ \t]+/,"",rest)}
+  count=split(rest,fields,/[ \t]+/);url=fields[1];suite=fields[2]
+  if (!official(url) || suite !~ /^bullseye(-security|-updates)?$/) return line
+  if ((suite=="bullseye-security") != (url ~ /debian-security\/?$/)) return line
+  if (option=="") option="[check-valid-until=no]"
+  else if (option ~ /check-valid-until=/) sub(/check-valid-until=[^] \t]+/,"check-valid-until=no",option)
+  else sub(/\]$/," check-valid-until=no]",option)
+  sub(url,archived(url),rest);changed=1
+  return prefix option " " rest tail
+ }
+ function stanza(record,parts,n,i,field,value,uris,suites,enabled,u,s,num,active,out,line,validity) {
+  n=split(record,parts,"\n");uris="";suites="";enabled="";field=""
+  for(i=1;i<=n;i++) {
+   line=parts[i];if(line ~ /^[ \t]*#/)continue
+   if(line ~ /^[A-Za-z-]+:/) {field=tolower(line);sub(/:.*/,"",field);value=line;sub(/^[^:]+:[ \t]*/,"",value)}
+   else if(line ~ /^[ \t]+/) {value=line;sub(/^[ \t]+/,"",value)} else {field="";continue}
+   if(field=="uris")uris=uris " " value
+   if(field=="suites")suites=suites " " value
+   if(field=="enabled")enabled=tolower(value)
+  }
+  if(enabled=="no" || uris=="" || suites=="")return record
+  sub(/^ +/,"",uris);sub(/^ +/,"",suites)
+  num=split(uris,u,/[ \t]+/);for(i=1;i<=num;i++)if(!official(u[i]) || (u[i] ~ /debian-security\/?$/) != (u[1] ~ /debian-security\/?$/))return record
+  num=split(suites,s,/[ \t]+/);for(i=1;i<=num;i++)if(s[i] !~ /^bullseye(-security|-updates)?$/)return record
+  for(i=1;i<=num;i++)if((s[i]=="bullseye-security") != (u[1] ~ /debian-security\/?$/))return record
+  out="";field="";validity=0
+  for(i=1;i<=n;i++) {
+   line=parts[i]
+   if(line ~ /^[A-Za-z-]+:/) {field=tolower(line);sub(/:.*/,"",field)}
+   else if(line !~ /^[ \t]+/)field=""
+   if(field=="uris")gsub(/\/\/(deb|security|ftp)\.debian\.org/,"//archive.debian.org",line)
+   if(field=="check-valid-until") {if(line ~ /^[A-Za-z-]+:/)line="Check-Valid-Until: no";else continue;validity=1}
+   out=out (out==""?"":"\n") line
+  }
+  if(!validity)out=out "\nCheck-Valid-Until: no"
+  changed=1;return out
+ }
+ BEGIN {if(format=="sources"){RS="";ORS="\n\n"}}
+ {if(format=="sources")print stanza($0);else print listline($0)}
+ END {if(!changed)exit 10}
+ ' "$file"
+}
+apt_prepare_archive() (
+ local id version file format temp result backup_dir='' relative
+ id=$(awk -F= '$1=="ID" {gsub(/"/,"",$2);print $2}' "$OS_RELEASE") || return 1
+ version=$(awk -F= '$1=="VERSION_ID" {gsub(/"/,"",$2);print $2}' "$OS_RELEASE") || return 1
+ [[ $id == debian && $version == 11 ]] || return 0
+ [[ ! -L $APT_ROOT && ! -L $APT_ROOT/sources.list.d ]] || { err "$(L 'APT 源目录是符号链接，拒绝修改' 'APT source directory is a symlink; refusing changes')";return 1; }
+ local files=()
+ [[ ! -e $APT_ROOT/sources.list && ! -L $APT_ROOT/sources.list ]] || files+=("$APT_ROOT/sources.list")
+ shopt -s nullglob
+ files+=("$APT_ROOT"/sources.list.d/*.list "$APT_ROOT"/sources.list.d/*.sources)
+ # Inspect every source path before changing any of them.
+ for file in ${files[@]+"${files[@]}"};do
+  [[ -f $file && ! -L $file ]] || { err "$(L 'APT 源文件异常，拒绝修改' 'Unsafe APT source file; refusing changes')";return 1; }
+ done
+ for file in ${files[@]+"${files[@]}"};do
+  format=${file##*.}
+  temp=$(mktemp "$file.skybyte.XXXXXX") || return 1
+  cp -p -- "$file" "$temp" || { rm -f -- "$temp";return 1; }
+  if apt_archive_filter "$format" "$file" > "$temp";then result=0;else result=$?;fi
+  if [[ $result == 10 ]];then rm -f -- "$temp";continue;fi
+  if [[ $result != 0 ]];then rm -f -- "$temp";return "$result";fi
+  if [[ -z $backup_dir ]];then
+   backup_dir=$(mktemp -d "$APT_ROOT/skybyte-source-backup.XXXXXX") || { rm -f -- "$temp";return 1; }
+   chmod 700 "$backup_dir" || return 1
+  fi
+  if [[ $file == "$APT_ROOT/sources.list" ]];then relative=sources.list;else relative="parts/${file##*/}";fi
+  if ! mkdir -p "$backup_dir/$(dirname "$relative")" || ! cp -p -- "$file" "$backup_dir/$relative";then rm -f -- "$temp";return 1;fi
+  if ! mv -f -- "$temp" "$file";then rm -f -- "$temp";return 1;fi
+ done
+ if [[ -n $backup_dir ]];then
+  warn "$(L 'Debian 11 官方源已迁至归档；原文件已备份：' 'Official Debian 11 sources moved to archive; originals backed up: ')$backup_dir"
+  warn "$(L '归档不提供新的官方安全更新；请规划升级系统。' 'The archive supplies no new official security updates; plan an OS upgrade.')"
+ fi
+)
+apt_refresh(){
+ apt_prepare_archive || return 1
+ if ! apt-get -o APT::Update::Error-Mode=any -o Acquire::Retries=2 --allow-releaseinfo-change-suite update;then
+  err "$(L '软件源索引更新失败，已停止安装；请检查上面的 DNS、签名或源地址错误。' 'Repository index refresh failed; installation stopped. Check DNS, signatures and source URLs above.')"
+  return 1
+ fi
+}
+apt_install() (
+ local log status
+ apt_refresh || return 1
+ log=$(mktemp "${TMPDIR:-/tmp}/skybyte-apt.XXXXXX") || return 1
+ trap 'rm -f -- "$log"' EXIT
+ if DEBIAN_FRONTEND=noninteractive apt-get install -y "$@" > "$log" 2>&1;then cat "$log";return 0;else status=$?;fi
+ cat "$log"
+ if grep -Eq '404[[:space:]]|404[[:space:]]+Not Found|Failed to fetch' "$log";then
+  warn "$(L '安装包下载失败，刷新索引并重试一次。' 'Package download failed; refreshing indexes and retrying once.')"
+  apt_refresh || return 1
+  DEBIAN_FRONTEND=noninteractive apt-get install -y "$@" || return 1
+ else return "$status";fi
+)
+# Own only /usr/local/bin/sb; never replace the system lrzsz sender at /usr/bin/sb.
+MANAGER_SHORTCUT=${MANAGER_SHORTCUT:-/usr/local/bin/sb}
+SB_FILE_SENDER=${SB_FILE_SENDER:-/usr/bin/sb}
+manager_shortcut_install(){
+ require_cmd python3 || return 1
+ python3 - "$SCRIPT_PATH" "$MANAGER_LIB" "$MANAGER_SHORTCUT" "$SB_FILE_SENDER" <<'PY_SHORTCUT'
+import os,pathlib,shlex,subprocess,sys,tempfile
+source,target,shortcut,sender=map(pathlib.Path,sys.argv[1:])
+marker='# SKYBYTE Manager shortcut v1\n'
+for p in (target,shortcut):
+ if not p.is_absolute() or any(x.is_symlink() for x in (p,*p.parents)):
+  raise SystemExit('Unsafe shortcut path / 快捷入口路径异常')
+ if p.exists() and not p.is_file():raise SystemExit('Existing path is not a regular file')
+if shortcut.exists() and not shortcut.read_text().startswith('#!/usr/bin/env bash\n'+marker):
+ raise SystemExit('Existing sb command preserved / 已有 sb 命令非本工具，已保留')
+if target.exists() and not any(line.startswith('# SKYBYTE Manager V2.1 community manager;') for line in target.read_text().splitlines()[:4]):
+ raise SystemExit('Existing manager is not owned / 已有管理脚本归属异常')
+if source.is_symlink() or not source.is_file():raise SystemExit('Invalid source manager')
+if not any(line.startswith('# SKYBYTE Manager V2.1 community manager;') for line in source.read_text().splitlines()[:4]):raise SystemExit('Unknown source manager')
+if not sender.is_absolute() or sender==shortcut:raise SystemExit('Invalid file-sender path')
+if subprocess.run(['bash','-n',str(source)]).returncode:raise SystemExit('Invalid manager syntax')
+def atomic(p,data,mode):
+ p.parent.mkdir(parents=True,exist_ok=True)
+ fd,name=tempfile.mkstemp(prefix='.skybyte-',dir=p.parent)
+ try:
+  os.fchmod(fd,mode)
+  with os.fdopen(fd,'wb') as f:f.write(data);f.flush();os.fsync(f.fileno())
+  os.replace(name,p)
+ finally:
+  if os.path.exists(name):os.unlink(name)
+if source.absolute()!=target.absolute():atomic(target,source.read_bytes(),0o700)
+# lrzsz is still available with arguments. Nothing changes /usr/bin/sb.
+wrapper='#!/usr/bin/env bash\n'+marker+'set -e\n'
+wrapper+='if (( $# )); then\n if [[ -x '+shlex.quote(str(sender))+' ]]; then exec '+shlex.quote(str(sender))+' "$@"; fi\n'
+wrapper+=' printf "sb opens SKYBYTE Manager; original file sender unavailable\\n" >&2\n exit 2\nfi\n'
+wrapper+='exec bash '+shlex.quote(str(target))+'\n'
+atomic(shortcut,wrapper.encode(),0o755)
+PY_SHORTCUT
+}
+manager_shortcut_remove(){
+ [[ ! -L $MANAGER_SHORTCUT ]] || return 0
+ if [[ -f $MANAGER_SHORTCUT ]] && grep -Fxq '# SKYBYTE Manager shortcut v1' "$MANAGER_SHORTCUT";then rm -f -- "$MANAGER_SHORTCUT";fi
+}
 need_root(){ [[ $EUID == 0 ]] || { err "$(L '需要 root 权限' 'Root privileges required')"; exit 1; }; }
 confirm(){ local answer; prompt_read "$1 $(L '[输入 YES 确认]' '[Type YES to confirm]'): " answer || return 1; [[ $answer =~ ^[[:space:]]*[Yy][Ee][Ss][[:space:]]*$ ]]; }
 startup_service_info(){
@@ -321,7 +473,7 @@ install_protocol() (
  notice; confirm "$(L '同意声明并安装所选协议？' 'Accept notice and install selected protocol(s)?')" || return 0
  if [[ -e $CONF || -L $CONF || -e $META || -L $META || -e $BIN || -L $BIN || -e $SYSTEMD_DIR/sing-box.service || -L $SYSTEMD_DIR/sing-box.service ]] || command -v sing-box >/dev/null; then err "$(L '发现已有配置，拒绝覆盖' 'Existing configuration or binary found; refusing to overwrite')"; return 1; fi
  if systemctl list-unit-files sing-box.service --no-legend 2>/dev/null | grep -q sing-box; then err "$(L '已有 sing-box 服务，拒绝覆盖' 'Existing sing-box service found; refusing to overwrite')"; return 1; fi
- require_cmd ss || { apt-get update && apt-get install -y iproute2 || return 1; }
+ require_cmd ss || { apt_install iproute2 || return 1; }
  if [[ ${2:-} == custom ]];then
   if [[ $mode != 2 ]];then prompt_read "$(L '本机 Reality TCP 端口 [443]：' 'Local Reality TCP port [443]: ')" vp || return 1;vp=${vp:-443};fi
   if [[ $mode != 1 ]];then prompt_read "$(L '本机 HY2 UDP 端口 [443]：' 'Local HY2 UDP port [443]: ')" hp || return 1;hp=${hp:-443};fi
@@ -363,7 +515,7 @@ install_protocol() (
   [[ $sni =~ ^[a-zA-Z0-9.-]+$ ]] || { err "$(L '无效 SNI' 'Invalid SNI')"; return 1; }
  fi
  if [[ -z ${SKYBYTE_ASSET_DIR:-} ]];then
-  say '安装依赖...' 'Installing dependencies...'; apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y curl openssl ca-certificates python3 iproute2 util-linux nftables procps || return 1
+  say '安装依赖...' 'Installing dependencies...'; apt_install curl openssl ca-certificates python3 iproute2 util-linux nftables procps || return 1
   require_cmd getent; getent ahosts github.com >/dev/null || { err "$(L 'GitHub DNS 解析失败，请先修复 DNS或使用离线包' 'GitHub DNS lookup failed; repair DNS or use offline assets')"; return 1; }
  else rescue_dependencies && require_cmd openssl || return 1;fi
  mkdir -p "$(dirname "$BIN")"
@@ -697,7 +849,7 @@ hop(){
  start=$((10#$start));end=$((10#$end));target=$(protocol_port hysteria2) || return 1
  if [[ -f $BASE/users.json ]]; then users_guard && users_engine hop_check "$start" "$end" || return 1; fi
  confirm "$(L "将 UDP $start-$end 转发到 HY2 监听端口 ${target}？" "Forward UDP $start-$end to HY2 listener $target?")" || return 0
- if [[ $backend == nftables ]]; then require_cmd nft || return 1; else command -v iptables >/dev/null || { apt-get update && apt-get install -y iptables || return 1; }; fi
+ if [[ $backend == nftables ]]; then require_cmd nft || return 1; else command -v iptables >/dev/null || { apt_install iptables || return 1; }; fi
  if command -v nft >/dev/null && nft list table ip singbox_v2_hop >/dev/null 2>&1; then err "$(L '已有跳跃规则，请先关闭' 'Hopping rules exist; disable first')"; return 1; fi
  if command -v iptables >/dev/null && iptables -w 5 -t nat -S SKYBYTE_HY2_HOP >/dev/null 2>&1; then err "$(L '已有跳跃链，请先关闭，拒绝覆盖' 'Hopping chain exists; disable first; refusing overwrite')"; return 1; fi
  if [[ $backend == nftables ]]; then
@@ -969,11 +1121,11 @@ initialize_server(){
  # Installing chrony can remove timesyncd; keep an existing active time-sync service.
  if ! systemctl is-active --quiet chrony && ! systemctl is-active --quiet systemd-timesyncd && ! systemctl is-active --quiet ntp && ! systemctl is-active --quiet ntpsec; then packages+=(chrony); fi
  say '更新软件索引...' 'Updating package indexes...'
- apt-get update || { err "$(L '软件索引更新失败' 'Package index update failed')"; return 1; }
+ apt_refresh || { err "$(L '软件索引更新失败' 'Package index update failed')"; return 1; }
  say '升级已安装软件（不会自动执行 full-upgrade）...' 'Upgrading packages (not full-upgrade)...'
  DEBIAN_FRONTEND=noninteractive apt-get upgrade -y || { err "$(L '系统升级失败；请检查 apt/dpkg 状态' 'Upgrade failed; check apt/dpkg status')"; return 1; }
  say '安装基础工具...' 'Installing essential tools...'
- DEBIAN_FRONTEND=noninteractive apt-get install -y "${packages[@]}" || { err "$(L '工具安装失败' 'Tool installation failed')"; return 1; }
+ apt_install "${packages[@]}" || { err "$(L '工具安装失败' 'Tool installation failed')"; return 1; }
  say '检测时间同步服务...' 'Checking time synchronization...'
  if command -v timedatectl >/dev/null 2>&1; then timedatectl status --no-pager 2>/dev/null || :; fi
  # Do not forcibly disable an existing time-sync daemon.
@@ -1016,7 +1168,7 @@ firewall(){
  local choice port proto
  prompt_read '> ' choice || return
  case "$choice" in
- 1) confirm "$(L '安装 UFW？' 'Install UFW?')" && apt-get update && apt-get install -y ufw ;;
+ 1) confirm "$(L '安装 UFW？' 'Install UFW?')" && apt_install ufw ;;
  2)
    require_cmd ufw || return
    say '当前 SSH 监听信息（必须人工核实）：' 'SSH listener information (VERIFY manually):'
@@ -1063,7 +1215,7 @@ traffic(){
  prompt_options '1 安装 vnStat  2 今日  3 本月  4 实时网速  5 历史汇总  0 返回' '1 Install vnStat  2 Today  3 Monthly  4 Live  5 History  0 Back'
  local x; prompt_read '> ' x || return
  case "$x" in
- 1) confirm "$(L '安装 vnStat？' 'Install vnStat?')" && apt-get update && apt-get install -y vnstat && systemctl enable --now vnstat;;
+ 1) confirm "$(L '安装 vnStat？' 'Install vnStat?')" && apt_install vnstat && systemctl enable --now vnstat;;
  2) require_cmd vnstat && vnstat -d;; 3) require_cmd vnstat && vnstat -m;;
  4) require_cmd vnstat && vnstat -l;; 5) require_cmd vnstat && vnstat;; 0) return;; *) err "$(L '无效选择' 'Invalid choice')";; esac
  return 0
@@ -1072,7 +1224,7 @@ shadowrocket_qr(){
  check_owned || return 1
  if ! command -v qrencode >/dev/null; then
   say '安装二维码工具 qrencode...' 'Installing qrencode...'
-  apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y qrencode || return 1
+  apt_install qrencode || return 1
  fi
  exports >/dev/null || return 1
  warn "$(L '二维码包含节点凭据，请勿公开。HY2 自签名节点仍需配置信任证书。' 'QR codes contain node credentials; keep them private. Self-signed HY2 still requires certificate trust.')"
@@ -2064,6 +2216,7 @@ PY
  while IFS= read -r file; do if [[ -n $file ]]; then rm -f -- "$file"; fi; done <<<"$managed_certs"
  for file in state.json language.conf hop.nft hop-iptables.sh core-version.json warp-rules.json warp-rules.previous.json nodes.txt subscription-base64.txt v2rayn-nodes.txt v2rayn-subscription.txt shadowrocket-nodes.txt shadowrocket-subscription.txt shadowrocket-native-nodes.txt shadowrocket-native-subscription.txt sing-box-client.json clash-verge.yaml outbounds.json mihomo-proxies.yaml subscription-notes.txt hy2-client-ca.pem hy2-client-ca.cer hy2-client-ca.mobileconfig; do rm -f -- "$BASE/$file"; done
  # Remove executable copies only when they are identifiable manager scripts.
+ manager_shortcut_remove || return 1
  for file in "$MANAGER_BIN" "$MANAGER_LIB"; do
   if [[ -f $file && ! -L $file ]] && grep -q '^# SKYBYTE Manager V2.1 community manager;' "$file"; then rm -f -- "$file"; fi
  done
@@ -3082,14 +3235,14 @@ warp_install_client(){
  valid_port "$port" && ((10#$port>=1024)) || return 1; port=$((10#$port))
  haproxy_engine check_port "$port" || return 1
  if ss -H -ltn "( sport = :$port )" | grep -q .; then err "$(L '端口已被占用' 'Port already occupied')"; return 1; fi
- apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates gnupg || return 1
+ apt_install curl ca-certificates gnupg || return 1
  tmp=$(mktemp -d "$BASE/warp-install.XXXXXX") || return 1
  if ! curl -q -fsSL --proto '=https' --max-time 30 https://pkg.cloudflareclient.com/pubkey.gpg -o "$tmp/key" ||
     ! gpg --batch --yes --dearmor --output "$tmp/keyring" "$tmp/key"; then rm -rf "$tmp"; return 1; fi
  command install -m 644 "$tmp/keyring" "$WARP_KEY_FILE" || { rm -rf "$tmp"; return 1; }
  printf 'deb [signed-by=%s] https://pkg.cloudflareclient.com/ %s main\n' "$WARP_KEY_FILE" "$code" > "$WARP_REPO_FILE"
  chmod 644 "$WARP_REPO_FILE"; rm -rf "$tmp"
- apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y cloudflare-warp || return 1
+ apt_install cloudflare-warp || return 1
  systemctl enable --now warp-svc.service || return 1
  if warp-cli --accept-tos registration show >/dev/null 2>&1; then err "$(L '发现已有 WARP 注册信息，保留不修改；请手动配置本机代理' 'Existing WARP registration found; retained. Configure a local proxy manually.')"; return 1; fi
  warp-cli --accept-tos registration new >/dev/null && warp-cli --accept-tos mode proxy && warp-cli --accept-tos proxy port "$port" && warp-cli --accept-tos connect || return 1
@@ -3852,7 +4005,7 @@ haproxy_install_binary() (
   ln -s /dev/null "$mask" || return 1;created=true
   systemctl daemon-reload || return 1
  fi
- apt-get update && DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=--force-confold install -y --no-install-recommends haproxy || return 1
+ apt_install -o Dpkg::Options::=--force-confold --no-install-recommends haproxy || return 1
  [[ -x $HAPROXY_BIN ]] || return 1
  # A newly installed package must not start its default listener at the next boot.
  if [[ $enabled == false ]];then systemctl disable haproxy.service || return 1;fi
@@ -4210,7 +4363,7 @@ backup_tools(){
    backup_engine preflight "$path" || return 1
    prompt_read "$(L '新导出文件绝对路径（.gpg）：' 'New absolute export path (.gpg): ')" output || return 0
    [[ $output == /* && ! -e $output && ! -L $output ]] || return 1
-   command -v gpg >/dev/null || { apt-get update && apt-get install -y gnupg || return 1; }
+   command -v gpg >/dev/null || { apt_install gnupg || return 1; }
    prompt_read "$(L '加密口令（隐藏，至少12字符）：' 'Encryption passphrase (hidden, minimum 12 characters): ')" pass secret || return 0;echo
    [[ ${#pass} -ge 12 ]] || return 1
    tmp=$(mktemp "$BASE/archive.XXXXXX") || return 1
@@ -4367,7 +4520,7 @@ rescue_dependencies(){
  for name in curl python3 sha256sum tar ss flock;do command -v "$name" >/dev/null || missing=true;done
  if [[ $missing == true ]];then
   [[ -z ${SKYBYTE_ASSET_DIR:-} ]] || { err "$(L '离线模式缺少依赖；请先从发行版软件源安装 curl、python3、coreutils、tar、iproute2 和 util-linux。' 'Offline dependencies missing: install curl, python3, coreutils, tar, iproute2 and util-linux from distro packages first.')";return 1; }
-  apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends curl ca-certificates python3 coreutils tar iproute2 util-linux || return 1
+  apt_install --no-install-recommends curl ca-certificates python3 coreutils tar iproute2 util-linux || return 1
  fi
  if ! require_cmd systemctl || ! systemctl show --property=Version --value >/dev/null;then err "$(L '需要运行中的 systemd；不支持无 systemd 的容器。' 'A running systemd is required; containers without systemd are unsupported.')";return 1;fi
 }
@@ -4875,8 +5028,8 @@ acme_issue(){
  esac
  say '申请公开证书会公开域名；请阅读并同意 CA 条款 https://letsencrypt.org/repository/ 。DNS Token 需仅授权对应区域 DNS 编辑。' 'Public issuance publishes the domain. Review CA terms: https://letsencrypt.org/repository/ . Scope DNS tokens to the target zone.'
  confirm "$(L '接受 CA 条款并申请证书？' 'Accept CA terms and request certificate?')" || return 0
- apt-get update && apt-get install -y certbot || return 1
- if [[ $method == cloudflare ]];then apt-get install -y python3-certbot-dns-cloudflare || return 1;fi
+ apt_install certbot || return 1
+ if [[ $method == cloudflare ]];then apt_install python3-certbot-dns-cloudflare || return 1;fi
  mkdir -m 700 "$BASE/acme" || return 1
  printf 'SKYBYTE ACME v1\n' > "$BASE/acme/.skybyte-owner"
  acme_options
@@ -5480,6 +5633,7 @@ LOGO
 
 bootstrap(){
  need_root
+ if ! command -v python3 >/dev/null || ! command -v flock >/dev/null;then apt_install python3 util-linux ca-certificates || return 1;fi
  require_cmd flock || return 1
  local directory
  for directory in "$BASE" "$REPORT" "$BACKUP";do
@@ -5488,6 +5642,9 @@ bootstrap(){
  [[ ! -L $LANG_FILE && ( ! -e $LANG_FILE || -f $LANG_FILE ) && ! -L $LOCK && ( ! -e $LOCK || -f $LOCK ) ]] || { err "$(L '语言或锁文件异常，拒绝写入' 'Language/lock file is unsafe; refusing writes')";return 1; }
  mkdir -p "$BASE" "$REPORT" "$BACKUP"; chmod 700 "$BASE" "$REPORT" "$BACKUP"
  exec 9>"$LOCK"; flock -n 9 || { err "$(L '其他管理任务正在运行' 'Another manager is running')"; return 1; }
+ if [[ -z ${1:-} ]];then
+  manager_shortcut_install || warn "$(L 'sb 快捷入口注册失败，已保留原有文件；可继续使用当前脚本。' 'Could not register sb shortcut; existing files retained. Current script remains usable.')"
+ fi
  load_language
  if [[ -z $LANGUAGE_CHOICE ]]; then
   if [[ ${1:-} == --auto-update || ${1:-} == --certificate-check || ${1:-} == --certificate-reload || ${1:-} == --acme-renew || ${1:-} == --notice ]]; then LANGUAGE_CHOICE=en_US; else select_language || return 1; fi

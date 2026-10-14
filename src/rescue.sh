@@ -8,7 +8,7 @@ rescue_dependencies(){
  for name in curl python3 sha256sum tar ss flock;do command -v "$name" >/dev/null || missing=true;done
  if [[ $missing == true ]];then
   [[ -z ${SKYBYTE_ASSET_DIR:-} ]] || { err "$(L '离线模式缺少依赖；请先从发行版软件源安装 curl、python3、coreutils、tar、iproute2 和 util-linux。' 'Offline dependencies missing: install curl, python3, coreutils, tar, iproute2 and util-linux from distro packages first.')";return 1; }
-  apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends curl ca-certificates python3 coreutils tar iproute2 util-linux || return 1
+  apt_install --no-install-recommends curl ca-certificates python3 coreutils tar iproute2 util-linux || return 1
  fi
  if ! require_cmd systemctl || ! systemctl show --property=Version --value >/dev/null;then err "$(L '需要运行中的 systemd；不支持无 systemd 的容器。' 'A running systemd is required; containers without systemd are unsupported.')";return 1;fi
 }
