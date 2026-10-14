@@ -169,7 +169,8 @@ apt_install() (
  if grep -Eq '404[[:space:]]|404[[:space:]]+Not Found|Failed to fetch' "$log";then
   warn "$(L '安装包下载失败，刷新索引并重试一次。' 'Package download failed; refreshing indexes and retrying once.')"
   apt_refresh || return 1
-  DEBIAN_FRONTEND=noninteractive apt-get install -y "$@" || return 1
+  # Some archive CDN edges cache an earlier 404 even while the package exists.
+  DEBIAN_FRONTEND=noninteractive apt-get install -y "$@" -o Acquire::http::No-Cache=true -o Acquire::https::No-Cache=true || return 1
  else return "$status";fi
 )
 # Own only /usr/local/bin/sb; never replace the system lrzsz sender at /usr/bin/sb.

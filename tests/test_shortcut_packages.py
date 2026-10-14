@@ -173,6 +173,9 @@ Enabled: no
         events=(self.base/'apt-events').read_text().splitlines()
         self.assertEqual(sum('install -y curl openssl' in x for x in events),2)
         self.assertEqual(sum(' update' in x for x in events),2)
+        self.assertIn('Acquire::http::No-Cache=true',events[-1])
+        self.assertIn('Acquire::https::No-Cache=true',events[-1])
+        self.assertNotIn('Verify-Peer=false','\n'.join(events))
 
     def test_non_download_install_failure_is_not_retried(self):
         self.source_files(version='12')
