@@ -1,3 +1,25 @@
+<!-- SKYBYTE_AFFILIATE_HEADER_START -->
+## VPS 服务商推广链接
+
+### 1. 跨境电商 / TikTok 原生住宅 IP 落地机
+
+**[丽萨主机（LisaHost）](https://lisahost.com/aff.php?aff=11072)**：提供住宅 / ISP IP 套餐，可按需求选择跨境电商、TikTok 和海外账号运营的网络环境。配合本脚本的住宅 IP 中转，由入口 VPS 负责接入，住宅落地机负责访问网站，按线路情况优化连接。
+
+### 2. 精品线路 VPS：主力自用 / 朋友合租 / 中转前置
+
+**[DMIT](https://www.dmit.io/aff.php?aff=18635)**：提供 CN2 GIA 等中国大陆优化线路方案，适合对直连线路有要求的主力节点、多用户分享和中转入口。
+
+**[搬瓦工（BandwagonHost）](https://bandwagonhost.com/aff.php?aff=83101)**：提供 CN2 GIA 等 VPS 套餐，可作为日常自用或中转前置的线路选择。
+
+### 3. 高性价比入门 VPS：新手练手 / 备用节点
+
+**[RackNerd](https://my.racknerd.com/aff.php?aff=18647)**：可关注低预算 VPS 与年付优惠方案，适合练习 Ubuntu/Debian 重装系统、部署 sing-box / Hysteria2，以及搭建备用节点。
+
+**推广说明：** 通过以上链接购买，可能为作者带来佣金，用于支持 SKYBYTE Manager 的开发与维护。价格、线路及 IP 类型以具体套餐为准，实际速度和平台可用性请结合自己的网络测试。
+<!-- SKYBYTE_AFFILIATE_HEADER_END -->
+
+---
+
 # SKYBYTE Manager V2.8.2 — sing-box 一键脚本与 Ubuntu/Debian VPS 管理
 
 **SKYBYTE Manager** 是基于 Bash 的 Ubuntu/Debian VPS 管理工具，提供简体中文和 English 界面，支持 sing-box 的 **VLESS + Reality + Vision、Hysteria2（HY2）及双协议部署**。通过交互菜单管理 Cloudflare Argo 隧道、WARP 出站分流、用户流量配额与有效期，并导出 Shadowrocket（小火箭）、v2rayN、Clash Verge/Mihomo/OpenClash 和 sing-box JSON 客户端配置。
@@ -389,17 +411,11 @@ TCP 转发能力与配置校验参考 [HAProxy TCP 文档](https://www.haproxy.c
 
 不能保证。可选择全局直连、全局 WARP 或仅指定流媒体与 AI 域名走 WARP；实际可用性取决于出口 IP、平台策略及账户。流媒体检测结果仅表示检测时的 VPS 出口响应。
 
-## VPS 服务商推广链接
-
-如果你正在寻找用于 Ubuntu/Debian、sing-box 或 Hysteria2 部署的 VPS，可以查看以下服务商。购买前请自行确认机房位置、系统镜像、UDP 支持、流量额度及使用条款。
+## 其他 VPS 服务商推广链接
 
 | 服务商 | 推广入口 |
 | --- | --- |
-| RackNerd | [查看 RackNerd VPS](https://my.racknerd.com/aff.php?aff=18647) |
-| DMIT | [查看 DMIT VPS](https://www.dmit.io/aff.php?aff=18635) |
 | AkileCloud | [访问 AkileCloud](https://akile.ai/register?aff_code=0be67084-ae2e-4095-a586-2a3ee5c970f0) |
-| BandwagonHost（搬瓦工） | [查看 BandwagonHost VPS](https://bandwagonhost.com/aff.php?aff=83101) |
-| LisaHost（丽萨主机） | [查看 LisaHost VPS](https://lisahost.com/aff.php?aff=11072) |
 
 **推广说明：** 上述链接包含作者的推广标识，通过这些链接购买可能为作者带来佣金，用于支持 SKYBYTE Manager 的开发与维护。列表不代表性能排名或流媒体解锁承诺，价格、库存与服务条件以服务商页面为准。
 

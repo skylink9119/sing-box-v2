@@ -1,3 +1,25 @@
+<!-- SKYBYTE_AFFILIATE_HEADER_START -->
+## VPS provider affiliate links
+
+### 1. Residential IP landing VPS for cross-border e-commerce / TikTok
+
+**[LisaHost](https://lisahost.com/aff.php?aff=11072)**: residential / ISP IP plans to consider for cross-border e-commerce, TikTok and overseas account workflows. Pair a residential landing VPS with this script's relay: the entry VPS handles client connections and the landing VPS reaches websites. Choose the two routes based on your network tests.
+
+### 2. Premium-route VPS for personal use / sharing / relay entry
+
+**[DMIT](https://www.dmit.io/aff.php?aff=18635)**: offers China-optimized network plans, including CN2 GIA options, for primary nodes, sharing with friends and relay entry servers.
+
+**[BandwagonHost](https://bandwagonhost.com/aff.php?aff=83101)**: offers VPS plans including CN2 GIA options to consider for daily personal use or a relay entry server.
+
+### 3. Budget VPS for learning / backup nodes
+
+**[RackNerd](https://my.racknerd.com/aff.php?aff=18647)**: check budget VPS and annual offers for learning Ubuntu/Debian reinstalls, deploying sing-box / Hysteria2 and running backup nodes.
+
+**Affiliate disclosure:** Purchases through these links may earn the author a commission to support SKYBYTE Manager development and maintenance. Pricing, routing and IP type depend on the selected plan; test speed and platform access from your own network.
+<!-- SKYBYTE_AFFILIATE_HEADER_END -->
+
+---
+
 # SKYBYTE Manager V2.8.2 — sing-box Installer and Ubuntu/Debian VPS Management
 
 **SKYBYTE Manager** is a Bash-based Ubuntu/Debian VPS manager with Simplified Chinese and English interfaces. It installs sing-box with **VLESS + Reality + Vision, Hysteria2 (HY2), or both protocols**, manages Cloudflare Argo tunnels and WARP routing, and provides per-user traffic quotas and expiry. Client exports support Shadowrocket, v2rayN, Clash Verge/Mihomo/OpenClash and sing-box JSON.
@@ -389,17 +411,11 @@ Menu **2 → 2** exports client files, and **2 → 4** displays Shadowrocket nod
 
 No. Routing supports direct-only, global WARP, or WARP for selected streaming and AI domains. Availability depends on the egress IP, platform policies and account. Streaming probes report the VPS egress response at the time of testing.
 
-## VPS provider affiliate links
-
-If you are looking for a VPS to run Ubuntu/Debian, sing-box or Hysteria2, you can explore the providers below. Check location, operating system images, UDP support, traffic allowances and service terms before purchasing.
+## Other VPS provider affiliate links
 
 | Provider | Affiliate link |
 | --- | --- |
-| RackNerd | [Explore RackNerd VPS](https://my.racknerd.com/aff.php?aff=18647) |
-| DMIT | [Explore DMIT VPS](https://www.dmit.io/aff.php?aff=18635) |
 | AkileCloud | [Visit AkileCloud](https://akile.ai/register?aff_code=0be67084-ae2e-4095-a586-2a3ee5c970f0) |
-| BandwagonHost | [Explore BandwagonHost VPS](https://bandwagonhost.com/aff.php?aff=83101) |
-| LisaHost | [Explore LisaHost VPS](https://lisahost.com/aff.php?aff=11072) |
 
 **Affiliate disclosure:** These links contain the author's referral identifiers. Purchases through them may earn the author a commission to support SKYBYTE Manager development and maintenance. Listings do not rank performance or promise streaming access; current pricing, availability and terms are determined by each provider.
 
