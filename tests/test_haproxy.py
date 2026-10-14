@@ -321,6 +321,17 @@ class HAProxyTest(unittest.TestCase):
                     inbound = dict(type='trojan', listen='127.0.0.1', listen_port=bp, users=[dict(password=self.password)], tls=dict(enabled=True, certificate_path=str(self.cert), key_path=str(self.key)))
                     path.write_text(json.dumps(dict(inbounds=[inbound], outbounds=[dict(type='direct', tag='direct')]))); landing = self.start_engine(path)
                     d = dict(type='trojan', tag='landing', server='127.0.0.1', server_port=bp, password=self.password, tls=dict(enabled=True, insecure=False, server_name='node.example', certificate=[self.cert.read_text()]))
+                # Production preflight requires a reachable landing. Wait for
+                # the actual TCP listener before HAProxy starts its checks;
+                # process creation alone races HAProxy 2.2 health transitions.
+                deadline = time.monotonic()+3
+                while time.monotonic()<deadline:
+                    if landing.poll() is not None: self.fail('Landing exited before listening')
+                    try:
+                        with socket.create_connection(('127.0.0.1',d['server_port']),timeout=.1): pass
+                        break
+                    except OSError: time.sleep(.05)
+                else: self.fail('Landing did not become ready')
                 state = self.state(peer=d['server_port']); self.live_proxy(state)
                 mixed = manager.port(); client = self.root / ('tcp-client-'+kind+'.json')
                 d['server_port'] = state['rules'][0]['port']

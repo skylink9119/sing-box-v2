@@ -40,7 +40,7 @@ bash install.sh
 
 安装或更新后，重新登录 SSH，输入 **`sb`** 即可打开主菜单，无需再次下载安装脚本。不带参数的 `/usr/local/bin/sb` 启动 SKYBYTE；`sb 文件名` 仍转交原来的 `/usr/bin/sb` 文件发送工具。现有同名自定义入口、未知文件和符号链接不覆盖；当前终端若缓存了旧命令，可执行 `hash -r` 或重新登录。卸载只删除本工具创建的快捷入口。
 
-**Debian 11/12 安装兼容：** 安装前严格刷新 APT 索引，允许经过签名验证的 Suite 信息变化，索引失败立即停止；安装包 404 时刷新并只重试一次。Debian 11 官方源的归档修复支持 `.list` 和 `.sources`，修改前备份到 `/etc/apt/skybyte-source-backup.*`，保留原来的 HTTP/HTTPS 传输、Signed-By、第三方源和自定义镜像。只对归档条目关闭有效期检查，不关闭包签名或 HTTPS 验证。Debian 12/13 不会改成归档源。Debian 11 的官方 LTS 已结束，归档只帮助取得历史软件包，不能恢复安全维护。[Debian 支持周期](https://www.debian.org/releases/bullseye/)、[官方归档](https://www.debian.org/distrib/archive)。
+**Debian 11/12 安装兼容：** 安装前严格刷新 APT 索引，允许经过签名验证的 Suite 信息变化，索引失败立即停止；安装包 404 时刷新并只重试一次。Debian 11 官方源的归档修复支持 `.list` 和 `.sources`，修改前备份到 `/etc/apt/skybyte-source-backup.*`，保留原来的 HTTP/HTTPS 传输、Signed-By、第三方源和自定义镜像。只对归档条目关闭有效期检查，不关闭包签名或 HTTPS 验证。Debian 12/13 不会改成归档源。 HY2 自签证书使用独立请求配置，避免 Debian 11 的 OpenSSL 1.1.1 重复生成扩展字段；首次安装和后续添加协议均适用，保留证书验证。Debian 11 的官方 LTS 已结束，归档只帮助取得历史软件包，不能恢复安全维护。[Debian 支持周期](https://www.debian.org/releases/bullseye/)、[官方归档](https://www.debian.org/distrib/archive)。
 
 首次安装使用本版已测试的 sing-box 1.14.3 官方二进制，按 GitHub Release API 的 SHA-256 摘要检查下载，不执行远程软件包安装脚本。首次启动选择语言，保存于 `/etc/singbox-v2/language.conf`，菜单 **6 → 1** 切换语言。
 
