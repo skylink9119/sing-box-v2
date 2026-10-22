@@ -20,7 +20,7 @@
 
 ---
 
-# SKYBYTE Manager V2.8.2 — sing-box 一键脚本与 Ubuntu/Debian VPS 管理
+# SKYBYTE Manager V2.8.3 — sing-box 一键脚本与 Ubuntu/Debian VPS 管理
 
 **SKYBYTE Manager** 是基于 Bash 的 Ubuntu/Debian VPS 管理工具，提供简体中文和 English 界面，支持 sing-box 的 **VLESS + Reality + Vision、Hysteria2（HY2）及双协议部署**。通过交互菜单管理 Cloudflare Argo 隧道、WARP 出站分流、用户流量配额与有效期，并导出 Shadowrocket（小火箭）、v2rayN、Clash Verge/Mihomo/OpenClash 和 sing-box JSON 客户端配置。
 
@@ -29,6 +29,8 @@ YouTube：[SKYBYTE9119](https://www.youtube.com/@SKYBYTE9119) · [English](READM
 如果这个脚本对你有帮助，欢迎订阅我的 YouTube 频道，支持 SKYBYTE 持续更新！
 
 主菜单包含 SKYBYTE ASCII logo；菜单绿色加粗、节点链接红色加粗、警告黄色加粗、错误红色加粗。支持 ANSI 的交互终端显示颜色，`NO_COLOR=1` 可关闭。所有 `YES` 确认不区分大小写。
+
+V2.8.3 修复精简 VPS 缺少 `curl` 时无法首次下载安装的问题：新启动命令先检测并按需安装 `curl` 与 CA 证书，再启动安装器；APT 或下载失败时停止，保留后续语言选择及菜单输入。请复制下方完整的新安装命令。
 
 V2.8.1 完整源码审计修复：一键入口验证目标归属并原子替换脚本，拒绝软链接和并发管理任务；恢复采用私密事务日志，失败恢复原文件及原服务状态，不覆盖配置目录里的无关文件；用户端口预留涵盖未启动的托管服务，并沿用真实监听地址族；修复节点编辑回滚后管理员服务未重载、离线目录选择不跨菜单生效，以及独立 Argo 申请证书后的 HY2 提示。首次配置生成通过文件描述符传递 UUID、密码和私钥，避免放进进程参数。流媒体地区检测显示字段来源和冲突结果，仍不验证账号资格或实际播放。
 
@@ -325,7 +327,7 @@ HY2 支持上下行 Mbps、`ignore_client_bandwidth` 与 Salamander 混淆，服
 
 ```bash
 python3 scripts/build.py --check
-python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.1
+python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.3
 ```
 
 打包只包含 `bootstrap.sh` 启动命令、安装入口、完整脚本、公开规则列表及SHA256SUMS，不发布运行时配置或凭据。

@@ -20,7 +20,7 @@
 
 ---
 
-# SKYBYTE Manager V2.8.2 — sing-box Installer and Ubuntu/Debian VPS Management
+# SKYBYTE Manager V2.8.3 — sing-box Installer and Ubuntu/Debian VPS Management
 
 **SKYBYTE Manager** is a Bash-based Ubuntu/Debian VPS manager with Simplified Chinese and English interfaces. It installs sing-box with **VLESS + Reality + Vision, Hysteria2 (HY2), or both protocols**, manages Cloudflare Argo tunnels and WARP routing, and provides per-user traffic quotas and expiry. Client exports support Shadowrocket, v2rayN, Clash Verge/Mihomo/OpenClash and sing-box JSON.
 
@@ -29,6 +29,8 @@ YouTube: [SKYBYTE9119](https://www.youtube.com/@SKYBYTE9119) · [中文](README.
 If you find this script helpful, please subscribe to my YouTube channel and support SKYBYTE's continued development!
 
 The main menu includes the SKYBYTE ASCII logo. Menus are bold green, credential links bold red, warnings bold yellow and errors bold red on ANSI terminals. Set `NO_COLOR=1` to disable colors. Every YES confirmation is case-insensitive.
+
+V2.8.3 fixes first installation on minimal VPS images without `curl`: the new bootstrap checks for curl and installs it with CA certificates when missing, then starts the installer. APT or download failure stops the operation while preserving input for the language prompt and menus. Copy the complete updated installation command below.
 
 V2.8.1 whole-source audit fixes: the installer checks ownership and atomically publishes the manager, rejecting symlinks and concurrent operations. Restore journals original files privately, rolls back files/service states on failure, and preserves unrelated configuration files. User allocation reserves inactive managed ports and inherits the actual listener family. Node-edit rollback reloads the original admin config; offline selection survives menu actions; standalone Argo certificate issuance no longer prompts to configure absent HY2. Initial generation passes UUIDs, passwords and private keys through a file descriptor instead of process arguments. Media results show region sources/conflicts without claiming account eligibility or playback.
 
@@ -325,7 +327,7 @@ Restore retains current account policy/usage and current subscription tokens. HT
 
 ```bash
 python3 scripts/build.py --check
-python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.1
+python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.3
 ```
 
 Packaging includes only bootstrap.sh, install.sh, the full bundle, public rule catalog and SHA256SUMS, never runtime state or credentials.
