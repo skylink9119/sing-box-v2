@@ -49,12 +49,37 @@ V2.8.1 whole-source audit fixes: the installer checks ownership and atomically p
 
 ## Ubuntu/Debian VPS installation
 
-Requires root, Ubuntu/Debian and systemd. Direct public nodes need a reachable public IPv4 or IPv6 address. Official binary mappings cover amd64, arm64, armv7 and 386. Log in to the VPS as root and use the existing `install.sh` entry point:
+Requires root, Ubuntu/Debian and systemd. Direct public nodes need a reachable public IPv4 or IPv6 address. Official binary mappings cover amd64, arm64, armv7 and 386. Log in to the VPS as root and paste the entire block into Bash. It checks for `curl` before downloading, installs `curl` and CA certificates if missing, and then runs the existing `install.sh` entry point. APT is skipped at this stage when `curl` is already present:
 
+<!-- SKYBYTE_INSTALL_COMMAND_START -->
 ```bash
-curl -fsSL https://raw.githubusercontent.com/skylink9119/sing-box-v2/main/install.sh -o install.sh
-bash install.sh
+#!/usr/bin/env bash
+(
+ set -Eeuo pipefail
+ if [[ $(id -u) != 0 ]];then printf 'Please run as root / 请以 root 账户运行\n' >&2;exit 1;fi
+ os_id=$(awk -F= '$1=="ID" {gsub(/"/,"",$2);print $2}' "${OS_RELEASE:-/etc/os-release}")
+ case $os_id in ubuntu|debian) :;; *) printf 'Ubuntu/Debian only / 仅支持 Ubuntu/Debian\n' >&2;exit 1;; esac
+ if ! command -v curl >/dev/null 2>&1;then
+  printf 'curl not found; installing curl and CA certificates / 未安装 curl，正在安装 curl 与 CA 证书……\n'
+  if ! apt-get -o APT::Update::Error-Mode=any -o Acquire::Retries=2 --allow-releaseinfo-change-suite update;then
+   printf 'APT refresh failed; download stopped / APT 索引更新失败，已停止下载，请先修复软件源或网络\n' >&2
+   exit 1
+  fi
+  if ! DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates;then
+   printf 'curl installation failed; download stopped / curl 安装失败，已停止下载\n' >&2
+   exit 1
+  fi
+  if ! command -v curl >/dev/null 2>&1;then printf 'curl is still unavailable / 安装后仍找不到 curl，请检查 PATH 或软件包状态\n' >&2;exit 1;fi
+ fi
+ installer=$(mktemp "${TMPDIR:-/tmp}/skybyte-install.XXXXXX")
+ trap 'rm -f -- "$installer"' EXIT
+ curl -q -fsSL --proto '=https' --proto-redir '=https' --retry 2 --connect-timeout 10 --max-time 120 https://raw.githubusercontent.com/skylink9119/sing-box-v2/main/install.sh -o "$installer"
+ bash "$installer"
+)
 ```
+<!-- SKYBYTE_INSTALL_COMMAND_END -->
+
+The bootstrap uses a temporary file and stops on APT or download failure, without running a stale installer. It cleans up its temporary file and preserves standard input for the language prompt and menus. If curl is missing and APT repositories are unreachable or expired, repair those repositories first; the downloaded installer retains its existing Debian 11 archive handling.
 
 Until the development branch is merged, that command installs the main version. To test this branch, clone the repository, switch to the branch and run `bash ./singbox-v2.sh` as root. Review downloaded scripts before execution.
 
@@ -143,8 +168,8 @@ Menu **6 → 3** requires case-insensitive `YES` confirmation and first backs up
 Backups, external certificates, unknown user files, reports, UFW allow rules, BBR/FQ settings and system packages such as vnStat remain. It does not reset the firewall or delete unrelated nftables tables. Backups contain private keys; protect permissions and disk space. To restore after uninstall, deploy again and restore the retained backup through menu 5 → 3.
 
 ```bash
-for file in install.sh singbox-v2.sh src/*.sh; do bash -n "$file"; done
-shellcheck install.sh singbox-v2.sh
+for file in bootstrap.sh install.sh singbox-v2.sh src/*.sh; do bash -n "$file"; done
+shellcheck bootstrap.sh install.sh singbox-v2.sh
 python3 -m unittest discover -s tests -v
 ```
 
@@ -219,7 +244,7 @@ Backups include policies, usage, configurations and certificates. Restore retain
 
 ## Source modules and build
 
-Edit `src/installer.sh` (entry point), `packages.sh` (APT/archive compatibility), `shortcut.sh` (`sb` launcher), `manager.sh` (base services/install), `subscriptions.sh` (exports), `users.sh` (user UI/services), `users.py` (accounting/diagnostics), `operations.sh` (updates/certificates/resources), `menu.sh` (menu/entry point), `rescue.sh`/`rescue.py` (restricted networks, Argo rescue, offline assets and IPv6/NAT helpers), `hopping.sh` (UDP hopping), `media.sh`/`media.py` (media probes), `warp.sh`/`warp.py` (gateway/owned routing), `relay.sh` (sing-box residential relay), `haproxy.sh`/`haproxy.py` (independent TCP passthrough), `configuration.sh`/`configuration.py` (node edits), `acme.sh` (issuance), `online.sh`/`online.py` (HTTPS delivery), `reliability.sh`/`backup.py` (transactions/versions/backups) and `help.sh` (guide). Run `python3 scripts/build.py` to produce the self-contained `singbox-v2.sh` and `install.sh`; CI uses `--check` to reject stale bundles. Do not edit the generated bundle directly.
+Edit `src/bootstrap.sh` (curl detection before download), `installer.sh` (entry point), `packages.sh` (APT/archive compatibility), `shortcut.sh` (`sb` launcher), `manager.sh` (base services/install), `subscriptions.sh` (exports), `users.sh` (user UI/services), `users.py` (accounting/diagnostics), `operations.sh` (updates/certificates/resources), `menu.sh` (menu/entry point), `rescue.sh`/`rescue.py` (restricted networks, Argo rescue, offline assets and IPv6/NAT helpers), `hopping.sh` (UDP hopping), `media.sh`/`media.py` (media probes), `warp.sh`/`warp.py` (gateway/owned routing), `relay.sh` (sing-box residential relay), `haproxy.sh`/`haproxy.py` (independent TCP passthrough), `configuration.sh`/`configuration.py` (node edits), `acme.sh` (issuance), `online.sh`/`online.py` (HTTPS delivery), `reliability.sh`/`backup.py` (transactions/versions/backups) and `help.sh` (guide). Run `python3 scripts/build.py` to produce the self-contained `singbox-v2.sh`, `install.sh`, `bootstrap.sh` and the bilingual installation commands; CI uses `--check` to reject stale bundles. Do not edit the generated bundle directly.
 
 The original `install.sh` entry remains sufficient: deployed scripts contain all modules and require no runtime module downloads. `bash singbox-v2.sh --self-check` checks embedded Python syntax and outputs the version without root. systemd/UFW operations are tested through isolated mocks; actual VPS deployment still needs verification.
 
@@ -303,7 +328,7 @@ python3 scripts/build.py --check
 python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.1
 ```
 
-Packaging includes only install.sh, the full bundle, public rule catalog and SHA256SUMS, never runtime state or credentials.
+Packaging includes only bootstrap.sh, install.sh, the full bundle, public rule catalog and SHA256SUMS, never runtime state or credentials.
 
 ## Account scaling tests (V2.5)
 

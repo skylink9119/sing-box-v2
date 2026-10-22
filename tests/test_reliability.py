@@ -250,7 +250,7 @@ download_binary(){ cp '''+shlex.quote(manager.SB)+''' "$2";chmod 755 "$2"; }
   self.assertFalse(db['users'][0]['running']);self.assertFalse(db['users'][1]['running']);self.assertTrue(all(u['running'] for u in db['users'][2:]));self.assertTrue(all(time.time()-u['sampled_at']<4 for u in db['users'][2:]))
  def test_release_package_contains_only_public_assets_and_valid_digests(self):
   output=self.root/'release';subprocess.run(['python3',str(manager.ROOT/'scripts/package_release.py'),'--output',str(output)],check=True,stdout=subprocess.DEVNULL)
-  self.assertEqual({p.name for p in output.iterdir()},{'install.sh','singbox-v2.sh','warp-rules.json','SHA256SUMS'})
+  self.assertEqual({p.name for p in output.iterdir()},{'bootstrap.sh','install.sh','singbox-v2.sh','warp-rules.json','SHA256SUMS'})
   for line in (output/'SHA256SUMS').read_text().splitlines():
    digest,name=line.split('  ');self.assertEqual(hashlib.sha256((output/name).read_bytes()).hexdigest(),digest)
  def test_successful_acme_issuance_saves_owned_state_and_certificate_without_auto_timer(self):

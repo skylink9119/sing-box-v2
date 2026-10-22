@@ -9,7 +9,7 @@ def main():
  subprocess.run(['bash',str(ROOT/'singbox-v2.sh'),'--self-check'],check=True)
  version=re.search(r'^MANAGER_VERSION=(.+)$',(ROOT/'src/manager.sh').read_text(),re.M)[1]
  out.mkdir(parents=True,mode=0o700)
- assets={'install.sh':ROOT/'install.sh','singbox-v2.sh':ROOT/'singbox-v2.sh','warp-rules.json':ROOT/'data/warp-rules.json'}
+ assets={'bootstrap.sh':ROOT/'bootstrap.sh','install.sh':ROOT/'install.sh','singbox-v2.sh':ROOT/'singbox-v2.sh','warp-rules.json':ROOT/'data/warp-rules.json'}
  for name,source in assets.items():shutil.copyfile(source,out/name)
  (out/'SHA256SUMS').write_text(''.join(hashlib.sha256((out/name).read_bytes()).hexdigest()+'  '+name+'\n' for name in sorted(assets)))
  print('Prepared SKYBYTE Manager v'+version+' assets: '+str(out))

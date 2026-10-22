@@ -13,9 +13,14 @@ L(){ printf '%s / %s' "$1" "$2"; }
 warn(){ printf '%s\n' "$*" >&2; }
 # @include packages.sh
 installer_dependencies(){
- local name missing=0
- for name in curl flock python3;do command -v "$name" >/dev/null || missing=1;done
- if (( missing ));then apt_install curl ca-certificates python3 util-linux || return 1;fi
+ local name
+ local missing=()
+ for name in curl flock python3;do command -v "$name" >/dev/null || missing+=("$name");done
+ if (( ${#missing[@]} ));then
+  warn "Missing tools: ${missing[*]}; installing base dependencies / 缺少工具：${missing[*]}，正在自动安装基础依赖"
+  apt_install curl ca-certificates python3 util-linux || return 1
+ fi
+ for name in curl flock python3;do command -v "$name" >/dev/null || { err "Missing $name after installation / 安装后仍缺少 $name";return 1; };done
 }
 installer_guard(){
  [[ ! -L $MANAGER_DIR && ( ! -e $MANAGER_DIR || -d $MANAGER_DIR ) && ! -L $MANAGER_TARGET && ! -L $MANAGER_LOCK && ( ! -e $MANAGER_LOCK || -f $MANAGER_LOCK ) ]] || { err 'Unsafe installer path / 安装路径异常'; return 1; }
@@ -27,9 +32,8 @@ installer_launch(){ exec 9>&-;exec bash "$MANAGER_TARGET"; }
 installer_root(){ if (( EUID != 0 ));then err 'Please run as root / 请使用 root';return 1;fi; }
 install_manager() (
  installer_root || return 1
- local name temp=''
+ local temp=''
  installer_guard && installer_dependencies || return 1
- for name in curl flock python3;do command -v "$name" >/dev/null || { err "Missing $name / 缺少 $name";return 1; };done
  exec 9>"$MANAGER_LOCK"
  flock -n 9 || { err 'Another management task is running / 其他管理任务正在运行';return 1; }
  mkdir -p "$MANAGER_DIR" || return 1
