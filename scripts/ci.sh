@@ -6,7 +6,7 @@ source ./singbox-v2.sh
 apt_install bash curl ca-certificates git python3 python3-yaml openssl shellcheck perl gnupg certbot python3-certbot-dns-cloudflare haproxy iproute2 procps
 python3 scripts/build.py --check
 for file in bootstrap.sh install.sh singbox-v2.sh src/*.sh scripts/ci.sh;do bash -n "$file";done
-shellcheck bootstrap.sh install.sh singbox-v2.sh scripts/ci.sh
+shellcheck src/quickstart.sh bootstrap.sh install.sh singbox-v2.sh scripts/ci.sh
 bash singbox-v2.sh --self-check
 
 # Official WARP CLI packaging may not support EOL Bullseye; protocol/install

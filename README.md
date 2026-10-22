@@ -51,37 +51,15 @@ V2.8.1 完整源码审计修复：一键入口验证目标归属并原子替换�
 
 ## Ubuntu/Debian VPS 一键安装
 
-需要 root、Ubuntu/Debian 和 systemd。常规公网节点需要可用的公网 IPv4 或 IPv6；官方二进制映射支持 amd64、arm64、armv7 和 386。请以 root 账号登录 VPS，在 Bash 终端粘贴下面完整命令。下载前先检测 `curl`，缺少时自动安装 `curl` 和 CA 证书，已有 `curl` 时跳过这一步；随后下载并运行原有 `install.sh` 入口：
+需要 root、Ubuntu/Debian 和 systemd。以 root 账号登录 VPS，在 Bash 终端复制运行下面这一条命令。缺少 `curl` 时会自动安装 `curl` 和 CA 证书；其余检查由启动脚本完成。
 
 <!-- SKYBYTE_INSTALL_COMMAND_START -->
 ```bash
-#!/usr/bin/env bash
-(
- set -Eeuo pipefail
- if [[ $(id -u) != 0 ]];then printf 'Please run as root / 请以 root 账户运行\n' >&2;exit 1;fi
- os_id=$(awk -F= '$1=="ID" {gsub(/"/,"",$2);print $2}' "${OS_RELEASE:-/etc/os-release}")
- case $os_id in ubuntu|debian) :;; *) printf 'Ubuntu/Debian only / 仅支持 Ubuntu/Debian\n' >&2;exit 1;; esac
- if ! command -v curl >/dev/null 2>&1;then
-  printf 'curl not found; installing curl and CA certificates / 未安装 curl，正在安装 curl 与 CA 证书……\n'
-  if ! apt-get -o APT::Update::Error-Mode=any -o Acquire::Retries=2 --allow-releaseinfo-change-suite update;then
-   printf 'APT refresh failed; download stopped / APT 索引更新失败，已停止下载，请先修复软件源或网络\n' >&2
-   exit 1
-  fi
-  if ! DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates;then
-   printf 'curl installation failed; download stopped / curl 安装失败，已停止下载\n' >&2
-   exit 1
-  fi
-  if ! command -v curl >/dev/null 2>&1;then printf 'curl is still unavailable / 安装后仍找不到 curl，请检查 PATH 或软件包状态\n' >&2;exit 1;fi
- fi
- installer=$(mktemp "${TMPDIR:-/tmp}/skybyte-install.XXXXXX")
- trap 'rm -f -- "$installer"' EXIT
- curl -q -fsSL --proto '=https' --proto-redir '=https' --retry 2 --connect-timeout 10 --max-time 120 https://raw.githubusercontent.com/skylink9119/sing-box-v2/main/install.sh -o "$installer"
- bash "$installer"
-)
+(if ! command -v curl >/dev/null; then apt-get update && apt-get install -y curl ca-certificates; fi && script=$(curl -q -fsSL --max-time 60 https://raw.githubusercontent.com/skylink9119/sing-box-v2/main/bootstrap.sh) && bash -c "$script")
 ```
 <!-- SKYBYTE_INSTALL_COMMAND_END -->
 
-启动命令使用临时文件，APT 或下载失败时停止，不执行残留的旧脚本，结束后清理临时文件。它保留安装器的标准输入，后续语言选择和菜单仍可正常交互。缺少 `curl` 且 APT 软件源不可达或失效时，须先修复软件源；下载后的安装器继续使用已有 Debian 11 归档兼容逻辑。
+详细的系统检查、错误提示和临时文件清理由 [`bootstrap.sh`](bootstrap.sh) 处理。安装或下载失败会停止，并保留后续语言选择和菜单输入。缺少 `curl` 时，需要可用的 APT 软件源。
 
 开发分支未合并时，上述命令仍安装 main 版本。测试当前分支可先克隆仓库并切换到对应分支，再以 root 账号运行 `bash ./singbox-v2.sh`。建议先审阅下载的脚本。
 
@@ -246,7 +224,7 @@ GitHub Actions 在 Ubuntu 24.04 和 Debian 11、12、13 容器执行检查。详
 
 ## 源码模块与构建
 
-维护源码在 `src/`：`bootstrap.sh` 为下载前 curl 检测与启动命令，`installer.sh` 为一键入口，`packages.sh` 为 APT 兼容与归档修复，`shortcut.sh` 为 `sb` 快捷入口；`manager.sh` 为基础服务及安装逻辑，`subscriptions.sh` 为订阅导出，`users.sh` 为用户界面/服务，`users.py` 为配额与诊断，`operations.sh` 为更新/证书/资源，`menu.sh` 为主菜单及启动入口；`rescue.sh`/`rescue.py` 管理受限网络、Argo 应急、离线资产及 IPv6/NAT 辅助，`hopping.sh` 管理 UDP 跳跃，`media.sh`/`media.py` 检测流媒体，`warp.sh`/`warp.py` 管理 WARP 网关与托管路由，`relay.sh` 提供 sing-box 住宅落地中转界面，`haproxy.sh`/`haproxy.py` 提供独立 TCP 透传；`configuration.sh`/`configuration.py` 编辑节点，`acme.sh` 管理证书申请，`online.sh`/`online.py` 提供 HTTPS 订阅，`reliability.sh`/`backup.py` 管理安装事务、版本与备份，`help.sh` 提供使用说明。运行 `python3 scripts/build.py` 生成完整 `singbox-v2.sh`、`install.sh`、`bootstrap.sh` 与中英文安装命令；`python3 scripts/build.py --check` 检查是否同步。不要直接修改生成文件。
+维护源码在 `src/`：`quickstart.sh` 为一行安装命令，`bootstrap.sh` 为完整启动检查，`installer.sh` 为一键入口，`packages.sh` 为 APT 兼容与归档修复，`shortcut.sh` 为 `sb` 快捷入口；`manager.sh` 为基础服务及安装逻辑，`subscriptions.sh` 为订阅导出，`users.sh` 为用户界面/服务，`users.py` 为配额与诊断，`operations.sh` 为更新/证书/资源，`menu.sh` 为主菜单及启动入口；`rescue.sh`/`rescue.py` 管理受限网络、Argo 应急、离线资产及 IPv6/NAT 辅助，`hopping.sh` 管理 UDP 跳跃，`media.sh`/`media.py` 检测流媒体，`warp.sh`/`warp.py` 管理 WARP 网关与托管路由，`relay.sh` 提供 sing-box 住宅落地中转界面，`haproxy.sh`/`haproxy.py` 提供独立 TCP 透传；`configuration.sh`/`configuration.py` 编辑节点，`acme.sh` 管理证书申请，`online.sh`/`online.py` 提供 HTTPS 订阅，`reliability.sh`/`backup.py` 管理安装事务、版本与备份，`help.sh` 提供使用说明。运行 `python3 scripts/build.py` 生成完整 `singbox-v2.sh`、`install.sh`、`bootstrap.sh` 与中英文安装命令；`python3 scripts/build.py --check` 检查是否同步。不要直接修改生成文件。
 
 安装仍只需 `install.sh`，部署的脚本自带所有模块，不在运行时下载或加载额外文件。`bash singbox-v2.sh --self-check` 无需 root，可检查内嵌 Python 语法并输出版本。systemd/UFW 操作使用隔离模拟测试；实际 VPS 部署仍需验证。
 

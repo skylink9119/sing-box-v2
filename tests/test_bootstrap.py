@@ -19,7 +19,7 @@ class CurlBootstrapTest(unittest.TestCase):
         self.staging = self.root/'staging'; self.staging.mkdir()
         self.log = self.root/'events'
 
-    def run_case(self, present=False, failure='', uid='0', distribution='debian', dependencies=False):
+    def run_case(self, present=False, failure='', uid='0', distribution='debian', dependencies=False, quickstart=False):
         available = self.root/'curl-present'
         available.unlink(missing_ok=True); self.log.unlink(missing_ok=True)
         if present: available.touch()
@@ -52,11 +52,18 @@ curl(){
  [[ -f $TEST_ROOT/curl-present ]] || return 127
  local output=''
  while (($#));do if [[ $1 == -o ]];then output=$2;shift 2;else shift;fi;done
- [[ -n $output ]] || return 1
+ if [[ -z $output ]];then
+  printf '%s\n' 'IFS= read -r answer || exit 1' 'printf "stdin:%s\n" "$answer" >> "$TEST_ROOT/events"'
+  [[ $TEST_FAILURE != download ]];return
+ fi
  printf 'downloaded fixture\n' > "$output"
  [[ $TEST_FAILURE != download ]]
 }
 bash(){
+ if [[ $1 == -c ]];then
+  printf 'launch\n' >> "$TEST_ROOT/events"
+  builtin command "$TEST_BASH" "$@";return
+ fi
  [[ -f $1 ]] || return 1
  printf 'launch\n' >> "$TEST_ROOT/events"
  local answer
@@ -69,11 +76,11 @@ bash(){
             source = 'source '+shlex.quote(str(ROOT/'install.sh'))+'\n'
             action = 'installer_dependencies'
         else:
-            action = (ROOT/'bootstrap.sh').read_text()
+            action = (ROOT/'src/quickstart.sh' if quickstart else ROOT/'bootstrap.sh').read_text()
         result = subprocess.run([BASH, '-c', source+definitions+'\n'+action],
             input='menu input preserved\n', capture_output=True, text=True, timeout=10, cwd=self.root,
             env={**os.environ, 'TEST_ROOT':str(self.root), 'TEST_FAILURE':failure, 'TEST_UID':uid,
-                 'OS_RELEASE':str(release), 'TMPDIR':str(self.staging), 'NO_COLOR':'1'})
+                 'OS_RELEASE':str(release), 'TMPDIR':str(self.staging), 'NO_COLOR':'1', 'TEST_BASH':BASH})
         events = self.log.read_text().splitlines() if self.log.exists() else []
         self.assertEqual(list(self.staging.iterdir()), [], 'Temporary installer must be cleaned up')
         return result, events
@@ -153,6 +160,33 @@ bash(){
                 result, events = self.run_case(failure=failure, dependencies=True)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertEqual(events, ['packages:curl ca-certificates python3 util-linux'])
+
+    def test_compact_command_with_curl_preserves_input_without_apt(self):
+        result, events = self.run_case(present=True, quickstart=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(events[-2:], ['launch', 'stdin:menu input preserved'])
+        self.assertEqual(len(events), 3)
+        self.assertIn('/main/bootstrap.sh', events[0])
+
+    def test_compact_command_installs_curl_before_fetching_bootstrap(self):
+        result, events = self.run_case(quickstart=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(events[:2], ['apt:update', 'apt:install -y curl ca-certificates'])
+        self.assertTrue(events[2].startswith('download:'))
+        self.assertEqual(events[-2:], ['launch', 'stdin:menu input preserved'])
+
+    def test_compact_command_stops_on_apt_failure(self):
+        for failure in ['update', 'install']:
+            with self.subTest(failure=failure):
+                result, events = self.run_case(failure=failure, quickstart=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertTrue(all(event.startswith('apt:') for event in events))
+
+    def test_compact_command_does_not_execute_partial_failed_download(self):
+        result, events = self.run_case(present=True, failure='download', quickstart=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(len(events), 1)
+        self.assertTrue(events[0].startswith('download:'))
 
 
 if __name__ == '__main__':
