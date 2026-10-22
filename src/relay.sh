@@ -74,7 +74,7 @@ Both servers need working nodes. Open a separate SSH terminal for each server.
    For Reality or HY2 with a trusted CA certificate, press Enter.
    For self-signed HY2 on B, copy B's PUBLIC certificate to A, verify its fingerprint
    and enter its file path on A. See the certificate commands below.
-5. Choose 1 All node traffic through landing (Enter accepts the default), then type YES.
+5. Choose 1 All node traffic through landing (Enter accepts the default), then type y.
    The script tests B's connection, backs up and applies the policy if successful.
    Relay is enabled when import completes.
 
@@ -130,7 +130,7 @@ RELAY_HELP_EN
    B 使用 Reality 或受信任 CA 证书的 HY2，可以直接回车。
    B 使用 HY2 自签名证书，需要先把 B 的公开证书复制到 A，核对指纹，
    再填写它在 A 上的文件路径。具体命令见下方。
-5. 选择 1「全部节点流量走落地」，回车使用默认值，再输入 YES 确认。
+5. 选择 1「全部节点流量走落地」，回车使用默认值，再输入 y 确认。
    脚本验证 B 的连接成功后，备份并应用出站策略；导入完成时就会启用中转。
 
 最后，小火箭使用 A 的节点链接或二维码。连接成功后的路线就是：

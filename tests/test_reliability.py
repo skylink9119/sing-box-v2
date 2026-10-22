@@ -28,22 +28,22 @@ download_binary(){ cp '''+shlex.quote(manager.SB)+''' "$2";chmod 755 "$2"; }
  @unittest.skipUnless(manager.SB,'real engine required')
  def test_install_precommit_failure_leaves_no_formal_files_and_retry_works(self):
   code=self.install_mocks('curl(){ return 1; };install_protocol 2')
-  r=self.shell(code,input='yes\n\n1\n',ok=False);self.assertNotEqual(r.returncode,0)
+  r=self.shell(code,input='y\n\n1\n',ok=False);self.assertNotEqual(r.returncode,0)
   self.assertFalse(self.bin.exists());self.assertFalse((self.config/'config.json').exists());self.assertFalse(list(self.base.glob('install.*')))
-  self.shell(self.install_mocks()+'install_protocol 2',input='yes\n\n1\n')
+  self.shell(self.install_mocks()+'install_protocol 2',input='y\n\n1\n')
   cfg=json.loads((self.config/'config.json').read_text());self.assertEqual(cfg['inbounds'][0]['tls']['certificate_path'],str(self.config/'hy2-selfsigned.crt'))
   self.assertFalse(list(self.base.glob('install.*')));self.assertTrue((self.base/'shadowrocket-native-nodes.txt').exists())
  @unittest.skipUnless(manager.SB,'real engine required')
  def test_failed_service_start_cleans_only_created_files_and_keeps_unknown_notes(self):
   note=self.config/'keep.txt';note.write_text('preserve')
   code=self.install_mocks('systemctl(){ [[ $1 != enable ]]; };install_protocol 2')
-  self.assertNotEqual(self.shell(code,input='yes\n\n1\n',ok=False).returncode,0)
+  self.assertNotEqual(self.shell(code,input='y\n\n1\n',ok=False).returncode,0)
   self.assertFalse(self.bin.exists());self.assertFalse((self.config/'config.json').exists());self.assertFalse((self.root/'systemd/sing-box.service').exists());self.assertEqual(note.read_text(),'preserve')
  @unittest.skipUnless(manager.SB,'real engine required')
  def test_hy2_certificate_ignores_conflicting_system_request_extensions(self):
   request=self.root/'system-req.cnf';text='[req]\ndistinguished_name=dn\nx509_extensions=custom\n[dn]\n[custom]\nbasicConstraints=critical,CA:FALSE\nsubjectAltName=DNS:wrong.example\n'
   request.write_text(text)
-  self.shell(self.install_mocks()+'OPENSSL_CONF='+shlex.quote(str(request))+' install_protocol 2',input='yes\n\n1\n')
+  self.shell(self.install_mocks()+'OPENSSL_CONF='+shlex.quote(str(request))+' install_protocol 2',input='y\n\n1\n')
   cert=self.config/'hy2-selfsigned.crt'
   details=subprocess.check_output([manager.OPENSSL,'x509','-in',str(cert),'-noout','-text'],text=True)
   self.assertEqual(details.count('X509v3 Basic Constraints'),1)
@@ -53,7 +53,7 @@ download_binary(){ cp '''+shlex.quote(manager.SB)+''' "$2";chmod 755 "$2"; }
  @unittest.skipUnless(manager.SB,'real engine required')
  def test_install_exclusive_commit_preserves_file_created_during_preparation(self):
   code=self.install_mocks('curl(){ echo foreign > "$final_meta";printf 8.8.8.8; };install_protocol 2')
-  self.assertNotEqual(self.shell(code,input='yes\n\n1\n',ok=False).returncode,0)
+  self.assertNotEqual(self.shell(code,input='y\n\n1\n',ok=False).returncode,0)
   self.assertEqual((self.base/'state.json').read_text(),'foreign\n');self.assertFalse(self.bin.exists());self.assertFalse((self.config/'hy2-selfsigned.key').exists())
  def test_node_address_sni_ports_preserve_credentials_and_usage(self):
   self.user_setup(2);uid=self.add_user();d=self.user_db();d['users'][0].update(upload=1234,download=789);self.save_user_db(d)
@@ -99,7 +99,7 @@ download_binary(){ cp '''+shlex.quote(manager.SB)+''' "$2";chmod 755 "$2"; }
  def test_backup_manifest_detects_tamper_before_restore(self):
   self.configure('2');snap=pathlib.Path(self.shell('backup').stdout.strip());manifest=json.loads((snap/'backup-manifest.json').read_text());self.assertEqual(manifest['owner'],'SKYBYTE backup v1')
   self.shell('backup_engine preflight '+shlex.quote(str(snap)));before=(self.config/'config.json').read_bytes();(snap/'state.json').write_text('{}')
-  r=self.shell('systemctl(){ echo SHOULD_NOT_STOP; };restore',input=str(snap)+'\nyes\n',ok=False);self.assertNotEqual(r.returncode,0);self.assertEqual(before,(self.config/'config.json').read_bytes());self.assertNotIn('SHOULD_NOT_STOP',r.stdout)
+  r=self.shell('systemctl(){ echo SHOULD_NOT_STOP; };restore',input=str(snap)+'\ny\n',ok=False);self.assertNotEqual(r.returncode,0);self.assertEqual(before,(self.config/'config.json').read_bytes());self.assertNotIn('SHOULD_NOT_STOP',r.stdout)
  def test_backup_archive_roundtrip_and_traversal_rejection(self):
   self.configure('2');snap=pathlib.Path(self.shell('backup').stdout.strip());archive=self.root/'backup.tar.gz'
   self.shell('backup_engine archive '+shlex.quote(str(snap))+' '+shlex.quote(str(archive)))
@@ -148,7 +148,7 @@ download_binary(){ cp '''+shlex.quote(manager.SB)+''' "$2";chmod 755 "$2"; }
    self.assertTrue(all(server.allow('127.0.0.1') for _ in range(60)));self.assertFalse(server.allow('127.0.0.1'))
  def test_online_setup_rejects_untrusted_self_signed_without_creating_listener(self):
   self.user_setup()
-  r=self.shell('ss(){ :; };online_setup',input='node.example\n8443\n'+str(self.cert)+'\n'+str(self.key)+'\nyes\n',ok=False)
+  r=self.shell('ss(){ :; };online_setup',input='node.example\n8443\n'+str(self.cert)+'\n'+str(self.key)+'\ny\n',ok=False)
   self.assertNotEqual(r.returncode,0);self.assertFalse((self.base/'subscriptions.json').exists());self.assertFalse((self.root/'systemd/skybyte-subscriptions.service').exists())
  def test_foreign_subscription_and_acme_units_are_never_removed(self):
   self.configure();unit=self.root/'systemd/skybyte-subscriptions.service';unit.write_text('Description=foreign\n')
@@ -163,10 +163,10 @@ download_binary(){ cp '''+shlex.quote(manager.SB)+''' "$2";chmod 755 "$2"; }
   exe.write_text('#!/bin/sh\nprintf "%s\\n" "$*" > '+shlex.quote(str(log))+'\nexit 1\n');exe.chmod(0o700)
   token='a'*32
   code='need_root(){ :; };apt-get(){ :; };PATH='+shlex.quote(str(tools))+':"$PATH";acme_issue'
-  r=self.shell(code,input='node.example\nowner@example.com\n2\nyes\n'+token+'\n',ok=False);self.assertNotEqual(r.returncode,0)
+  r=self.shell(code,input='node.example\nowner@example.com\n2\ny\n'+token+'\n',ok=False);self.assertNotEqual(r.returncode,0)
   text=log.read_text();self.assertIn('--config-dir '+str(self.base/'acme/config'),text);self.assertIn('--dns-cloudflare-credentials '+str(self.base/'acme/cloudflare.ini'),text);self.assertNotIn(token,text);self.assertNotIn(token,r.stdout+r.stderr)
   self.assertEqual((self.base/'acme/cloudflare.ini').stat().st_mode&0o777,0o600)
-  self.shell('acme_menu',input='6\nyes\n');self.assertFalse((self.base/'acme').exists())
+  self.shell('acme_menu',input='6\ny\n');self.assertFalse((self.base/'acme').exists())
  def test_rule_catalog_update_validates_and_preserves_custom_live_routing(self):
   self.configure();self.shell('warp_engine switch restricted 40000 false custom.example');before=(self.config/'config.json').read_bytes();catalog=json.loads((manager.ROOT/'data/warp-rules.json').read_text());catalog['version']='2026.10.14';catalog['media'].append('media.example');p=self.root/'catalog.json';p.write_text(json.dumps(catalog))
   self.shell('warp_engine catalog_update '+shlex.quote(str(p)));self.assertIn('media.example',self.shell('warp_engine defaults').stdout);self.assertEqual(before,(self.config/'config.json').read_bytes())
@@ -182,8 +182,8 @@ download_binary(){ cp '''+shlex.quote(manager.SB)+''' "$2";chmod 755 "$2"; }
   self.bin.write_text('#!/bin/sh\necho "sing-box version 1.14.3"\n');self.bin.chmod(0o700)
   code='latest(){ echo 1.14.4; };apply_update(){ echo SWITCHED-"$1"; };core_versions'
   r=self.shell(code,input='1\n');self.assertNotIn('SWITCHED',r.stdout)
-  r=self.shell(code,input='2\nyes\n');self.assertIn('SWITCHED-1.14.4',r.stdout)
-  r=self.shell(code,input='3\n1.13.0\nyes\n');self.assertIn('SWITCHED-1.13.0',r.stdout)
+  r=self.shell(code,input='2\ny\n');self.assertIn('SWITCHED-1.14.4',r.stdout)
+  r=self.shell(code,input='3\n1.13.0\ny\n');self.assertIn('SWITCHED-1.13.0',r.stdout)
   r=self.shell(code,input='3\n1.13.0\nno\n',ok=False);self.assertNotIn('SWITCHED',r.stdout)
   self.assertNotEqual(self.shell(code,input='3\n1.2;evil\n',ok=False).returncode,0)
  def test_tls_edit_rejects_mismatched_identity_without_touching_original(self):
@@ -207,7 +207,7 @@ download_binary(){ cp '''+shlex.quote(manager.SB)+''' "$2";chmod 755 "$2"; }
  def test_acme_and_subscription_uninstall_retains_private_integrity_checked_backup(self):
   self.prepare_uninstall();self.acme_fixture();self.shell('online_engine init node.example 8443 '+shlex.quote(str(self.cert))+' '+shlex.quote(str(self.key)))
   unit=self.root/'systemd/skybyte-subscriptions.service';unit.write_text('Description=SKYBYTE managed HTTPS subscriptions\nExecStart=/bin/bash '+str(self.root/'manager-command')+' --subscription-serve\n')
-  self.shell('need_root(){ :; };systemctl(){ :; };uninstall_manager',input='yes\n')
+  self.shell('need_root(){ :; };systemctl(){ :; };uninstall_manager',input='y\n')
   self.assertFalse(unit.exists());self.assertFalse((self.base/'acme').exists());snap=next(self.backups.iterdir());self.assertTrue((snap/'acme/config/live/skybyte/privkey.pem').exists());self.assertTrue((snap/'subscriptions.json').exists());self.shell('backup_engine preflight '+shlex.quote(str(snap)),ok=False)
   # Integrity remains valid even though the current core was deliberately uninstalled.
   manifest=json.loads((snap/'backup-manifest.json').read_text())
@@ -256,7 +256,7 @@ download_binary(){ cp '''+shlex.quote(manager.SB)+''' "$2";chmod 755 "$2"; }
  def test_successful_acme_issuance_saves_owned_state_and_certificate_without_auto_timer(self):
   tools=self.root/'tools';tools.mkdir();exe=tools/'certbot';live=self.base/'acme/config/live/skybyte'
   exe.write_text('#!/bin/sh\nmkdir -p '+shlex.quote(str(live))+'\ncp '+shlex.quote(str(self.cert))+' '+shlex.quote(str(live/'fullchain.pem'))+'\ncp '+shlex.quote(str(self.key))+' '+shlex.quote(str(live/'privkey.pem'))+'\n');exe.chmod(0o700)
-  self.shell('need_root(){ :; };apt-get(){ :; };ss(){ :; };PATH='+shlex.quote(str(tools))+':"$PATH";acme_issue',input='node.example\nowner@example.com\n1\nyes\n')
+  self.shell('need_root(){ :; };apt-get(){ :; };ss(){ :; };PATH='+shlex.quote(str(tools))+':"$PATH";acme_issue',input='node.example\nowner@example.com\n1\ny\n')
   state=json.loads((self.base/'acme-state.json').read_text());self.assertEqual(state['domain'],'node.example');self.assertEqual(state['owner'],'SKYBYTE ACME v1');self.assertFalse((self.root/'systemd/skybyte-acme.timer').exists());self.assertEqual((self.base/'acme-state.json').stat().st_mode&0o777,0o600)
  def test_idle_menu_releases_operation_lock_and_reacquires_for_action(self):
   self.configure();events=self.root/'lock-events'
@@ -287,7 +287,7 @@ download_binary(){ cp '''+shlex.quote(manager.SB)+''' "$2";chmod 755 "$2"; }
   self.configure();cfg=json.loads((self.config/'config.json').read_text());cfg['inbounds'][0]['listen_port']=24443;cfg['inbounds'][1]['listen_port']=34443;(self.config/'config.json').write_text(json.dumps(cfg))
   self.shell('online_engine init node.example 8443 '+shlex.quote(str(self.cert))+' '+shlex.quote(str(self.key)))
   code='need_root(){ :; };detect_ssh_ports(){ SSH_PORTS=22; };ufw(){ echo "UFW $*"; };firewall'
-  r=self.shell(code,input='2\n22\nyes\n');self.assertIn('UFW allow 24443/tcp',r.stdout);self.assertIn('UFW allow 34443/udp',r.stdout);self.assertIn('UFW allow 8443/tcp',r.stdout);self.assertNotIn('UFW allow 443/',r.stdout)
+  r=self.shell(code,input='2\n22\ny\n');self.assertIn('UFW allow 24443/tcp',r.stdout);self.assertIn('UFW allow 34443/udp',r.stdout);self.assertIn('UFW allow 8443/tcp',r.stdout);self.assertNotIn('UFW allow 443/',r.stdout)
  def test_status_reports_actual_protocol_listeners(self):
   self.configure();cfg=json.loads((self.config/'config.json').read_text());cfg['inbounds'][0]['listen_port']=24443;cfg['inbounds'][1]['listen_port']=34443;(self.config/'config.json').write_text(json.dumps(cfg))
   r=self.shell('systemctl(){ :; };ss(){ echo "$*"; };nft(){ :; };firewall_audit(){ :; };status')

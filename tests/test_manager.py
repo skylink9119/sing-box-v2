@@ -115,10 +115,13 @@ class ManagerTest(unittest.TestCase):
         return json.loads((self.base / 'outbounds.json').read_text())
 
     def test_case_insensitive_confirmation(self):
-        for word in ['yes', 'YES', 'Yes', 'yEs', '  YES  ']:
+        for word in ['y', 'Y', '  y  ', '\tY\t']:
             self.shell('confirm test', input=word + '\n')
-        for word in ['y', 'no', '', 'yes please', 'y e s']:
-            self.assertNotEqual(self.shell('confirm test', input=word + '\n', ok=False).returncode, 0)
+        for word in ['n', 'N', 'no', '', 'yes', 'YES', 'yy', 'yes please', 'y e s']:
+            result = self.shell('confirm test && printf EXECUTED', input=word + '\n', ok=False)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertNotIn('EXECUTED', result.stdout)
+        self.assertNotEqual(self.shell('confirm test', input='', ok=False).returncode, 0)
 
     def test_port_validation(self):
         for value in ['1', '443', '00443', '65535']:
@@ -331,7 +334,7 @@ hy2_diagnostics""")
                                           key_path=str(backup/'config'/'hy2-backup.key'))
         (self.config/'config.json').write_text(json.dumps(current))
         self.shell('systemctl(){ :; }; service_healthy(){ :; }; nft(){ :; }; restore',
-                   input=before + '\nyEs\n')
+                   input=before + '\nY\n')
         restored = json.loads((self.config/'config.json').read_text())
         self.assertTrue(Path(restored['inbounds'][0]['tls']['key_path']).is_file())
         self.assertFalse(json.loads((self.base/'state.json').read_text())['hop'])
@@ -376,10 +379,13 @@ printf '%s' "$SSH_PORTS"''')
             self.assertIn('VNSTAT '+argument, result.stdout)
 
     def test_service_config_checked_before_restart(self):
-        result = self.shell('systemctl(){ printf "SYSTEMCTL %s\\n" "$*"; }; service_manager', input='3\nyes\n', ok=False)
+        result = self.shell('systemctl(){ printf "SYSTEMCTL %s\\n" "$*"; }; service_manager', input='3\ny\n', ok=False)
         self.assertNotIn('SYSTEMCTL restart', result.stdout)
         self.configure('1')
-        result = self.shell('systemctl(){ printf "SYSTEMCTL %s\\n" "$*"; }; service_manager', input='3\nyes\n')
+        for answer in ['', 'n', 'N']:
+            cancelled = self.shell('systemctl(){ printf "SYSTEMCTL %s\\n" "$*"; }; service_manager', input='3\n'+answer+'\n', ok=False)
+            self.assertNotIn('SYSTEMCTL restart', cancelled.stdout)
+        result = self.shell('systemctl(){ printf "SYSTEMCTL %s\\n" "$*"; }; service_manager', input='3\ny\n')
         self.assertIn('SYSTEMCTL restart sing-box', result.stdout)
 
     def test_ascii_brand_and_bilingual_menus(self):
@@ -406,7 +412,7 @@ printf '%s' "$SSH_PORTS"''')
     def test_uninstall_backs_up_and_preserves_external_certs_and_unknown_files(self):
         self.prepare_uninstall()
         self.shell('exports')
-        result=self.shell('need_root(){ :; }; systemctl(){ :; }; nft(){ return 1; }; uninstall_manager', input='yEs\n')
+        result=self.shell('need_root(){ :; }; systemctl(){ :; }; nft(){ return 1; }; uninstall_manager', input='Y\n')
         self.assertIn('Uninstalled;',result.stdout)
         self.assertFalse(self.bin.exists())
         self.assertFalse((self.config/'config.json').exists())
@@ -429,7 +435,7 @@ printf '%s' "$SSH_PORTS"''')
         result=self.shell("""need_root(){ :; }
 systemctl(){ printf 'SYSTEMCTL %s\\n' "$*"; }
 nft(){ printf 'NFT %s\\n' "$*"; }
-uninstall_manager""",input='yes\n')
+uninstall_manager""",input='y\n')
         self.assertFalse((self.root/'manager-lib').exists())
         self.assertFalse((self.root/'manager-command').exists())
         self.assertEqual(list((self.root/'systemd').iterdir()),[])
@@ -440,14 +446,14 @@ uninstall_manager""",input='yes\n')
     def test_uninstall_preserves_unowned_hop_table_and_executable(self):
         self.prepare_uninstall()
         (self.root/'manager-command').write_text('unrelated executable')
-        result=self.shell('need_root(){ :; }; systemctl(){ :; }; nft(){ printf UNEXPECTED_NFT; }; uninstall_manager',input='yes\n')
+        result=self.shell('need_root(){ :; }; systemctl(){ :; }; nft(){ printf UNEXPECTED_NFT; }; uninstall_manager',input='y\n')
         self.assertNotIn('UNEXPECTED_NFT',result.stdout)
         self.assertEqual((self.root/'manager-command').read_text(),'unrelated executable')
 
     def test_uninstall_refuses_symlinked_binary(self):
         self.prepare_uninstall()
         target=self.root/'external-binary';self.bin.rename(target);self.bin.symlink_to(target)
-        result=self.shell('need_root(){ :; }; uninstall_manager',input='yes\n',ok=False)
+        result=self.shell('need_root(){ :; }; uninstall_manager',input='y\n',ok=False)
         self.assertNotEqual(result.returncode,0)
         self.assertTrue(target.exists());self.assertTrue(self.bin.is_symlink())
 
@@ -459,7 +465,7 @@ uninstall_manager""",input='yes\n')
         cfg=json.loads((self.config/'config.json').read_text())
         cfg['inbounds'][0]['tls'].update(certificate_path=str(cert),key_path=str(key))
         (self.config/'config.json').write_text(json.dumps(cfg))
-        self.shell('need_root(){ :; }; systemctl(){ :; }; uninstall_manager',input='yes\n')
+        self.shell('need_root(){ :; }; systemctl(){ :; }; uninstall_manager',input='y\n')
         self.assertTrue(cert.exists());self.assertTrue(key.exists())
 
     def test_uninstall_removes_new_and_legacy_managed_selfsigned_files(self):
@@ -476,13 +482,13 @@ uninstall_manager""",input='yes\n')
             if legacy:meta.pop('managed_certificates',None)
             else:meta['managed_certificates']=[str(cert),str(key)]
             (self.base/'state.json').write_text(json.dumps(meta))
-            self.shell('need_root(){ :; }; systemctl(){ :; }; uninstall_manager',input='yes\n')
+            self.shell('need_root(){ :; }; systemctl(){ :; }; uninstall_manager',input='y\n')
             self.assertFalse(cert.exists());self.assertFalse(key.exists())
 
     def test_uninstall_refuses_modified_service(self):
         self.prepare_uninstall()
         (self.root/'systemd'/'sing-box.service').write_text('Description=another deployment\n')
-        result=self.shell('need_root(){ :; }; uninstall_manager',input='yes\n',ok=False)
+        result=self.shell('need_root(){ :; }; uninstall_manager',input='y\n',ok=False)
         self.assertNotEqual(result.returncode,0)
         self.assertTrue(self.bin.exists())
         self.assertTrue((self.config/'config.json').exists())
@@ -490,7 +496,7 @@ uninstall_manager""",input='yes\n')
     def test_uninstall_backup_failure_or_stop_failure_preserves_config(self):
         for failure in ['backup(){ return 1; }','systemctl(){ return 1; }']:
             self.prepare_uninstall()
-            result=self.shell('need_root(){ :; }; '+failure+'; uninstall_manager',input='yes\n',ok=False)
+            result=self.shell('need_root(){ :; }; '+failure+'; uninstall_manager',input='y\n',ok=False)
             self.assertNotEqual(result.returncode,0)
             self.assertTrue(self.bin.exists())
             self.assertTrue((self.config/'config.json').exists())
@@ -498,7 +504,7 @@ uninstall_manager""",input='yes\n')
     def test_installer_refuses_existing_user_config(self):
         self.configure('2')
         before = (self.config/'config.json').read_bytes()
-        result = self.shell('need_root(){ :; }; install_protocol 2', input='yes\n', ok=False)
+        result = self.shell('need_root(){ :; }; install_protocol 2', input='y\n', ok=False)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('refusing to overwrite', result.stderr)
         self.assertEqual((self.config/'config.json').read_bytes(), before)
@@ -522,7 +528,7 @@ uninstall_manager""",input='yes\n')
         result = self.shell("""need_root(){ :; }
 ss(){ printf 'LISTEN 0 128 0.0.0.0:2222 0.0.0.0:* users:(("sshd",pid=1))\\n'; }
 ufw(){ printf 'UFW %s\\n' "$*"; }
-firewall""", input='2\n\nyes\n')
+firewall""", input='2\n\ny\n')
         for rule in ['2222/tcp','443/udp','20000:30000/udp']:
             self.assertIn('UFW allow '+rule,result.stdout)
         self.assertIn('UFW --force enable', result.stdout)
@@ -533,12 +539,12 @@ firewall""", input='2\n\nyes\n')
 systemctl(){ :; }
 ufw(){ printf 'Status: inactive\\n'; }
 """
-        self.shell(mocks+'hop', input='1\n1\n20000\n20100\nyes\n')
+        self.shell(mocks+'hop', input='1\n1\n20000\n20100\ny\n')
         self.assertIn('udp dport 20000-20100 redirect to :443', (self.base/'hop.nft').read_text())
         self.assertIn('ExecStop=/usr/sbin/nft delete table ip singbox_v2_hop',
                       (self.root/'systemd'/'singbox-v2-hop.service').read_text())
         self.assertTrue(json.loads((self.base/'state.json').read_text())['hop'])
-        self.shell(mocks+'hop', input='2\nyes\n')
+        self.shell(mocks+'hop', input='2\ny\n')
         self.assertFalse(json.loads((self.base/'state.json').read_text())['hop'])
 
     def test_initialization_does_not_enable_firewall_or_reboot(self):
@@ -550,7 +556,7 @@ getent(){ :; }
 curl(){ :; }
 ss(){ :; }
 ufw(){ printf 'UFW %s\\n' "$*"; }
-initialize_server""", input='yes\n')
+initialize_server""", input='y\n')
         self.assertIn('APT upgrade -y',result.stdout)
         self.assertIn('APT install -y',result.stdout)
         self.assertNotIn('UFW --force enable',result.stdout)
@@ -560,7 +566,7 @@ initialize_server""", input='yes\n')
         self.shell("""need_root(){ :; }
 modprobe(){ :; }
 sysctl(){ if [[ $1 == -n ]]; then printf 'reno cubic bbr\\n'; fi; }
-bbr""", input='yes\n')
+bbr""", input='y\n')
         self.assertEqual((self.root/'bbr.conf').read_text(),
                          'net.core.default_qdisc = fq\nnet.ipv4.tcp_congestion_control = bbr\n')
 
@@ -659,7 +665,7 @@ systemctl(){ if [[ $1 == list-unit-files ]]; then return 0; fi; }
 download_cloudflared(){ printf '#!/bin/sh\nexit 0\n' > "$1"; chmod 700 "$1"; }
 argo_wait(){ :; }
 argo_install named'''
-        result=self.shell(mocks,input='yes\n8080\n香港\nnode.example\n'+token+'\n')
+        result=self.shell(mocks,input='y\n8080\n香港\nnode.example\n'+token+'\n')
         self.assertEqual(original,(self.config/'config.json').read_bytes())
         self.assertEqual((self.base/'argo.token').read_text(),token)
         self.assertEqual((self.base/'argo.token').stat().st_mode&0o777,0o600)
@@ -675,11 +681,11 @@ systemctl(){ :; }
 download_cloudflared(){ printf '#!/bin/sh\nexit 0\n' > "$1"; chmod 700 "$1"; }
 argo_wait(){ :; }
 argo_install quick'''
-        self.shell(code,input='yes\n\n\n')
+        self.shell(code,input='y\n\n\n')
         self.assertEqual(json.loads((self.base/'argo-state.json').read_text())['mode'],'quick')
         self.assertFalse((self.base/'argo.token').exists())
         before=(self.base/'argo-state.json').read_bytes()
-        self.assertNotEqual(self.shell(code,input='yes\n',ok=False).returncode,0)
+        self.assertNotEqual(self.shell(code,input='y\n',ok=False).returncode,0)
         self.assertEqual(before,(self.base/'argo-state.json').read_bytes())
 
     def test_standalone_argo_bootstrap_uses_private_empty_core_and_creates_missing_base(self):
@@ -860,7 +866,7 @@ time.sleep(60)
     def test_uninstall_also_removes_owned_argo_with_backup(self):
         self.prepare_argo('named')
         self.shell('systemctl(){ :; }; setup_service; argo_setup_units')
-        self.shell('need_root(){ :; }; systemctl(){ :; }; uninstall_manager',input='yes\n')
+        self.shell('need_root(){ :; }; systemctl(){ :; }; uninstall_manager',input='y\n')
         self.assertFalse((self.base/'argo-state.json').exists());self.assertFalse((self.base/'argo.token').exists())
         self.assertFalse((self.root/'systemd'/'skybyte-argo-node.service').exists())
         snapshots=list(self.backups.iterdir());self.assertEqual(len(snapshots),1)
@@ -1166,7 +1172,7 @@ time.sleep(60)
         self.assertIn('RULE allow '+str(u['port'])+'/tcp',rules)
         self.assertIn('RULE allow '+str(u['port'])+'/udp',rules)
         self.assertNotIn(str(u['api_port']),rules)
-        result=self.shell('nft(){ return 1; }; hop',input='1\n1\n'+str(u['port'])+'\n'+str(u['port'])+'\nYES\n',ok=False)
+        result=self.shell('nft(){ return 1; }; hop',input='1\n1\n'+str(u['port'])+'\n'+str(u['port'])+'\nY\n',ok=False)
         self.assertNotEqual(result.returncode,0);self.assertIn('overlaps',result.stderr)
         self.assertFalse((self.root/'systemd'/'singbox-v2-hop.service').exists())
 
@@ -1174,7 +1180,7 @@ time.sleep(60)
         self.user_setup();a=self.add_user();d=self.user_db();d['users'][0]['download']=1234;self.save_user_db(d)
         note=self.base/'users'/a/'keep.txt';note.write_text('keep')
         self.shell('systemctl(){ :; }; setup_service; users_setup_service')
-        self.shell('need_root(){ :; }; systemctl(){ :; }; nft(){ return 1; }; uninstall_manager',input='yEs\n')
+        self.shell('need_root(){ :; }; systemctl(){ :; }; nft(){ return 1; }; uninstall_manager',input='Y\n')
         self.assertTrue(note.exists());self.assertFalse((self.base/'users.json').exists())
         self.assertFalse((self.config/'config.json').exists())
         saved=next(self.backups.glob('*/users.json'))

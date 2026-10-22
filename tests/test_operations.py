@@ -49,13 +49,13 @@ if [[ $url == */latest ]]; then cp '''+shlex.quote(str(manifest))+''' "$out"; el
         data={'tag_name':'v'+CANDIDATE_VERSION,'draft':False,'prerelease':False,'assets':[{'name':'singbox-v2.sh','digest':'sha256:'+hashlib.sha256(candidate.read_bytes()).hexdigest()}]}
         manifest.write_text(json.dumps(data))
         mocks=self.update_mocks(manifest,candidate)+'systemctl(){ return 1; }; '
-        self.shell(mocks+'manager_update',input='YES\n')
+        self.shell(mocks+'manager_update',input='Y\n')
         self.assertEqual(lib.read_bytes(),candidate.read_bytes());self.assertEqual(command.read_bytes(),candidate.read_bytes())
         self.assertEqual(cfg,(self.config/'config.json').read_bytes());self.assertEqual(ledger,(self.base/'users.json').read_bytes())
         self.assertTrue(list((self.base/'manager-backups').glob('*/manager-lib')))
         data['assets'][0]['digest']='sha256:'+'0'*64;manifest.write_text(json.dumps(data))
         lib.write_bytes(old);command.write_bytes(old)
-        self.assertNotEqual(self.shell(mocks+'manager_update',input='yes\n',ok=False).returncode,0)
+        self.assertNotEqual(self.shell(mocks+'manager_update',input='y\n',ok=False).returncode,0)
         self.assertEqual(lib.read_bytes(),old);self.assertEqual(command.read_bytes(),old)
 
     def test_manager_update_refuses_foreign_scripts_symlinks_and_missing_digest(self):

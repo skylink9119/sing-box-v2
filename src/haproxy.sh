@@ -74,7 +74,7 @@ Path: phone → A HAProxy TCP forwarder → B node → website.
    A does not need a sing-box node for this mode.
 3. Enter a rule name, A's listen IP and TCP port, then B's IP/hostname and node TCP port.
    Defaults: A listens on 0.0.0.0:8443, B uses port 443. IPv6 listen :: is IPv6-only.
-   Use an unused port on A. Type YES to validate and enable forwarding.
+   Use an unused port on A. Type y to validate and enable forwarding.
 4. On your phone, copy B's node. Change only its connection address to A's public IP/hostname
    and its connection port to A's forwarding port. Keep B's password/UUID, SNI, Reality keys,
    fingerprint and certificate verification settings. A does not need B's private key.
@@ -106,7 +106,7 @@ A：线路较好的中转服务器。B：住宅 IP 落地服务器。
    这种模式下，A 可以不安装 sing-box 节点。
 3. 填写规则名称、A 监听地址与转发端口，再填写 B 的 IP / 域名和节点 TCP 端口。
    默认 A 监听 0.0.0.0:8443，B 端口为 443；IPv6 监听可填 ::，仅接收 IPv6。
-   A 的端口必须未被占用。输入 YES，检查后启用转发。
+   A 的端口必须未被占用。输入 y，检查后启用转发。
 4. 在手机上复制 B 的节点，只把连接地址改为 A 的公网 IP / 域名，端口改为 A 的转发端口。
    保留 B 的密码 / UUID、SNI、Reality 公钥、指纹及证书验证设置。A 不需要 B 的私钥。
 5. 小火箭连接修改后的节点，网站看到的出口应为 B。

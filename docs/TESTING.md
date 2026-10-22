@@ -28,7 +28,7 @@ All four baseline files were read: `singbox-v2.sh`, `install.sh`, `README.md`, `
 
 The regression suite invokes actual Bash functions with isolated filesystem paths. Only OS-mutating commands (apt, systemctl, UFW, nftables, sysctl) are mocked; real crypto, configuration export, backup filesystem operations and protocol engine processes run where applicable.
 
-- YES case variants, port boundaries, language persistence and both branded menus.
+- Single-letter y/Y confirmation, blank/n/N/invalid/EOF cancellation, port boundaries, language persistence and both branded menus.
 - Three actual server configurations and protocol detection with stale cached mode.
 - Base64/URI encoding, private file permissions, self-signed cert embedding and fingerprint.
 - Certificate hostname/IP mismatch and mismatched private key rejection.

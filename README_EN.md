@@ -20,7 +20,7 @@
 
 ---
 
-# SKYBYTE Manager V2.8.3 — sing-box Installer and Ubuntu/Debian VPS Management
+# SKYBYTE Manager V2.8.4 — sing-box Installer and Ubuntu/Debian VPS Management
 
 **SKYBYTE Manager** is a Bash-based Ubuntu/Debian VPS manager with Simplified Chinese and English interfaces. It installs sing-box with **VLESS + Reality + Vision, Hysteria2 (HY2), or both protocols**, manages Cloudflare Argo tunnels and WARP routing, and provides per-user traffic quotas and expiry. Client exports support Shadowrocket, v2rayN, Clash Verge/Mihomo/OpenClash and sing-box JSON.
 
@@ -28,7 +28,9 @@ YouTube: [SKYBYTE9119](https://www.youtube.com/@SKYBYTE9119) · [中文](README.
 
 If you find this script helpful, please subscribe to my YouTube channel and support SKYBYTE's continued development!
 
-The main menu includes the SKYBYTE ASCII logo. Menus are bold green, credential links bold red, warnings bold yellow and errors bold red on ANSI terminals. Set `NO_COLOR=1` to disable colors. Every YES confirmation is case-insensitive.
+The main menu includes the SKYBYTE ASCII logo. Menus are bold green, credential links bold red, warnings bold yellow and errors bold red on ANSI terminals. Set `NO_COLOR=1` to disable colors. Every action uses `[y/N]`: type `y` or `Y` to confirm; Enter or `n/N` cancels.
+
+V2.8.4 standardizes action confirmations as `[y/N]`: type `y` or `Y`; Enter cancels. Installation, updates, removal, firewall and network actions share the same rule.
 
 V2.8.3 fixes first installation on minimal VPS images without `curl`: the new bootstrap checks for curl and installs it with CA certificates when missing, then starts the installer. APT or download failure stops the operation while preserving input for the language prompt and menus. Copy the complete updated installation command below.
 
@@ -143,7 +145,7 @@ New backups use separate `config/`, `state.json` and `sing-box.bin` paths, inclu
 
 ## Validation
 
-Menu **6 → 3** requires case-insensitive `YES` confirmation and first backs up configuration, certificates and the binary. Backup failure cancels removal. It stops automatic updates, managed hopping and sing-box, then removes owned units, the binary, node configuration, generated certificates/exports and identifiable manager executable copies. Changed unit ownership/start paths or symlinked key files cause refusal. Successful uninstall exits the menu.
+Menu **6 → 3** requires case-insensitive `y` confirmation and first backs up configuration, certificates and the binary. Backup failure cancels removal. It stops automatic updates, managed hopping and sing-box, then removes owned units, the binary, node configuration, generated certificates/exports and identifiable manager executable copies. Changed unit ownership/start paths or symlinked key files cause refusal. Successful uninstall exits the menu.
 
 Backups, external certificates, unknown user files, reports, UFW allow rules, BBR/FQ settings and system packages such as vnStat remain. It does not reset the firewall or delete unrelated nftables tables. Backups contain private keys; protect permissions and disk space. To restore after uninstall, deploy again and restore the retained backup through menu 5 → 3.
 
@@ -305,7 +307,7 @@ Restore retains current account policy/usage and current subscription tokens. HT
 
 ```bash
 python3 scripts/build.py --check
-python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.3
+python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.4
 ```
 
 Packaging includes only bootstrap.sh, install.sh, the full bundle, public rule catalog and SHA256SUMS, never runtime state or credentials.
@@ -338,7 +340,7 @@ First identify the two servers:
 2. **Switch to A's terminal.** Open **4 → 10 Residential landing / VPS relay**. Select **1 Import / replace landing**, then **1 Paste node URI**.
 3. **Paste B's URI and press Enter.** Hidden input displays no characters while pasting; this is expected.
 4. **Handle the certificate prompt.** For Reality or HY2 with a trusted CA certificate, press Enter. For self-signed HY2 on B, copy **B's public certificate to A**, verify its fingerprint and enter its file path on A. See the certificate commands below.
-5. **Choose `1 All node traffic through landing`, then type `YES`.** Enter accepts the default mode. The script validates configurations and tests B's HTTPS connection and egress IP. Failure leaves existing routing; success backs up and restarts previously active admin/account/Argo nodes. Relay is enabled when import completes.
+5. **Choose `1 All node traffic through landing`, then type `y`.** Enter accepts the default mode. The script validates configurations and tests B's HTTPS connection and egress IP. Failure leaves existing routing; success backs up and restarts previously active admin/account/Argo nodes. Relay is enabled when import completes.
 
 **Finally, Shadowrocket uses A's node URI or QR code.** If A uses self-signed HY2, Shadowrocket still needs to trust A's public certificate. Path after connecting:
 
@@ -386,7 +388,7 @@ Phone → A HAProxy TCP forwarder → B node → website
 
 1. **Prepare B.** This manager can install Reality/Vision; an existing Trojan/TCP node from another tool also works. Keep B's egress direct to retain the residential IP and allow B's actual node TCP port from A.
 2. **Add forwarding on A.** Open **4 → 11 → 1**. Enter the name, A's listen IP and forwarding port, and B's IP/hostname and TCP node port. Defaults: A listens on `0.0.0.0:8443`; B uses port `443`. IPv6 listen `::` is IPv6-only. One rule per entry port, up to 16 rules; Enter accepts the default name.
-3. **Type `YES` to enable.** Busy ports, ports reserved by managed TCP nodes, obvious local loops and B's TCP reachability are checked. The configuration must pass `haproxy -c`. Failures leave previous configuration; restart failures restore previous files, activity and boot state. Changes briefly interrupt forwarded connections. Active UFW gets an allow rule for the new TCP port; configure provider firewalls separately.
+3. **Type `y` to enable.** Busy ports, ports reserved by managed TCP nodes, obvious local loops and B's TCP reachability are checked. The configuration must pass `haproxy -c`. Failures leave previous configuration; restart failures restore previous files, activity and boot state. Changes briefly interrupt forwarded connections. Active UFW gets an allow rule for the new TCP port; configure provider firewalls separately.
 4. **Edit B's node on the phone.** Copy B's node and change only the connection address to **A's public IP/hostname** and the connection port to **A's forwarding port**. Keep B's UUID/password, SNI, Reality public key/Short ID, fingerprint and certificate verification. A stores no node authentication/private key and needs no B CA file. For self-signed TLS on B, the phone must still securely trust B's certificate.
 5. **Connect and check.** Shadowrocket uses the edited node; destinations should see B's exit IP. Authentication, per-user usage/quotas and expiry belong on **B**. HAProxy forwarding bypasses A's sing-box account service and cannot be charged against A's personal quotas.
 

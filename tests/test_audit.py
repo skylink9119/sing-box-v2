@@ -102,7 +102,7 @@ class AuditTest(unittest.TestCase):
 eval "$(declare -f backup_engine | sed '1s/backup_engine/audit_backup_engine/')"
 backup_engine(){ if [[ $1 == restore_apply ]];then audit_backup_engine "$@";return 1;fi;audit_backup_engine "$@"; }
 restore'''
-        result=self.shell(code,input=str(snapshot)+'\nyes\n',ok=False)
+        result=self.shell(code,input=str(snapshot)+'\ny\n',ok=False)
         self.assertNotEqual(result.returncode,0)
         for path,data in before.items():self.assertEqual(path.read_bytes(),data)
         self.assertEqual(unknown.read_text(),'keep current');self.assertIn('restart sing-box.service',(self.base/'events').read_text())
@@ -113,7 +113,7 @@ restore'''
         saved=json.loads((self.base/'state.json').read_text());saved['node_name']='Saved';(self.base/'state.json').write_text(json.dumps(saved))
         snapshot=Path(self.shell('backup').stdout.strip());unknown.write_text('current unrelated')
         saved['node_name']='Current';(self.base/'state.json').write_text(json.dumps(saved));self.shell('exports >/dev/null')
-        self.shell('systemctl(){ :; };service_healthy(){ :; };restore',input=str(snapshot)+'\nyes\n')
+        self.shell('systemctl(){ :; };service_healthy(){ :; };restore',input=str(snapshot)+'\ny\n')
         self.assertIn('Saved-HY2',(self.base/'nodes.txt').read_text());self.assertNotIn('Current-HY2',(self.base/'nodes.txt').read_text())
         self.assertEqual(unknown.read_text(),'current unrelated');self.assertFalse(list(self.base.glob('restore.*')))
 
@@ -193,7 +193,7 @@ install_protocol(){ printf 'OFFLINE=%s\n' "${SKYBYTE_ASSET_DIR:-missing}"; };uns
     def test_acme_certificate_can_be_kept_on_standalone_argo_without_hy2_prompt(self):
         self.configure('1');cfg=json.loads((self.config/'config.json').read_text());cfg['inbounds']=[];(self.config/'config.json').write_text(json.dumps(cfg))
         (self.base/'acme-state.json').write_text(json.dumps({'owner':'SKYBYTE ACME v1','schema':1,'method':'http','domain':'node.example'}))
-        result=self.shell('configuration_apply(){ echo SHOULD_NOT_APPLY;return 1; };acme_use_hy2',input='yes\n')
+        result=self.shell('configuration_apply(){ echo SHOULD_NOT_APPLY;return 1; };acme_use_hy2',input='y\n')
         self.assertIn('HY2 is not installed',result.stdout);self.assertNotIn('SHOULD_NOT_APPLY',result.stdout)
 
 

@@ -232,7 +232,7 @@ warp_switch restricted 40000 false netflix.com'''
         self.prepare_uninstall();f,key=self.profile();self.shell('warp_engine gateway '+shlex.quote(str(f))+' 40000')
         unit=self.root/'systemd'/'skybyte-warp-gateway.service';unit.write_text('Description=SKYBYTE managed WARP gateway\nExecStart='+str(self.bin)+' run -c '+str(self.base/'warp-gateway.json')+'\n')
         self.switch()
-        self.shell('need_root(){ :; }; systemctl(){ :; }; uninstall_manager',input='yes\n')
+        self.shell('need_root(){ :; }; systemctl(){ :; }; uninstall_manager',input='y\n')
         self.assertFalse(unit.exists());self.assertFalse((self.base/'warp-state.json').exists());self.assertTrue(f.exists())
         snap=next(self.backups.iterdir());self.assertIn(key,(snap/'warp-gateway.json').read_text())
         self.assertEqual((snap/'warp-gateway.json').stat().st_mode&0o777,0o600)
@@ -246,7 +246,7 @@ warp_switch restricted 40000 false netflix.com'''
 
     def test_hopping_iptables_uses_actual_hy2_port_and_owned_chain(self):
         cfg=self.configure('2');cfg['inbounds'][0]['listen_port']=8443;(self.config/'config.json').write_text(json.dumps(cfg))
-        self.shell('nft(){ return 1; }; iptables(){ return 1; };systemctl(){ :; };ufw(){ echo "Status: inactive"; }; hop',input='1\n2\n20000\n40000\nyes\n')
+        self.shell('nft(){ return 1; }; iptables(){ return 1; };systemctl(){ :; };ufw(){ echo "Status: inactive"; }; hop',input='1\n2\n20000\n40000\ny\n')
         text=(self.base/'hop-iptables.sh').read_text()
         self.assertIn('--to-ports 8443',text);self.assertIn('--dport 20000:40000',text);self.assertNotIn('-F PREROUTING',text)
         self.assertEqual(json.loads((self.base/'state.json').read_text())['hop_target'],8443)
@@ -255,10 +255,10 @@ warp_switch restricted 40000 false netflix.com'''
 
     def test_hopping_preserves_unowned_chain_and_failed_enable_metadata(self):
         self.configure('2')
-        self.assertNotEqual(self.shell('nft(){ return 1; }; iptables(){ return 0; };systemctl(){ :; };hop',input='1\n2\n20000\n20100\nyes\n',ok=False).returncode,0)
+        self.assertNotEqual(self.shell('nft(){ return 1; }; iptables(){ return 0; };systemctl(){ :; };hop',input='1\n2\n20000\n20100\ny\n',ok=False).returncode,0)
         self.assertFalse((self.base/'hop-iptables.sh').exists())
         code='nft(){ return 1; }; iptables(){ return 1; };systemctl(){ [[ $1 != enable ]]; };hop'
-        self.assertNotEqual(self.shell(code,input='1\n1\n20000\n20100\nyes\n',ok=False).returncode,0)
+        self.assertNotEqual(self.shell(code,input='1\n1\n20000\n20100\ny\n',ok=False).returncode,0)
         self.assertFalse(json.loads((self.base/'state.json').read_text())['hop'])
 
     def test_removed_menu_items_and_legacy_foreign_timer_are_preserved(self):
@@ -446,7 +446,7 @@ warp_switch restricted 40000 false netflix.com'''
 
     def test_hopping_generated_iptables_script_cleans_only_its_chain(self):
         self.configure('2')
-        self.shell('nft(){ return 1; };iptables(){ return 1; };systemctl(){ :; };ufw(){ echo "Status: inactive"; };hop',input='1\n2\n21000\n21100\nyes\n')
+        self.shell('nft(){ return 1; };iptables(){ return 1; };systemctl(){ :; };ufw(){ echo "Status: inactive"; };hop',input='1\n2\n21000\n21100\ny\n')
         tools=self.root/'fake-tools';tools.mkdir();log=self.root/'iptables.log';exe=tools/'iptables'
         exe.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> '+shlex.quote(str(log))+'\ncase "$*" in *REDIRECT*) exit 1;; esac\n');exe.chmod(0o700)
         env=os.environ.copy();env['PATH']=str(tools)+':'+env['PATH']
@@ -467,7 +467,7 @@ warp_switch restricted 40000 false netflix.com'''
         unit=self.root/'systemd'/'skybyte-warp-gateway.service';unit.write_text('Description=SKYBYTE managed WARP gateway\nExecStart='+str(self.bin)+' run -c '+str(self.base/'warp-gateway.json')+'\n')
         original=(self.base/'warp-gateway.json').read_bytes();f,key=self.profile()
         code='systemctl(){ :; };ss(){ :; };warp_verify(){ return 1; };warp_loopback(){ :; };sleep(){ :; };warp_import_gateway'
-        r=self.shell(code,input=str(f)+'\n40000\nyes\n',ok=False)
+        r=self.shell(code,input=str(f)+'\n40000\ny\n',ok=False)
         self.assertNotEqual(r.returncode,0);self.assertEqual(original,(self.base/'warp-gateway.json').read_bytes())
         self.assertIn('Gateway verification failed',r.stderr)
 
@@ -485,7 +485,7 @@ curl(){ local out=;while (($#));do if [[ $1 == -o ]];then out=$2;shift 2;else sh
 gpg(){ local out=;while (($#));do if [[ $1 == --output ]];then out=$2;shift 2;else shift;fi;done;echo key > "$out"; }
 systemctl(){ :; };ss(){ :; };sleep(){ :; };warp_loopback(){ :; };warp_verify(){ :; };warp_proxy_capability(){ echo false; };warp_switch(){ echo SWITCHED; }
 PATH='''+shlex.quote(str(tools))+''':"$PATH";warp_install_client'''
-        r=self.shell(code,input='yes\n40000\n');self.assertIn('SWITCHED',r.stdout)
+        r=self.shell(code,input='y\n40000\n');self.assertIn('SWITCHED',r.stdout)
         repo=(self.root/'warp.list').read_text();self.assertIn('signed-by='+str(self.root/'warp.gpg'),repo);self.assertIn('https://pkg.cloudflareclient.com/',repo)
         text=log.read_text();self.assertIn('--accept-tos mode proxy',text);self.assertIn('--accept-tos proxy port 40000',text)
         self.assertLess(text.index('mode proxy'),text.index('--accept-tos connect'))
@@ -523,8 +523,8 @@ case "$*" in
 
     def test_uninstall_iptables_does_not_delete_unowned_nft_table(self):
         self.prepare_uninstall()
-        self.shell('nft(){ return 1; };iptables(){ return 1; };systemctl(){ :; };ufw(){ echo "Status: inactive"; };hop',input='1\n2\n21000\n21100\nyes\n')
-        r=self.shell('need_root(){ :; };systemctl(){ :; };nft(){ echo UNOWNED_NFT; };uninstall_manager',input='yes\n')
+        self.shell('nft(){ return 1; };iptables(){ return 1; };systemctl(){ :; };ufw(){ echo "Status: inactive"; };hop',input='1\n2\n21000\n21100\ny\n')
+        r=self.shell('need_root(){ :; };systemctl(){ :; };nft(){ echo UNOWNED_NFT; };uninstall_manager',input='y\n')
         self.assertNotIn('UNOWNED_NFT',r.stdout)
 
     def test_hopping_guard_refuses_changed_exec_path(self):

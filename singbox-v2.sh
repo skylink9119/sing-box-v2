@@ -8,7 +8,7 @@
 set -Eeuo pipefail
 umask 077
 SCRIPT_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
-MANAGER_VERSION=2.8.3
+MANAGER_VERSION=2.8.4
 CORE_RECOMMENDED=1.14.3
 BASE=/etc/singbox-v2
 CONF=/etc/sing-box/config.json
@@ -217,7 +217,7 @@ manager_shortcut_remove(){
  if [[ -f $MANAGER_SHORTCUT ]] && grep -Fxq '# SKYBYTE Manager shortcut v1' "$MANAGER_SHORTCUT";then rm -f -- "$MANAGER_SHORTCUT";fi
 }
 need_root(){ [[ $EUID == 0 ]] || { err "$(L '需要 root 权限' 'Root privileges required')"; exit 1; }; }
-confirm(){ local answer; prompt_read "$1 $(L '[输入 YES 确认]' '[Type YES to confirm]'): " answer || return 1; [[ $answer =~ ^[[:space:]]*[Yy][Ee][Ss][[:space:]]*$ ]]; }
+confirm(){ local answer; prompt_read "$1 [y/N]: " answer || return 1; [[ $answer =~ ^[[:space:]]*[Yy][[:space:]]*$ ]]; }
 startup_service_info(){
  local label=$1 installed=$2 unit=$3 value
  if command -v systemctl >/dev/null && systemctl is-active --quiet "$unit" 2>/dev/null; then
@@ -3487,7 +3487,7 @@ Both servers need working nodes. Open a separate SSH terminal for each server.
    For Reality or HY2 with a trusted CA certificate, press Enter.
    For self-signed HY2 on B, copy B's PUBLIC certificate to A, verify its fingerprint
    and enter its file path on A. See the certificate commands below.
-5. Choose 1 All node traffic through landing (Enter accepts the default), then type YES.
+5. Choose 1 All node traffic through landing (Enter accepts the default), then type y.
    The script tests B's connection, backs up and applies the policy if successful.
    Relay is enabled when import completes.
 
@@ -3543,7 +3543,7 @@ RELAY_HELP_EN
    B 使用 Reality 或受信任 CA 证书的 HY2，可以直接回车。
    B 使用 HY2 自签名证书，需要先把 B 的公开证书复制到 A，核对指纹，
    再填写它在 A 上的文件路径。具体命令见下方。
-5. 选择 1「全部节点流量走落地」，回车使用默认值，再输入 YES 确认。
+5. 选择 1「全部节点流量走落地」，回车使用默认值，再输入 y 确认。
    脚本验证 B 的连接成功后，备份并应用出站策略；导入完成时就会启用中转。
 
 最后，小火箭使用 A 的节点链接或二维码。连接成功后的路线就是：
@@ -4058,7 +4058,7 @@ Path: phone → A HAProxy TCP forwarder → B node → website.
    A does not need a sing-box node for this mode.
 3. Enter a rule name, A's listen IP and TCP port, then B's IP/hostname and node TCP port.
    Defaults: A listens on 0.0.0.0:8443, B uses port 443. IPv6 listen :: is IPv6-only.
-   Use an unused port on A. Type YES to validate and enable forwarding.
+   Use an unused port on A. Type y to validate and enable forwarding.
 4. On your phone, copy B's node. Change only its connection address to A's public IP/hostname
    and its connection port to A's forwarding port. Keep B's password/UUID, SNI, Reality keys,
    fingerprint and certificate verification settings. A does not need B's private key.
@@ -4090,7 +4090,7 @@ A：线路较好的中转服务器。B：住宅 IP 落地服务器。
    这种模式下，A 可以不安装 sing-box 节点。
 3. 填写规则名称、A 监听地址与转发端口，再填写 B 的 IP / 域名和节点 TCP 端口。
    默认 A 监听 0.0.0.0:8443，B 端口为 443；IPv6 监听可填 ::，仅接收 IPv6。
-   A 的端口必须未被占用。输入 YES，检查后启用转发。
+   A 的端口必须未被占用。输入 y，检查后启用转发。
 4. 在手机上复制 B 的节点，只把连接地址改为 A 的公网 IP / 域名，端口改为 A 的转发端口。
    保留 B 的密码 / UUID、SNI、Reality 公钥、指纹及证书验证设置。A 不需要 B 的私钥。
 5. 小火箭连接修改后的节点，网站看到的出口应为 B。

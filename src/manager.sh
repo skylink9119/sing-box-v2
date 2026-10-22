@@ -8,7 +8,7 @@
 set -Eeuo pipefail
 umask 077
 SCRIPT_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
-MANAGER_VERSION=2.8.3
+MANAGER_VERSION=2.8.4
 CORE_RECOMMENDED=1.14.3
 BASE=/etc/singbox-v2
 CONF=/etc/sing-box/config.json
@@ -66,7 +66,7 @@ err(){ printf '%s✖ %s%s\n' "$RED" "$*" "$RESET" >&2; }
 # @include packages.sh
 # @include shortcut.sh
 need_root(){ [[ $EUID == 0 ]] || { err "$(L '需要 root 权限' 'Root privileges required')"; exit 1; }; }
-confirm(){ local answer; prompt_read "$1 $(L '[输入 YES 确认]' '[Type YES to confirm]'): " answer || return 1; [[ $answer =~ ^[[:space:]]*[Yy][Ee][Ss][[:space:]]*$ ]]; }
+confirm(){ local answer; prompt_read "$1 [y/N]: " answer || return 1; [[ $answer =~ ^[[:space:]]*[Yy][[:space:]]*$ ]]; }
 startup_service_info(){
  local label=$1 installed=$2 unit=$3 value
  if command -v systemctl >/dev/null && systemctl is-active --quiet "$unit" 2>/dev/null; then

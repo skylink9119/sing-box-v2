@@ -160,7 +160,7 @@ class HAProxyTest(unittest.TestCase):
         profile = self.root / 'unused-warp.conf'; profile.write_text('not parsed')
         result = self.shell(prefix+'warp_import_gateway', input=str(profile)+'\n'+str(reserved)+'\n', ok=False)
         self.assertNotEqual(result.returncode, 0); self.assertFalse((self.base / 'warp-gateway.json').exists())
-        result = self.shell(prefix+'need_root(){ :; };systemctl(){ :; };argo_install quick', input='yes\n'+str(reserved)+'\n', ok=False)
+        result = self.shell(prefix+'need_root(){ :; };systemctl(){ :; };argo_install quick', input='y\n'+str(reserved)+'\n', ok=False)
         self.assertNotEqual(result.returncode, 0); self.assertIn('HAProxy', result.stderr); self.assertFalse((self.base / 'argo-server.json').exists())
         good, api = manager.port(), manager.port()
         code = (manager.ROOT / 'src/users.py').read_text()
@@ -296,7 +296,7 @@ class HAProxyTest(unittest.TestCase):
         prefix = 'HAPROXY_BIN='+shlex.quote(str(self.checker))+';export PATH='+shlex.quote(str(tools))+':"$PATH";'
         saved = Path(self.shell(prefix+'backup').stdout.strip())
         self.assertTrue((saved / 'haproxy/state.json').exists()); self.assertTrue((saved / 'backup-manifest.json').exists())
-        self.shell(prefix+'need_root(){ :; };systemctl(){ :; };uninstall_manager', input='yEs\n')
+        self.shell(prefix+'need_root(){ :; };systemctl(){ :; };uninstall_manager', input='Y\n')
         self.assertFalse(self.proxy.root.exists()); self.assertFalse(self.proxy.unit.exists()); self.assertTrue((saved / 'haproxy/state.json').exists())
 
     @unittest.skipUnless(REAL, 'real HAProxy required; Linux CI installs it')
