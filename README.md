@@ -20,7 +20,7 @@
 
 ---
 
-# SKYBYTE Manager V2.8.5 — sing-box 一键脚本与 Ubuntu/Debian VPS 管理
+# SKYBYTE Manager V2.8.6 — sing-box 一键脚本与 Ubuntu/Debian VPS 管理
 
 **SKYBYTE Manager** 是基于 Bash 的 Ubuntu/Debian VPS 管理工具，提供简体中文和 English 界面，支持 sing-box 的 **VLESS + Reality + Vision、Hysteria2（HY2）及双协议部署**。通过交互菜单管理 Cloudflare Argo 隧道、WARP 出站分流、用户流量配额与有效期，并导出 Shadowrocket（小火箭）、v2rayN、Clash Verge/Mihomo/OpenClash 和 sing-box JSON 客户端配置。
 
@@ -30,7 +30,7 @@ YouTube：[SKYBYTE9119](https://www.youtube.com/@SKYBYTE9119) · [English](READM
 
 主菜单包含 SKYBYTE ASCII logo；菜单绿色加粗、节点链接红色加粗、警告黄色加粗、错误红色加粗。支持 ANSI 的交互终端显示颜色，`NO_COLOR=1` 可关闭。所有操作确认统一为 `[y/N]`：输入 `y` 或 `Y` 确认，回车或输入 `n/N` 取消。
 
-V2.8.5 增加 Netflix / Disney+ / ChatGPT / Gemini 快速 WARP 分流、ChatGPT/Gemini 匿名响应检测、WARP 就绪重试及出口 IP/国家校验。操作确认仍为 `[y/N]`：输入 `y` 或 `Y`，回车取消。
+V2.8.6 修复 WARP 菜单把 `\n` 当文字显示的问题；按代理设置（1–3）、分流设置（4–6）、连接检测（7–8）分组，每项独立一行，并显示中文状态。操作确认仍为 `[y/N]`。
 
 V2.8.3 修复精简 VPS 缺少 `curl` 时无法首次下载安装的问题：新启动命令先检测并按需安装 `curl` 与 CA 证书，再启动安装器；APT 或下载失败时停止，保留后续语言选择及菜单输入。请复制下方完整的新安装命令。
 
@@ -235,9 +235,9 @@ V2.3.1：交互问题、选择提示和 YES 确认统一绿色加粗，输入前
 
 ## WARP 出站与双栈（V2.4）
 
-入口 **4 → 9**。默认关闭，配置后默认仅流媒体与 AI 域名使用 WARP，其余直连。可切换 **全局直连 / 全局 WARP / 仅受限域名 WARP**，也可输入自定义域名后缀。默认列表包含上述五个平台及 OpenAI/ChatGPT、Claude 的主要域名和部分 CDN；仅希望流媒体时可自定义列表删除 AI 域名。域名规则依赖域名和协议嗅探，IP 直连、ECH、未收录 CDN 可能无法匹配。WARP 不保证任何平台解锁或指定国家出口。
+入口 **4 → 9**。菜单 1–3 设置代理，4 选择平台，5 切换模式，6 管理规则，7 检测双栈，8 对比平台响应。默认关闭，配置后默认仅流媒体与 AI 域名使用 WARP，其余直连。可切换 **全局直连 / 全局 WARP / 仅受限域名 WARP**，也可输入自定义域名后缀。默认列表包含上述五个平台及 OpenAI/ChatGPT、Gemini、Claude 的主要域名和部分 CDN；仅希望流媒体时可自定义列表删除 AI 域名。域名规则依赖域名和协议嗅探，IP 直连、ECH、未收录 CDN 可能无法匹配。WARP 不保证任何平台解锁或指定国家出口。
 
-WARP 子菜单 **8** 提供 Netflix、Disney+、ChatGPT、Gemini、四者组合、全部流媒体与 AI 及自定义后缀预设，保留节点凭据和未匹配流量的直连策略。官方客户端安装会有限重试等待真实出口就绪；检查同时校验 `warp=on/plus`、合法公网 IP 和国家字段。已有 WARP 数据或客户端不自动覆盖。
+WARP 子菜单 **4** 提供 Netflix、Disney+、ChatGPT、Gemini、四者组合、全部流媒体与 AI 及自定义后缀预设，保留节点凭据和未匹配流量的直连策略。官方客户端安装会有限重试等待真实出口就绪；检查同时校验 `warp=on/plus`、合法公网 IP 和国家字段。已有 WARP 数据或客户端不自动覆盖。
 
 有三种网关来源：
 
@@ -303,13 +303,13 @@ HY2 支持上下行 Mbps、`ignore_client_bandwidth` 与 Salamander 混淆，服
 
 恢复继续保留当前用户策略、累计用量及当前订阅Token，不用旧Token替换现有Token。HTTPS证书单独保存私密快照；仅当状态缺失时补回订阅和ACME数据，新的自动续签需重新启用，失败撤销本次补回。备份中的外部证书被复制为配置目录的私密快照；恢复后若要继续使用当前ACME续签路径，请通过证书菜单重新关联。卸载会备份后移除托管 HTTPS服务、ACME任务和私密ACME目录，保留外部证书、软件包及备份。
 
-**WARP菜单7** 可查看实际出口、手动更新经过正式Release资产SHA256验证的规则列表，并单独确认应用。下载失败保留原列表；更新列表不自动改变现有自定义路由。发布时需附带 `data/warp-rules.json` 资产。规则来源与版本可查看，实际平台可用性仍需验证。
+**WARP菜单6** 可查看实际出口、手动更新经过正式Release资产SHA256验证的规则列表，并单独确认应用。下载失败保留原列表；更新列表不自动改变现有自定义路由。发布时需附带 `data/warp-rules.json` 资产。规则来源与版本可查看，实际平台可用性仍需验证。
 
 **6 → 4** 或 `bash singbox-v2.sh --help` 提供中英文快速说明。主菜单等待输入时不持有操作锁，后台续签可运行；实际管理操作期间仍互斥。源码构建与发布打包：
 
 ```bash
 python3 scripts/build.py --check
-python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.5
+python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.6
 ```
 
 打包只包含 `bootstrap.sh` 启动命令、安装入口、完整脚本、公开规则列表及SHA256SUMS，不发布运行时配置或凭据。

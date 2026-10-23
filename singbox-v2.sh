@@ -8,7 +8,7 @@
 set -Eeuo pipefail
 umask 077
 SCRIPT_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
-MANAGER_VERSION=2.8.5
+MANAGER_VERSION=2.8.6
 CORE_RECOMMENDED=1.14.3
 BASE=/etc/singbox-v2
 CONF=/etc/sing-box/config.json
@@ -2920,6 +2920,18 @@ def read_state(base):
     if provider=='relay' and 'relay' not in d:raise ValueError('Missing landing profile')
     return d
 
+def status_text(state,language='en_US'):
+    zh=language=='zh_CN'
+    if not state:return '当前状态：未配置 WARP' if zh else 'Status: WARP not configured'
+    if state.get('provider','warp')!='warp':return '当前状态：WARP 未启用（当前使用落地中转）' if zh else 'Status: WARP inactive (relay selected)'
+    modes={'direct':('已关闭 WARP 分流，当前直连','Direct; WARP routing disabled'),
+           'restricted':('仅指定域名使用 WARP','Selected domains use WARP'),
+           'global':('全部节点流量使用 WARP','All node traffic uses WARP')}
+    mode=modes[state['mode']][0 if zh else 1]
+    proxy=('本机代理：' if zh else 'Local proxy: ')+'127.0.0.1:'+str(state['port'])
+    udp=('支持' if state['udp'] else '不支持') if zh else ('supported' if state['udp'] else 'unsupported')
+    return ('当前模式：' if zh else 'Routing: ')+mode+'\n'+proxy+' | UDP: '+udp
+
 def view(cfg):return {k:copy.deepcopy(cfg.get(k)) for k in FIELDS}
 
 def put(cfg,routing):
@@ -3151,7 +3163,7 @@ if __name__=='__main__':
         print(state['port'])
     elif action=='status':
         state=read_state(base)
-        print('WARP: '+(state['mode']+' | 127.0.0.1:'+str(state['port'])+' | UDP: '+str(state['udp']) if state and state.get('provider','warp')=='warp' else 'inactive (relay selected)' if state else 'not configured'))
+        print(status_text(state,args[0] if args else 'en_US'))
     elif action=='forget_argo':
         state=read_state(base)
         if state:
@@ -3391,7 +3403,23 @@ warp_reconcile(){
 
 warp_profile_domains(){
  local choice domains
- prompt_options '1 Netflix + Disney+ + ChatGPT + Gemini（默认）\n2 仅 Netflix\n3 仅 Disney+\n4 仅 ChatGPT\n5 仅 Gemini\n6 全部流媒体与 AI\n7 自定义域名后缀\n0 返回' '1 Netflix + Disney+ + ChatGPT + Gemini (default)\n2 Netflix only\n3 Disney+ only\n4 ChatGPT only\n5 Gemini only\n6 All media and AI\n7 Custom domain suffixes\n0 Back' >&2
+ prompt_options '选择分流平台
+1. Netflix + Disney+ + ChatGPT + Gemini（默认）
+2. 仅 Netflix
+3. 仅 Disney+
+4. 仅 ChatGPT
+5. 仅 Gemini
+6. 全部流媒体与 AI
+7. 自定义域名后缀
+0. 返回' 'Choose routing platforms
+1. Netflix + Disney+ + ChatGPT + Gemini (default)
+2. Netflix only
+3. Disney+ only
+4. ChatGPT only
+5. Gemini only
+6. All media and AI
+7. Custom domain suffixes
+0. Back' >&2
  prompt_read "$(L '选择 [1]：' 'Choose [1]: ')" choice || return 1
  case ${choice:-1} in
   1) warp_engine profile all;; 2) warp_engine profile netflix;; 3) warp_engine profile disney;; 4) warp_engine profile chatgpt;; 5) warp_engine profile gemini;; 6) warp_engine defaults;;
@@ -3402,12 +3430,45 @@ warp_profile_domains(){
 warp_menu(){
  check_owned && warp_guard || return 1
  local choice port udp domains mode
- warp_engine status
- prompt_options '1 安装官方 WARP 本机代理\n2 使用现有本机代理\n3 导入 WireGuard 配置\n4 切换出站模式 / 自定义分流\n5 双栈检测\n6 流媒体 / AI 检测与对比\n7 分流规则管理\n8 Netflix / Disney+ / ChatGPT / Gemini 快速分流\n0 返回' '1 Install official WARP local proxy\n2 Existing local proxy\n3 Import WireGuard profile\n4 Outbound mode / custom routing\n5 Dual-stack tests\n6 Media / AI tests and comparison\n7 Rule catalog\n8 Netflix / Disney+ / ChatGPT / Gemini routing presets\n0 Back'
+ printf '\n%s%s%s\n' "$CYAN" "$(L '========== WARP 管理 ==========' '========== WARP Manager ==========')" "$RESET"
+ warp_engine status "${LANGUAGE_CHOICE:-zh_CN}" || return 1
+ prompt_options '
+【代理设置】
+1. 安装官方 WARP 本机代理
+2. 使用已有本机代理
+3. 导入 WireGuard 配置
+
+【分流设置】
+4. 选择分流平台
+5. 切换出站模式 / 自定义分流
+6. 管理分流规则
+
+【连接检测】
+7. 检测 IPv4 / IPv6 双栈出口
+8. 对比直连 / WARP 平台响应
+
+0. 返回
+--------------------------------------' '
+[Proxy setup]
+1. Install official WARP local proxy
+2. Use an existing local proxy
+3. Import a WireGuard profile
+
+[Routing]
+4. Choose routing platforms
+5. Outbound mode / custom routing
+6. Manage routing rules
+
+[Connection tests]
+7. Test IPv4 / IPv6 egress
+8. Compare direct / WARP platform responses
+
+0. Back
+--------------------------------------'
  prompt_read '> ' choice || return 0
  case $choice in
-  1) warp_install_client;; 3) warp_import_gateway;; 5) warp_dualstack;; 6) media_check;; 7) warp_rules_menu;;
-  8)
+  1) warp_install_client;; 3) warp_import_gateway;; 7) warp_dualstack;; 8) media_check;; 6) warp_rules_menu;;
+  4)
    domains=$(warp_profile_domains) || return 0
    prompt_read "$(L '本机 WARP SOCKS5 端口 [40000]：' 'Local WARP SOCKS5 port [40000]: ')" port || return 0; port=${port:-40000}
    valid_port "$port" && warp_loopback "$port" && warp_verify "$port" || return 1
@@ -3418,10 +3479,16 @@ warp_menu(){
    valid_port "$port" && warp_loopback "$port" && warp_verify "$port" || return 1
    udp=$(warp_proxy_capability "$port") || return 1; domains=$(warp_engine defaults) || return 1
    confirm "$(L '仅流媒体和 AI 域名使用此 WARP 出站？' 'Route only media/AI domains through this WARP proxy?')" && warp_switch restricted "$port" "$udp" "$domains";;
-  4)
+  5)
    port=$(warp_engine port) || return 1
    udp=$(python3 -c 'import json,sys; print(str(json.load(open(sys.argv[1]))["udp"]).lower())' "$BASE/warp-state.json") || return 1
-   prompt_options '1 全局直连  2 全局 WARP  3 仅受限域名 WARP' '1 Direct  2 Global WARP  3 Restricted domains only'
+   prompt_options '选择出站模式
+1. 全局直连
+2. 全局 WARP
+3. 仅指定域名使用 WARP' 'Choose outbound mode
+1. Direct
+2. Global WARP
+3. Selected domains only'
    prompt_read '> ' mode || return 0
    case $mode in 1) mode=direct;; 2) mode=global;; 3) mode=restricted;; *) return 1;; esac
    domains=$(warp_engine defaults) || return 1
@@ -3439,7 +3506,15 @@ warp_rules_menu(){
  warp_guard || return 1
  local choice domains port udp
  warp_engine catalog_status || return 1
- prompt_options '1 查看当前出口  2 手动更新规则列表  3 将当前规则用于受限域名分流  0 返回' '1 Verify current egress  2 Update catalog manually  3 Apply catalog to restricted routing  0 Back'
+ prompt_options '分流规则管理
+1. 验证当前 WARP 出口
+2. 手动更新规则列表
+3. 应用当前列表到指定域名分流
+0. 返回' 'Routing rule catalog
+1. Verify current WARP egress
+2. Update the catalog manually
+3. Apply the catalog to selected domains
+0. Back'
  prompt_read '> ' choice || return 0
  case $choice in
   1) port=$(warp_engine port) && warp_loopback "$port" && warp_verify "$port";;
@@ -5490,7 +5565,7 @@ SKYBYTE Manager — quick guide
 4. Accounts: main 7. Initialize, create accounts and set quota/expiry. Share personal exports, not administrator nodes. Accounts are not actual people and may share credentials.
 5. HTTPS subscriptions: obtain a trusted certificate through main 5 → 6, then main 2 → 6. Create/rotate/revoke personal links through user menu 16. Configure provider TCP access. Tokens grant access to credentials: keep links private. Revocation does not rotate node passwords.
 6. Certificates: main 5 → 6 issues isolated ACME/Certbot certificates using HTTP-01 or Cloudflare DNS-01; auto-renew is opt-in. HTTP requires public TCP80. DNS tokens remain private. Existing websites/certificates are preserved.
-7. WARP/media: main 4 → 9 / 8. WARP defaults to selected media/AI domains. It cannot guarantee location or unlocking. Anonymous tests do not verify playback. WARP menu 7 maintains catalogs; applying them is a separate confirmation.
+7. WARP/media: main 4 → 9 / 8. WARP defaults to selected media/AI domains. It cannot guarantee location or unlocking. Anonymous tests do not verify playback. WARP menu 6 maintains catalogs; applying them is a separate confirmation.
 8. Backup: main 5 → 2 creates a backup; 3 restores it; 7 lists/preflights/encrypts/imports or explicitly prunes old backups. Backups contain keys. Restore keeps current usage/policies and current subscription tokens.
 9. Versions: main 5 → 1 selects this release's tested core, latest stable or a specific version/downgrade. Every managed config must validate; weekly auto-update remains removed.
 10. Resources: main 4 → 7. Each account uses a core. Capacity depends on measured memory/CPU/traffic. Account quotas are periodically enforced, not byte-exact billing.
@@ -5506,7 +5581,7 @@ SKYBYTE Manager — 快速使用说明
 4. 用户管理：主菜单7，初始化后添加用户并设额度/有效期。只分享个人节点，不要分享管理员节点；账户数量不代表真实人数，无法阻止凭据分享。
 5. 在线订阅：主菜单5 → 6获取可信证书，再通过主菜单2 → 6配置HTTPS服务。用户菜单16签发、重置、撤销个人链接。云安全组需允许订阅 TCP 端口。Token可获取节点凭据，链接请保密；撤销订阅不等于更换节点密码。
 6. 证书：主菜单5 → 6，用隔离的 ACME/Certbot 目录通过 HTTP-01 或 Cloudflare DNS-01申请，自动续签需手动开启。HTTP须公网 TCP80可达，DNS Token私密保存，不停止已有网站、不覆盖外部证书。
-7. WARP/流媒体：主菜单4 → 9 / 8。WARP默认仅所选流媒体和AI域名，不能保证国家或解锁；匿名检测不验证播放。WARP菜单7维护规则列表，应用新列表需单独确认。
+7. WARP/流媒体：主菜单4 → 9 / 8。WARP默认仅所选流媒体和AI域名，不能保证国家或解锁；匿名检测不验证播放。WARP菜单6维护规则列表，应用新列表需单独确认。
 8. 备份：主菜单5 → 2新建、3恢复、7列表/预检/加密导出/导入/确认清理旧备份。备份含私钥。恢复保留当前用量、策略和当前订阅Token。
 9. 版本：主菜单5 → 1选本版测试内核、最新稳定版或指定版本/降级，须检查全部托管配置。每周自动更新保持移除。
 10. 资源：主菜单4 → 7，每个用户一个内核，容量需实测。配额周期检查，不是精确计费。

@@ -209,6 +209,18 @@ def read_state(base):
     if provider=='relay' and 'relay' not in d:raise ValueError('Missing landing profile')
     return d
 
+def status_text(state,language='en_US'):
+    zh=language=='zh_CN'
+    if not state:return '当前状态：未配置 WARP' if zh else 'Status: WARP not configured'
+    if state.get('provider','warp')!='warp':return '当前状态：WARP 未启用（当前使用落地中转）' if zh else 'Status: WARP inactive (relay selected)'
+    modes={'direct':('已关闭 WARP 分流，当前直连','Direct; WARP routing disabled'),
+           'restricted':('仅指定域名使用 WARP','Selected domains use WARP'),
+           'global':('全部节点流量使用 WARP','All node traffic uses WARP')}
+    mode=modes[state['mode']][0 if zh else 1]
+    proxy=('本机代理：' if zh else 'Local proxy: ')+'127.0.0.1:'+str(state['port'])
+    udp=('支持' if state['udp'] else '不支持') if zh else ('supported' if state['udp'] else 'unsupported')
+    return ('当前模式：' if zh else 'Routing: ')+mode+'\n'+proxy+' | UDP: '+udp
+
 def view(cfg):return {k:copy.deepcopy(cfg.get(k)) for k in FIELDS}
 
 def put(cfg,routing):
@@ -440,7 +452,7 @@ if __name__=='__main__':
         print(state['port'])
     elif action=='status':
         state=read_state(base)
-        print('WARP: '+(state['mode']+' | 127.0.0.1:'+str(state['port'])+' | UDP: '+str(state['udp']) if state and state.get('provider','warp')=='warp' else 'inactive (relay selected)' if state else 'not configured'))
+        print(status_text(state,args[0] if args else 'en_US'))
     elif action=='forget_argo':
         state=read_state(base)
         if state:

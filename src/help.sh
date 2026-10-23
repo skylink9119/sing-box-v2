@@ -8,7 +8,7 @@ SKYBYTE Manager — quick guide
 4. Accounts: main 7. Initialize, create accounts and set quota/expiry. Share personal exports, not administrator nodes. Accounts are not actual people and may share credentials.
 5. HTTPS subscriptions: obtain a trusted certificate through main 5 → 6, then main 2 → 6. Create/rotate/revoke personal links through user menu 16. Configure provider TCP access. Tokens grant access to credentials: keep links private. Revocation does not rotate node passwords.
 6. Certificates: main 5 → 6 issues isolated ACME/Certbot certificates using HTTP-01 or Cloudflare DNS-01; auto-renew is opt-in. HTTP requires public TCP80. DNS tokens remain private. Existing websites/certificates are preserved.
-7. WARP/media: main 4 → 9 / 8. WARP defaults to selected media/AI domains. It cannot guarantee location or unlocking. Anonymous tests do not verify playback. WARP menu 7 maintains catalogs; applying them is a separate confirmation.
+7. WARP/media: main 4 → 9 / 8. WARP defaults to selected media/AI domains. It cannot guarantee location or unlocking. Anonymous tests do not verify playback. WARP menu 6 maintains catalogs; applying them is a separate confirmation.
 8. Backup: main 5 → 2 creates a backup; 3 restores it; 7 lists/preflights/encrypts/imports or explicitly prunes old backups. Backups contain keys. Restore keeps current usage/policies and current subscription tokens.
 9. Versions: main 5 → 1 selects this release's tested core, latest stable or a specific version/downgrade. Every managed config must validate; weekly auto-update remains removed.
 10. Resources: main 4 → 7. Each account uses a core. Capacity depends on measured memory/CPU/traffic. Account quotas are periodically enforced, not byte-exact billing.
@@ -24,7 +24,7 @@ SKYBYTE Manager — 快速使用说明
 4. 用户管理：主菜单7，初始化后添加用户并设额度/有效期。只分享个人节点，不要分享管理员节点；账户数量不代表真实人数，无法阻止凭据分享。
 5. 在线订阅：主菜单5 → 6获取可信证书，再通过主菜单2 → 6配置HTTPS服务。用户菜单16签发、重置、撤销个人链接。云安全组需允许订阅 TCP 端口。Token可获取节点凭据，链接请保密；撤销订阅不等于更换节点密码。
 6. 证书：主菜单5 → 6，用隔离的 ACME/Certbot 目录通过 HTTP-01 或 Cloudflare DNS-01申请，自动续签需手动开启。HTTP须公网 TCP80可达，DNS Token私密保存，不停止已有网站、不覆盖外部证书。
-7. WARP/流媒体：主菜单4 → 9 / 8。WARP默认仅所选流媒体和AI域名，不能保证国家或解锁；匿名检测不验证播放。WARP菜单7维护规则列表，应用新列表需单独确认。
+7. WARP/流媒体：主菜单4 → 9 / 8。WARP默认仅所选流媒体和AI域名，不能保证国家或解锁；匿名检测不验证播放。WARP菜单6维护规则列表，应用新列表需单独确认。
 8. 备份：主菜单5 → 2新建、3恢复、7列表/预检/加密导出/导入/确认清理旧备份。备份含私钥。恢复保留当前用量、策略和当前订阅Token。
 9. 版本：主菜单5 → 1选本版测试内核、最新稳定版或指定版本/降级，须检查全部托管配置。每周自动更新保持移除。
 10. 资源：主菜单4 → 7，每个用户一个内核，容量需实测。配额周期检查，不是精确计费。

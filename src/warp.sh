@@ -220,7 +220,23 @@ warp_reconcile(){
 
 warp_profile_domains(){
  local choice domains
- prompt_options '1 Netflix + Disney+ + ChatGPT + Gemini（默认）\n2 仅 Netflix\n3 仅 Disney+\n4 仅 ChatGPT\n5 仅 Gemini\n6 全部流媒体与 AI\n7 自定义域名后缀\n0 返回' '1 Netflix + Disney+ + ChatGPT + Gemini (default)\n2 Netflix only\n3 Disney+ only\n4 ChatGPT only\n5 Gemini only\n6 All media and AI\n7 Custom domain suffixes\n0 Back' >&2
+ prompt_options '选择分流平台
+1. Netflix + Disney+ + ChatGPT + Gemini（默认）
+2. 仅 Netflix
+3. 仅 Disney+
+4. 仅 ChatGPT
+5. 仅 Gemini
+6. 全部流媒体与 AI
+7. 自定义域名后缀
+0. 返回' 'Choose routing platforms
+1. Netflix + Disney+ + ChatGPT + Gemini (default)
+2. Netflix only
+3. Disney+ only
+4. ChatGPT only
+5. Gemini only
+6. All media and AI
+7. Custom domain suffixes
+0. Back' >&2
  prompt_read "$(L '选择 [1]：' 'Choose [1]: ')" choice || return 1
  case ${choice:-1} in
   1) warp_engine profile all;; 2) warp_engine profile netflix;; 3) warp_engine profile disney;; 4) warp_engine profile chatgpt;; 5) warp_engine profile gemini;; 6) warp_engine defaults;;
@@ -231,12 +247,45 @@ warp_profile_domains(){
 warp_menu(){
  check_owned && warp_guard || return 1
  local choice port udp domains mode
- warp_engine status
- prompt_options '1 安装官方 WARP 本机代理\n2 使用现有本机代理\n3 导入 WireGuard 配置\n4 切换出站模式 / 自定义分流\n5 双栈检测\n6 流媒体 / AI 检测与对比\n7 分流规则管理\n8 Netflix / Disney+ / ChatGPT / Gemini 快速分流\n0 返回' '1 Install official WARP local proxy\n2 Existing local proxy\n3 Import WireGuard profile\n4 Outbound mode / custom routing\n5 Dual-stack tests\n6 Media / AI tests and comparison\n7 Rule catalog\n8 Netflix / Disney+ / ChatGPT / Gemini routing presets\n0 Back'
+ printf '\n%s%s%s\n' "$CYAN" "$(L '========== WARP 管理 ==========' '========== WARP Manager ==========')" "$RESET"
+ warp_engine status "${LANGUAGE_CHOICE:-zh_CN}" || return 1
+ prompt_options '
+【代理设置】
+1. 安装官方 WARP 本机代理
+2. 使用已有本机代理
+3. 导入 WireGuard 配置
+
+【分流设置】
+4. 选择分流平台
+5. 切换出站模式 / 自定义分流
+6. 管理分流规则
+
+【连接检测】
+7. 检测 IPv4 / IPv6 双栈出口
+8. 对比直连 / WARP 平台响应
+
+0. 返回
+--------------------------------------' '
+[Proxy setup]
+1. Install official WARP local proxy
+2. Use an existing local proxy
+3. Import a WireGuard profile
+
+[Routing]
+4. Choose routing platforms
+5. Outbound mode / custom routing
+6. Manage routing rules
+
+[Connection tests]
+7. Test IPv4 / IPv6 egress
+8. Compare direct / WARP platform responses
+
+0. Back
+--------------------------------------'
  prompt_read '> ' choice || return 0
  case $choice in
-  1) warp_install_client;; 3) warp_import_gateway;; 5) warp_dualstack;; 6) media_check;; 7) warp_rules_menu;;
-  8)
+  1) warp_install_client;; 3) warp_import_gateway;; 7) warp_dualstack;; 8) media_check;; 6) warp_rules_menu;;
+  4)
    domains=$(warp_profile_domains) || return 0
    prompt_read "$(L '本机 WARP SOCKS5 端口 [40000]：' 'Local WARP SOCKS5 port [40000]: ')" port || return 0; port=${port:-40000}
    valid_port "$port" && warp_loopback "$port" && warp_verify "$port" || return 1
@@ -247,10 +296,16 @@ warp_menu(){
    valid_port "$port" && warp_loopback "$port" && warp_verify "$port" || return 1
    udp=$(warp_proxy_capability "$port") || return 1; domains=$(warp_engine defaults) || return 1
    confirm "$(L '仅流媒体和 AI 域名使用此 WARP 出站？' 'Route only media/AI domains through this WARP proxy?')" && warp_switch restricted "$port" "$udp" "$domains";;
-  4)
+  5)
    port=$(warp_engine port) || return 1
    udp=$(python3 -c 'import json,sys; print(str(json.load(open(sys.argv[1]))["udp"]).lower())' "$BASE/warp-state.json") || return 1
-   prompt_options '1 全局直连  2 全局 WARP  3 仅受限域名 WARP' '1 Direct  2 Global WARP  3 Restricted domains only'
+   prompt_options '选择出站模式
+1. 全局直连
+2. 全局 WARP
+3. 仅指定域名使用 WARP' 'Choose outbound mode
+1. Direct
+2. Global WARP
+3. Selected domains only'
    prompt_read '> ' mode || return 0
    case $mode in 1) mode=direct;; 2) mode=global;; 3) mode=restricted;; *) return 1;; esac
    domains=$(warp_engine defaults) || return 1
@@ -268,7 +323,15 @@ warp_rules_menu(){
  warp_guard || return 1
  local choice domains port udp
  warp_engine catalog_status || return 1
- prompt_options '1 查看当前出口  2 手动更新规则列表  3 将当前规则用于受限域名分流  0 返回' '1 Verify current egress  2 Update catalog manually  3 Apply catalog to restricted routing  0 Back'
+ prompt_options '分流规则管理
+1. 验证当前 WARP 出口
+2. 手动更新规则列表
+3. 应用当前列表到指定域名分流
+0. 返回' 'Routing rule catalog
+1. Verify current WARP egress
+2. Update the catalog manually
+3. Apply the catalog to selected domains
+0. Back'
  prompt_read '> ' choice || return 0
  case $choice in
   1) port=$(warp_engine port) && warp_loopback "$port" && warp_verify "$port";;

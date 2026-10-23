@@ -14,6 +14,7 @@ import threading
 import time
 import types
 import unittest
+import unicodedata
 from unittest.mock import patch
 
 import test_manager as manager
@@ -209,6 +210,68 @@ warp_switch restricted 40000 false netflix.com'''
         self.assertNotIn('--insecure',log.read_text());self.assertIn('socks5h://127.0.0.1:40000',log.read_text())
         for trace in ['warp=on', 'warp=on\\nip=127.0.0.1\\nloc=US', 'warp=on\\nip=1.1.1.1\\nloc=invalid']:
             self.assertNotEqual(self.shell('curl(){ printf '+shlex.quote(trace)+'; }; warp_verify 40000',ok=False).returncode,0)
+
+    def test_warp_menu_has_real_newlines_ordered_groups_and_readable_width(self):
+        self.configure('2')
+        for language in ('zh_CN','en_US'):
+            result=self.shell('LANGUAGE_CHOICE='+language+';warp_menu',input='0\n')
+            output=result.stdout
+            self.assertNotIn(r'\n',output)
+            options=[int(line.split('.',1)[0]) for line in output.splitlines() if line[:1].isdigit() and '. ' in line]
+            self.assertEqual(options,[1,2,3,4,5,6,7,8,0])
+            for line in output.splitlines():
+                width=sum(2 if unicodedata.east_asian_width(char) in ('W','F') else 1 for char in line)
+                self.assertLessEqual(width,80,line)
+            self.assertIn('未配置 WARP' if language=='zh_CN' else 'WARP not configured',output)
+            self.assertIn('【连接检测】' if language=='zh_CN' else '[Connection tests]',output)
+
+    def test_warp_submenus_render_real_newlines_without_polluting_selected_domains(self):
+        self.configure('2');self.switch()
+        for language in ('zh_CN','en_US'):
+            result=self.shell('LANGUAGE_CHOICE='+language+';warp_profile_domains',input='5\n')
+            self.assertIn('gemini.google.com',result.stdout)
+            self.assertEqual(len(result.stdout.splitlines()),1)
+            self.assertNotIn(r'\n',result.stderr)
+            self.assertIn('\n5. ',result.stderr)
+            result=self.shell('LANGUAGE_CHOICE='+language+';warp_rules_menu',input='0\n')
+            self.assertNotIn(r'\n',result.stdout)
+            self.assertIn('\n2. ',result.stdout)
+            result=self.shell('LANGUAGE_CHOICE='+language+';warp_menu',input='5\n0\n',ok=False)
+            self.assertNotIn(r'\n',result.stdout)
+            self.assertIn('选择出站模式' if language=='zh_CN' else 'Choose outbound mode',result.stdout)
+
+    def test_warp_menu_numbers_dispatch_without_modifying_live_configuration(self):
+        self.configure('2');self.switch()
+        before=(self.config/'config.json').read_bytes()
+        stubs='''warp_install_client(){ echo ACTION_INSTALL; }
+warp_import_gateway(){ echo ACTION_IMPORT; }
+warp_dualstack(){ echo ACTION_DUAL; }
+media_check(){ echo ACTION_MEDIA; }
+warp_rules_menu(){ echo ACTION_RULES; }
+warp_loopback(){ :; };warp_verify(){ :; }
+warp_proxy_capability(){ echo false; }
+warp_switch(){ printf 'ACTION_SWITCH %s\\n' "$*"; }
+warp_menu
+'''
+        for inputs,marker in [('1\n','ACTION_INSTALL'),('2\n\ny\n','ACTION_SWITCH restricted'),
+                              ('3\n','ACTION_IMPORT'),('4\n5\n\ny\n','ACTION_SWITCH restricted'),
+                              ('5\n1\ny\n','ACTION_SWITCH direct'),('6\n','ACTION_RULES'),
+                              ('7\n','ACTION_DUAL'),('8\n','ACTION_MEDIA')]:
+            with self.subTest(inputs=inputs):
+                self.assertIn(marker,self.shell(stubs,input=inputs).stdout)
+                self.assertEqual(before,(self.config/'config.json').read_bytes())
+
+    def test_warp_status_distinguishes_configuration_direct_and_relay(self):
+        self.assertIn('未配置',warp.status_text(None,'zh_CN'))
+        state={'mode':'restricted','provider':'warp','port':40000,'udp':False,'private':'DO_NOT_PRINT'}
+        for mode,expected in [('restricted','仅指定域名'),('global','全部节点流量'),('direct','当前直连')]:
+            state['mode']=mode
+            result=warp.status_text(state,'zh_CN')
+            self.assertIn(expected,result);self.assertIn('127.0.0.1:40000',result)
+            self.assertNotIn('DO_NOT_PRINT',result)
+        state['provider']='relay'
+        self.assertIn('落地中转',warp.status_text(state,'zh_CN'))
+        self.assertIn('inactive (relay selected)',warp.status_text(state,'en_US'))
 
     def test_warp_waits_for_readiness_and_stops_after_bounded_failures(self):
         code='''probe_calls=0
