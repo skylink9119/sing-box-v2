@@ -27,9 +27,15 @@ hop(){
  check_owned && hop_guard || return 1
  [[ $(protocol_mode) != 1 ]] || { err "$(L '未安装 HY2' 'HY2 not installed')"; return 1; }
  local choice backend start end target
+ # --menu renders only; a numeric argument executes one selected operation.
+ if [[ $# == 0 || $1 == --menu ]]; then
  say '端口跳跃仅支持 IPv4；规则随 systemd 开机恢复，需要放行云防火墙 UDP 范围。' 'Hopping is IPv4-only, persisted with systemd; allow the provider UDP range.'
  prompt_options '1 开启  2 关闭  0 返回' '1 Enable  2 Disable  0 Back'
+ [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
+ else
+  choice=$1
+ fi
  if [[ $choice == 2 ]]; then confirm "$(L '关闭跳跃？' 'Disable hopping?')" && hop_disable; return; fi
  [[ $choice == 1 ]] || return 0
  prompt_options '1 nftables（默认）  2 iptables' '1 nftables (default)  2 iptables'

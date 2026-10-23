@@ -20,7 +20,7 @@
 
 ---
 
-# SKYBYTE Manager V2.8.6 — sing-box Installer and Ubuntu/Debian VPS Management
+# SKYBYTE Manager V2.8.7 — sing-box Installer and Ubuntu/Debian VPS Management
 
 **SKYBYTE Manager** is a Bash-based Ubuntu/Debian VPS manager with Simplified Chinese and English interfaces. It installs sing-box with **VLESS + Reality + Vision, Hysteria2 (HY2), or both protocols**, manages Cloudflare Argo tunnels and WARP routing, and provides per-user traffic quotas and expiry. Client exports support Shadowrocket, v2rayN, Clash Verge/Mihomo/OpenClash and sing-box JSON.
 
@@ -29,6 +29,8 @@ YouTube: [SKYBYTE9119](https://www.youtube.com/@SKYBYTE9119) · [中文](README.
 If you find this script helpful, please subscribe to my YouTube channel and support SKYBYTE's continued development!
 
 The main menu includes the SKYBYTE ASCII logo. Menus are bold green, credential links bold red, warnings bold yellow and errors bold red on ANSI terminals. Set `NO_COLOR=1` to disable colors. Every action uses `[y/N]`: type `y` or `Y` to confirm; Enter or `n/N` cancels.
+
+V2.8.7 uses main-menu letters `a–g` (case-insensitive), numeric submenus, `0` to return one level and `q` to exit. Completed, cancelled and failed operations keep the current menu open. For example, `d → 2` lets you install, enable and inspect UFW consecutively. Idle menus release the operation lock. Previous main-menu numbers remain compatibility aliases.
 
 V2.8.6 fixes literal `\n` text in WARP menus. One option per line, grouped as proxy setup (1–3), routing (4–6) and connection tests (7–8), with readable localized status. Confirm with `y` or `Y` at `[y/N]`; Enter cancels.
 
@@ -71,7 +73,7 @@ After installing/updating, log in again and run **`sb`** to open the main menu. 
 
 **Debian 11/12 compatibility:** refresh APT indexes strictly, permit authenticated Suite-only changes, abort on index errors, and retry package download failures once after another refresh. Bullseye archive repair supports legacy `.list` and deb822 `.sources`, backing up originals under `/etc/apt/skybyte-source-backup.*`. Existing HTTP/HTTPS transport, Signed-By, third-party repositories and custom mirrors are preserved. Only archive entries disable metadata expiry checking; package signatures and HTTPS verification remain enabled. Debian 12/13 are not redirected to the archive. HY2 self-signed generation uses an isolated request configuration to avoid duplicate certificate extensions in OpenSSL 1.1.1 on Debian 11, for both fresh installation and protocol additions; TLS verification remains enabled. Debian 11 official LTS has ended; historical packages do not restore security maintenance. See [Debian lifecycle](https://www.debian.org/releases/bullseye/) and [official archive](https://www.debian.org/distrib/archive).
 
-Fresh installation uses the official sing-box 1.14.3 binary tested for this manager release and verifies its SHA-256 digest against GitHub Release metadata. It does not run a remote package installer. Choose a language at first launch; it is saved in `/etc/singbox-v2/language.conf`. Menu **6 → 1** changes language.
+Fresh installation uses the official sing-box 1.14.3 binary tested for this manager release and verifies its SHA-256 digest against GitHub Release metadata. It does not run a remote package installer. Choose a language at first launch; it is saved in `/etc/singbox-v2/language.conf`. Menu **f → 1** changes language.
 
 **Installation refuses to overwrite an existing configuration, manager state, sing-box binary, service or occupied protocol port.** Manage an existing deployment through 1 → 5. Fresh installation stages and validates files before committing; failures remove only files created by that attempt, allowing retry without replacing existing files. Management/updates preserve credentials. New deployments use TCP 443 / UDP 443. Configure the provider firewall separately.
 
@@ -79,24 +81,24 @@ Fresh installation uses the official sing-box 1.14.3 binary tested for this mana
 
 | Menu | Category | Functions |
 | --- | --- | --- |
-| 1 | Install nodes | Reality / HY2 / dual; Quick / Named; node edits / protocol changes; restricted-network setup |
-| 2 | Nodes and subscriptions | Information / exports / custom names / QR codes / accounts / personal HTTPS subscriptions |
-| 3 | Services and logs | Controls / logs / Argo status |
-| 4 | Server and network | Initialization / UFW / firewall / BBR / hopping / traffic / resources / media / WARP / sing-box relay / HAProxy TCP passthrough |
-| 5 | Updates and backups | Core versions / backup / restore / manager updates / certificates / ACME / encrypted backups |
-| 6 | Settings and uninstall | Language / privacy / uninstall / guide |
-| 7 | Users and quotas | Accounts / usage / quota / expiry / diagnostics / resources |
-| 0 | Exit | |
+| a | Install nodes | Reality / HY2 / dual; Quick / Named; node edits / protocol changes; restricted-network setup |
+| b | Nodes and subscriptions | Information / exports / custom names / QR codes / accounts / personal HTTPS subscriptions |
+| c | Services and logs | Controls / logs / Argo status |
+| d | Server and network | Initialization / UFW / firewall / BBR / hopping / traffic / resources / media / WARP / sing-box relay / HAProxy TCP passthrough |
+| e | Updates and backups | Core versions / backup / restore / manager updates / certificates / ACME / encrypted backups |
+| f | Settings and uninstall | Language / privacy / uninstall / guide |
+| g | Users and quotas | Accounts / usage / quota / expiry / diagnostics / resources |
+| q | Exit | |
 
 Initialization updates apt indexes, upgrades packages, installs administration tools and checks time synchronization, DNS, HTTPS, SSH and UFW. It preserves an active time-sync service and does not enable UFW, change SSH, configure BBR or reboot. Package upgrades may restart services; retain console access.
 
-Before enabling UFW, the manager detects SSH ports from sshd listeners, `sshd -T` and `SSH_CONNECTION`, then asks you to verify the port. Detected ports and the verified port are allowed, together with deployed protocol ports and active HY2 hopping ranges. Menu 4 → 3 audits the configured HY2 UDP port and hopping range rules. Complex UFW rules require manual inspection; provider security groups cannot be inspected by this script.
+Before enabling UFW, the manager detects SSH ports from sshd listeners, `sshd -T` and `SSH_CONNECTION`, then asks you to verify the port. Detected ports and the verified port are allowed, together with deployed protocol ports and active HY2 hopping ranges. Menu d → 3 audits the configured HY2 UDP port and hopping range rules. Complex UFW rules require manual inspection; provider security groups cannot be inspected by this script.
 
 vnStat reports **total VPS interface traffic**, never separate Reality/HY2 traffic. History starts when vnStat begins collecting data.
 
 ## Hysteria2 / HY2 and verified TLS
 
-Installation accepts a node name prefix; press Enter for `SKYBYTE`. Existing deployments can use menu **2 → 3**. Exports append `-Reality` or `-HY2` to avoid duplicate protocol names. Names support up to 64 characters, including Chinese, spaces and ordinary symbols; URI fragments are percent-encoded. All client formats use the same names. Renaming preserves server configuration, UUIDs and passwords and does not restart the service. Node names, client headings, file paths and instructions use bold yellow on color terminals; links and configuration contents remain red.
+Installation accepts a node name prefix; press Enter for `SKYBYTE`. Existing deployments can use menu **b → 3**. Exports append `-Reality` or `-HY2` to avoid duplicate protocol names. Names support up to 64 characters, including Chinese, spaces and ordinary symbols; URI fragments are percent-encoded. All client formats use the same names. Renaming preserves server configuration, UUIDs and passwords and does not restart the service. Node names, client headings, file paths and instructions use bold yellow on color terminals; links and configuration contents remain red.
 
 Choose either:
 
@@ -106,7 +108,7 @@ Choose either:
 
 Server and client passwords match; URI credentials are percent-encoded. Certificate verification stays enabled. Self-signed certificates are not trusted by default, so importing only a URI is insufficient.
 
-Menu 2 → 2 exports:
+Menu b → 2 exports:
 
 | File | Purpose |
 | --- | --- |
@@ -137,7 +139,7 @@ On iPhone, install `hy2-client-ca.mobileconfig`, then enable full trust under **
 
 The former IP information, basic network and HY2/Shadowrocket diagnostic menu entries have been removed. A local listener does not prove provider/mobile-network UDP reachability. Use actual connections or URL tests in Shadowrocket; ICMP latency does not validate HY2.
 
-Hopping is off by default, under **4 → 5**, with nftables (default) or iptables. The default range is `20000–40000`; ranges within 1024–65535 may contain at most 20001 ports. IPv4 UDP maps to the actual HY2 listener. Only the dedicated `ip singbox_v2_hop` table or `SKYBYTE_HY2_HOP` NAT chain is used. Existing named rules and account HY2 port overlaps are rejected. systemd persists rules and active UFW permits the range. sing-box/Mihomo exports include the range and a 30-second interval; basic URIs retain the base port. Allow the range in your provider firewall. Disabling hopping leaves UFW rules for manual cleanup to avoid deleting rules used by other applications. Hopping does not guarantee relief from throttling or UDP blocking; providers must allow the range.
+Hopping is off by default, under **d → 5**, with nftables (default) or iptables. The default range is `20000–40000`; ranges within 1024–65535 may contain at most 20001 ports. IPv4 UDP maps to the actual HY2 listener. Only the dedicated `ip singbox_v2_hop` table or `SKYBYTE_HY2_HOP` NAT chain is used. Existing named rules and account HY2 port overlaps are rejected. systemd persists rules and active UFW permits the range. sing-box/Mihomo exports include the range and a 30-second interval; basic URIs retain the base port. Allow the range in your provider firewall. Disabling hopping leaves UFW rules for manual cleanup to avoid deleting rules used by other applications. Hopping does not guarantee relief from throttling or UDP blocking; providers must allow the range.
 
 Updates back up first, download and check a candidate binary, then replace the binary, restart and check service health. Startup failures restore the previous binary. Manual updates require confirmation. Weekly automatic updates have been removed. Startup backs up and retires owned legacy update units, preserving modified or unowned units. Service health alone does not prove client connectivity.
 
@@ -145,9 +147,9 @@ New backups use separate `config/`, `state.json` and `sing-box.bin` paths, inclu
 
 ## Validation
 
-Menu **6 → 3** requires case-insensitive `y` confirmation and first backs up configuration, certificates and the binary. Backup failure cancels removal. It stops automatic updates, managed hopping and sing-box, then removes owned units, the binary, node configuration, generated certificates/exports and identifiable manager executable copies. Changed unit ownership/start paths or symlinked key files cause refusal. Successful uninstall exits the menu.
+Menu **f → 3** requires case-insensitive `y` confirmation and first backs up configuration, certificates and the binary. Backup failure cancels removal. It stops automatic updates, managed hopping and sing-box, then removes owned units, the binary, node configuration, generated certificates/exports and identifiable manager executable copies. Changed unit ownership/start paths or symlinked key files cause refusal. Successful uninstall exits the menu.
 
-Backups, external certificates, unknown user files, reports, UFW allow rules, BBR/FQ settings and system packages such as vnStat remain. It does not reset the firewall or delete unrelated nftables tables. Backups contain private keys; protect permissions and disk space. To restore after uninstall, deploy again and restore the retained backup through menu 5 → 3.
+Backups, external certificates, unknown user files, reports, UFW allow rules, BBR/FQ settings and system packages such as vnStat remain. It does not reset the firewall or delete unrelated nftables tables. Backups contain private keys; protect permissions and disk space. To restore after uninstall, deploy again and restore the retained backup through menu e → 3.
 
 ```bash
 for file in bootstrap.sh install.sh singbox-v2.sh src/*.sh; do bash -n "$file"; done
@@ -172,22 +174,22 @@ For lawful networking education and server administration, subject to applicable
 
 ## Argo Quick / Named Tunnels
 
-Menu **1 → 4** adds a separate VLESS + WebSocket node to an existing managed Reality/HY2 deployment. The origin listens only on loopback; existing credentials and configuration are preserved. All client exports use verified HTTPS/WSS. Cloudflare terminates outer TLS and can inspect WebSocket payloads.
+Menu **a → 4** adds a separate VLESS + WebSocket node to an existing managed Reality/HY2 deployment. The origin listens only on loopback; existing credentials and configuration are preserved. All client exports use verified HTTPS/WSS. Cloudflare terminates outer TLS and can inspect WebSocket payloads.
 
 Quick mode needs no account/domain; restart changes the hostname, requiring refreshed imports. [Cloudflare documents Quick Tunnels as testing services without uptime guarantees](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/). Named mode requires a remotely managed tunnel and published hostname configured in your account: route HTTP to `http://127.0.0.1:8080` (use your selected local port), enable WebSocket support, and avoid interactive Access login. Enter hostname and Token locally; account DNS/routes are not provisioned by this script.
 
 Controls include status/start/stop/restart/refresh/removal. Registration does not establish end-to-end reachability. Disconnected Quick nodes are omitted. Tokens use mode 600 and `--token-file`, are excluded from exports, and included in private backups. Removal preserves account tunnels/DNS. Restore re-registers before export. Official cloudflared downloads are SHA-256 verified.
 
-Menu **2 → 4** displays one Shadowrocket node QR code per installed/exportable node, separated by dashed lines. Scan with Shadowrocket. The manager installs Ubuntu/Debian package `qrencode` when needed; links are encoded locally through stdin and no QR images are saved. Self-signed HY2 still requires certificate trust; keep QR codes private.
+Menu **b → 4** displays one Shadowrocket node QR code per installed/exportable node, separated by dashed lines. Scan with Shadowrocket. The manager installs Ubuntu/Debian package `qrencode` when needed; links are encoded locally through stdin and no QR images are saved. Self-signed HY2 still requires certificate trust; keep QR codes private.
 
-Shadowrocket native links are additionally saved in `shadowrocket-native-nodes.txt`, with a Base64 list in `shadowrocket-native-subscription.txt`. VLESS uses Base64 authority plus native remarks/peer/xtls parameters, following the [Xboard Shadowrocket exporter](https://github.com/cedar2025/Xboard/blob/master/app/Protocols/Shadowrocket.php). Menu 2 → 4 encodes these links. Standard files remain unchanged; HY2 keeps its existing verified-TLS URI. Native links have not been GUI-tested in Shadowrocket.
+Shadowrocket native links are additionally saved in `shadowrocket-native-nodes.txt`, with a Base64 list in `shadowrocket-native-subscription.txt`. VLESS uses Base64 authority plus native remarks/peer/xtls parameters, following the [Xboard Shadowrocket exporter](https://github.com/cedar2025/Xboard/blob/master/app/Protocols/Shadowrocket.php). Menu b → 4 encodes these links. Standard files remain unchanged; HY2 keeps its existing verified-TLS URI. Native links have not been GUI-tested in Shadowrocket.
 
 ## Restricted networks: Argo rescue, IPv6 and NAT (V2.8)
 
-Open **1 → 6** for an Ubuntu/Debian host with blocked inbound access, IPv6-only connectivity, or provider-managed NAT. This cannot restore SSH, repair host networking, or recover a machine with no usable outbound path. The VPS still needs access to required downloads and outbound Cloudflare connectivity. If the host is unreachable, first use the provider console or rescue environment.
+Open **a → 6** for an Ubuntu/Debian host with blocked inbound access, IPv6-only connectivity, or provider-managed NAT. This cannot restore SSH, repair host networking, or recover a machine with no usable outbound path. The VPS still needs access to required downloads and outbound Cloudflare connectivity. If the host is unreachable, first use the provider console or rescue environment.
 
 - **1 / 2: standalone Argo Quick / Named Tunnel.** With no existing managed installation, the manager stages an empty sing-box core without public listeners, then creates a VLESS + WebSocket origin bound only to `127.0.0.1`. It provides a proxy entry while Cloudflare egress works; it does not carry HY2/QUIC. Quick Tunnels need no domain, but their hostname changes. Cloudflare classifies them for testing and provides no SLA, stable hostname or production guarantee. Named mode requires you to configure a Cloudflare Tunnel, published hostname and route to the selected loopback port; the script does not create DNS or account resources.
-- **Add a direct node after standalone Argo:** open **1 → 5 → 4**, choose Reality or HY2, then enter the public client address, local bind family and port. The separate Argo tunnel remains installed. Standalone Argo alone cannot host quota-managed accounts; add a direct node before enabling account management.
+- **Add a direct node after standalone Argo:** open **a → 5 → 4**, choose Reality or HY2, then enter the public client address, local bind family and port. The separate Argo tunnel remains installed. Standalone Argo alone cannot host quota-managed accounts; add a direct node before enabling account management.
 - **3 / 4: IPv6, custom ports and NAT.** Custom deployment lets you choose local ports/bind family and the address advertised to clients. The NAT export option separates the administrator node's public mapped ports/address from its local listener ports. Your provider must create the TCP/UDP mappings and allow the ports; the script cannot configure provider NAT, security groups or routes. Quota-user ports are not included and need separate mappings. HY2 certificate identity must match the name clients use to connect.
 - **5 / 7: Cloudflare transport and reachability check.** Tunnel egress requires UDP 7844 (QUIC) or TCP 7844 (HTTP/2); HTTP/2 does not use TCP 443. The check tests only TCP 7844 reachability for the selected address family. It cannot prove UDP reachability, tunnel registration or end-to-end client connectivity. Choose the family and transport allowed by the VPS/provider egress rules.
 - **6: WARP dual-stack completion.** Import your own working WARP WireGuard profile. The manager creates a gateway for managed node traffic and lets you select global WARP or WARP for selected media/AI domains. It leaves the system default route unchanged and cannot create its own first network path. The native Peer Endpoint must be reachable over the current network; IPv6-only hosts need a reachable IPv6 Peer Endpoint. Dual-stack checks verify only the gateway's IPv4/IPv6 TCP egress and do not promise service unlocking.
@@ -199,7 +201,7 @@ Interactive startup and language changes show a bold green version/system summar
 
 ## Account limits, traffic quotas and expiry
 
-Open **main menu 7** (legacy **2 → 5** remains), initialize management (default 10 accounts, configurable 1–100), then add accounts with a name, total upload-plus-download quota in GiB and validity days. Controls include per-account upload/download/total usage, quota/validity edits, enable/disable, deletion, explicit usage reset, personal exports and Shadowrocket QR codes. Expired or exhausted accounts lose their listeners and existing connections. Renewal does not reset usage automatically.
+Open **main menu g** (legacy **b → 5** remains), initialize management (default 10 accounts, configurable 1–100), then add accounts with a name, total upload-plus-download quota in GiB and validity days. Controls include per-account upload/download/total usage, quota/validity edits, enable/disable, deletion, explicit usage reset, personal exports and Shadowrocket QR codes. Expired or exhausted accounts lose their listeners and existing connections. Renewal does not reset usage automatically.
 
 The limit counts undeleted accounts, including disabled/expired ones; it does not count actual people or prevent credential sharing. Quota edits retain expiry; validity edits retain quota and usage. Validity starts at creation or validity edit and is displayed in UTC. There is no automatic billing-cycle reset; `1 GiB = 1024³ bytes`.
 
@@ -217,11 +219,11 @@ Backups include policies, usage, configurations and certificates. Restore retain
 
 ## Manager operations (V2.3)
 
-- **5 → 1** updates the sing-box core; **5 → 4** checks/updates SKYBYTE Manager itself. Manager updates use the latest stable GitHub Release asset, verify its SHA256, Bash/embedded Python syntax and version, and atomically replace owned script copies. Configurations, credentials and usage are retained. Script backups live in `/etc/singbox-v2/manager-backups/`. Previously active user supervisors, Argo tunnels and HTTPS subscription services briefly restart; failure rolls script copies back. Successful updates reopen the new menu. Development versions are not downgraded.
-- **Main menu 7** opens user management; the main menu shows account count/limit, ready accounts and supervisor status. **User menu 4** changes quota only, retaining expiry and usage. **13** changes validity from now only, retaining quota and usage. Resulting expiry is displayed in UTC.
+- **e → 1** updates the sing-box core; **e → 4** checks/updates SKYBYTE Manager itself. Manager updates use the latest stable GitHub Release asset, verify its SHA256, Bash/embedded Python syntax and version, and atomically replace owned script copies. Configurations, credentials and usage are retained. Script backups live in `/etc/singbox-v2/manager-backups/`. Previously active user supervisors, Argo tunnels and HTTPS subscription services briefly restart; failure rolls script copies back. Successful updates reopen the new menu. Development versions are not downgraded.
+- **Main menu g** opens user management; the main menu shows account count/limit, ready accounts and supervisor status. **User menu 4** changes quota only, retaining expiry and usage. **13** changes validity from now only, retaining quota and usage. Resulting expiry is displayed in UTC.
 - **User menu 14** reports safe failure categories, timestamps, exit codes, configuration checks and local log paths, without API secrets or raw logs. Authentication, timeout, invalid response, counter or core-exit failures stop the affected account. Repair the cause and explicitly enable it; enabling validates the core/controller configuration and does not bypass expiry or quota exhaustion.
-- **4 → 7** or **user menu 15** shows managed core/process counts, RSS memory, available system memory and load. RSS includes shared memory; this snapshot cannot guarantee account capacity.
-- Startup shows HY2 certificate days remaining and warns within 30 days. **5 → 5** checks expiry, synchronizes renewed certificates to user nodes and reloads previously active services, or enables/disables daily monitoring. Expired certificates and mismatched keys/identities are rejected.
+- **d → 7** or **user menu 15** shows managed core/process counts, RSS memory, available system memory and load. RSS includes shared memory; this snapshot cannot guarantee account capacity.
+- Startup shows HY2 certificate days remaining and warns within 30 days. **e → 5** checks expiry, synchronizes renewed certificates to user nodes and reloads previously active services, or enables/disables daily monitoring. Expired certificates and mismatched keys/identities are rejected.
 - Daily monitoring is **off by default**, uses `skybyte-certificate.timer` and logs to systemd. It does not issue or renew certificates. A valid changed domain certificate at the configured paths is synchronized/reloaded. Renewal tools can call `/bin/bash /usr/local/sbin/singbox-v2 --certificate-reload` as a deploy hook. The first check establishes a fingerprint baseline; manually reload once if renewal happened before that baseline. Changed self-signed certificates require manual reload and updated client trust; TLS verification remains enabled.
 
 ## Source modules and build
@@ -235,7 +237,7 @@ V2.3.1: interactive questions, selection hints and YES confirmations use bold gr
 
 ## WARP egress and dual-stack (V2.4)
 
-Open **4 → 9**: 1–3 set up proxies, 4 selects platforms, 5 switches modes, 6 manages rules, 7 tests dual-stack egress and 8 compares platform responses. WARP is disabled by default. Initial setup routes only media/AI domains through WARP, leaving other traffic direct. Select **direct / global WARP / restricted domains**, or supply custom suffixes. Defaults include the five media platforms plus major OpenAI/ChatGPT, Gemini and Claude domains and some CDNs. Remove AI suffixes in a custom list for media-only routing. Matching depends on domains and sniffing; literal IPs, ECH and unlisted CDNs may evade classification. WARP cannot guarantee platform unlocking or a chosen exit country.
+Open **d → 9**: 1–3 set up proxies, 4 selects platforms, 5 switches modes, 6 manages rules, 7 tests dual-stack egress and 8 compares platform responses. WARP is disabled by default. Initial setup routes only media/AI domains through WARP, leaving other traffic direct. Select **direct / global WARP / restricted domains**, or supply custom suffixes. Defaults include the five media platforms plus major OpenAI/ChatGPT, Gemini and Claude domains and some CDNs. Remove AI suffixes in a custom list for media-only routing. Matching depends on domains and sniffing; literal IPs, ECH and unlisted CDNs may evade classification. WARP cannot guarantee platform unlocking or a chosen exit country.
 
 WARP submenu **4** offers Netflix, Disney+, ChatGPT, Gemini, all four, all media/AI and custom suffix presets. Readiness retries verify the actual proxy after installation; existing WARP clients/data are retained. Trace checks validate WARP status, global IP and country. Gemini uses specific web/AI Studio/API domains, not all Google traffic.
 
@@ -255,16 +257,16 @@ Backups include routing, private gateway configuration and owned units. Restore 
 
 ## Streaming availability tests (V2.4)
 
-Open **4 → 8** for Netflix, Disney+, ChatGPT, Gemini, YouTube Premium, Amazon Prime Video and TikTok. Choose direct IPv4, direct IPv6, WARP or an IPv4/WARP comparison. Anonymous official-page requests identify country/region fields, final-page locale hints and explicit location restrictions; the output names the field source and reports missing or conflicting clues. Requests use verified TLS, bounded timeouts/body sizes, no account login or cookies, and no remote third-party scripts.
+Open **d → 8** for Netflix, Disney+, ChatGPT, Gemini, YouTube Premium, Amazon Prime Video and TikTok. Choose direct IPv4, direct IPv6, WARP or an IPv4/WARP comparison. Anonymous official-page requests identify country/region fields, final-page locale hints and explicit location restrictions; the output names the field source and reports missing or conflicting clues. Requests use verified TLS, bounded timeouts/body sizes, no account login or cookies, and no remote third-party scripts.
 
 Results distinguish page region clues, explicit location restrictions, catalog/subscription offers and connection failures. A page field or URL locale is only a clue; it does not prove the VPS egress country, a full catalog or playback. HTTP 200 confirms only a page response, not unlocking. 403/429, challenges and changed pages generally remain unknown; explicit unsupported-country/region errors from ChatGPT/Gemini are classified as location restrictions. No account login, payment eligibility or playback validation is performed; AI account availability is not tested. WARP uses proxy-side DNS and does not claim a specific egress address family.
 
-Private reports contain classifications, region hints and HTTP codes, at `/etc/singbox-v2/reports/media-*.json`, mode 600. Raw pages and node credentials are excluded. Probes run on demand without background jobs. WARP and each user core add resource usage; **4 → 7** shows process/memory/load snapshots, without a fixed account-capacity promise.
+Private reports contain classifications, region hints and HTTP codes, at `/etc/singbox-v2/reports/media-*.json`, mode 600. Raw pages and node credentials are excluded. Probes run on demand without background jobs. WARP and each user core add resource usage; **d → 7** shows process/memory/load snapshots, without a fixed account-capacity promise.
 
 
 ## Node editing (V2.5)
 
-Open **1 → 5** for independent admin Reality/HY2 ports, server IP/DDNS, Reality handshake identity, adding/removing protocols, HY2 bandwidth/Salamander options and existing TLS certificate changes. Removing the final protocol is refused. Added HY2 can generate a self-signed certificate or use an existing/managed ACME certificate; self-signed clients still require public-certificate trust.
+Open **a → 5** for independent admin Reality/HY2 ports, server IP/DDNS, Reality handshake identity, adding/removing protocols, HY2 bandwidth/Salamander options and existing TLS certificate changes. Removing the final protocol is refused. Added HY2 can generate a self-signed certificate or use an existing/managed ACME certificate; self-signed clients still require public-certificate trust.
 
 All candidates are checked before backup, final account metering, commit and restart of previously active nodes. Failure restores the original files. Existing UUIDs/passwords, individual ports, quota/expiry and usage remain. Adding Reality generates its keypair; re-adding a removed Reality protocol may produce a new public key, requiring import refresh. Exports and active UFW rules follow actual ports; old rules remain and provider security groups need manual updates.
 
@@ -274,7 +276,7 @@ HY2 options include upload/download Mbps, `ignore_client_bandwidth` and Salamand
 
 ## ACME certificates (V2.5)
 
-Open **5 → 6**, or select managed ACME during fresh HY2 installation. Distribution Certbot packages use isolated config/work/log directories under `/etc/singbox-v2/acme/`; no remote issuance scripts run and `/etc/letsencrypt/`/existing websites remain untouched.
+Open **e → 6**, or select managed ACME during fresh HY2 installation. Distribution Certbot packages use isolated config/work/log directories under `/etc/singbox-v2/acme/`; no remote issuance scripts run and `/etc/letsencrypt/`/existing websites remain untouched.
 
 - HTTP-01 needs correct A/AAAA records and public TCP80. Occupied port80 is rejected without stopping an existing site. Active UFW permits TCP80; provider rules remain manual.
 - Cloudflare DNS-01 uses the packaged Certbot plugin. A scoped DNS token is entered hidden and saved mode600, excluded from command arguments, client exports and GitHub. Follow the [plugin permission guidance](https://certbot-dns-cloudflare.readthedocs.io/en/stable/).
@@ -285,9 +287,9 @@ Auto-renewal is opt-in through `skybyte-acme.timer`, attempting twice daily in s
 
 ## Independent HTTPS subscriptions (V2.5)
 
-Initialize accounts and obtain a trusted domain certificate, then open **2 → 6** for hostname, HTTPS port (default8443) and certificate paths. Setup checks identity, key matching, expiry and system chain trust. It does not default to self-signed subscription TLS or disabled verification. Point DNS to the VPS and allow the actual provider TCP port. The service directly serves HTTPS without configuring CDN/reverse-proxy/account DNS.
+Initialize accounts and obtain a trusted domain certificate, then open **b → 6** for hostname, HTTPS port (default8443) and certificate paths. Setup checks identity, key matching, expiry and system chain trust. It does not default to self-signed subscription TLS or disabled verification. Point DNS to the VPS and allow the actual provider TCP port. The service directly serves HTTPS without configuring CDN/reverse-proxy/account DNS.
 
-**User menu16** (or **2 → 6 → 6**) issues, views, rotates or revokes an independent random token. Separate URLs deliver Shadowrocket, v2rayN, complete Mihomo YAML and sing-box JSON. Tokens are independent of node UUID/password; rotation immediately invalidates the old URL. Responses include upload/download/quota/expiry in `subscription-userinfo`; graphical client display remains a deployment check.
+**User menu16** (or **b → 6 → 6**) issues, views, rotates or revokes an independent random token. Separate URLs deliver Shadowrocket, v2rayN, complete Mihomo YAML and sing-box JSON. Tokens are independent of node UUID/password; rotation immediately invalidates the old URL. Responses include upload/download/quota/expiry in `subscription-userinfo`; graphical client display remains a deployment check.
 
 Only personal client exports are accessible: no directory listing, admin nodes, private keys, controller secrets or account database. Disabled/deleted/expired/exhausted/metering-blocked accounts, or paused supervisors, cannot download. Requests use current policy and regenerate exports under operation-lock coordination; busy edits may temporarily return unavailable. Responses prohibit caching, cap concurrency/rates and omit token-bearing request logs.
 
@@ -295,21 +297,21 @@ Only personal client exports are accessible: no directory listing, admin nodes, 
 
 ## Versions, backups and rule maintenance (V2.5)
 
-**5 → 1** selects tested 1.14.3, latest stable, or a specified stable version/downgrade. Official releases are digest-verified and must validate every admin/account/Argo/native-WARP configuration. Configurations are not silently regenerated; startup failure rolls the core back. Weekly automatic updates remain removed.
+**e → 1** selects tested 1.14.3, latest stable, or a specified stable version/downgrade. Official releases are digest-verified and must validate every admin/account/Argo/native-WARP configuration. Configurations are not silently regenerated; startup failure rolls the core back. Weekly automatic updates remain removed.
 
-**5 → 7** lists/creates/preflights backups, exports/imports GnuPG AES256 passphrase-encrypted archives and explicitly prunes older managed backups. New snapshots include SHA256 manifests. Preflight uses the currently trusted engine, never the executable inside an imported archive. Import only your own trusted backups. Hidden passphrases use file descriptors, not process arguments; forgotten passphrases cannot be recovered.
+**e → 7** lists/creates/preflights backups, exports/imports GnuPG AES256 passphrase-encrypted archives and explicitly prunes older managed backups. New snapshots include SHA256 manifests. Preflight uses the currently trusted engine, never the executable inside an imported archive. Import only your own trusted backups. Hidden passphrases use file descriptors, not process arguments; forgotten passphrases cannot be recovered.
 
-Import rejects traversal, duplicate/oversized entries and symbolic/hard links. Restoration still requires separate confirmation through **5 → 3**. Retention only affects backups with this manager's manifest; unknown/legacy directories remain and no automatic deletion occurs. Digests detect changes, not the authenticity of an unknown source. Backups contain private keys, DNS tokens and subscription tokens: protect files/passphrases.
+Import rejects traversal, duplicate/oversized entries and symbolic/hard links. Restoration still requires separate confirmation through **e → 3**. Retention only affects backups with this manager's manifest; unknown/legacy directories remain and no automatic deletion occurs. Digests detect changes, not the authenticity of an unknown source. Backups contain private keys, DNS tokens and subscription tokens: protect files/passphrases.
 
 Restore retains current account policy/usage and current subscription tokens. HTTPS certificate snapshots are saved separately; missing subscription/ACME state is filled only when absent, with rollback on failure and explicit renewal re-enabling. External TLS is restored as private config-directory snapshots; re-associate current ACME paths through the certificate menu to resume using those renewal paths. Uninstall first backs up, then removes owned HTTPS services, ACME tasks and private ACME directories, preserving external certificates/packages/backups.
 
 **WARP menu6** verifies current egress, manually downloads a stable release's digest-verified catalog, and separately applies it. Failure keeps the previous list; downloading does not replace custom live routing. Releases must include the public `data/warp-rules.json` asset. Catalog version/source are visible, without an unlocking guarantee.
 
-**6 → 4** or `bash singbox-v2.sh --help` provides a bilingual quick guide. An idle main menu releases the operation lock so background renewal can run; active management operations remain exclusive.
+**f → 4** or `bash singbox-v2.sh --help` provides a bilingual quick guide. An idle main menu releases the operation lock so background renewal can run; active management operations remain exclusive.
 
 ```bash
 python3 scripts/build.py --check
-python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.6
+python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.7
 ```
 
 Packaging includes only bootstrap.sh, install.sh, the full bundle, public rule catalog and SHA256SUMS, never runtime state or credentials.
@@ -327,7 +329,7 @@ SING_BOX_BIN=/path/to/sing-box python3 scripts/benchmark_users.py \
 
 ## Residential IP landing and VPS relay (V2.6)
 
-Menu **4 → 10: Residential landing / VPS relay**, then **6 Usage guide**, shows the setup steps and certificate-copy/fingerprint commands even before importing a landing node. It supports a residential-IP VPS with a poor direct route from mainland China by using an entry VPS with a better client-facing route:
+Menu **d → 10: Residential landing / VPS relay**, then **6 Usage guide**, shows the setup steps and certificate-copy/fingerprint commands even before importing a landing node. It supports a residential-IP VPS with a poor direct route from mainland China by using an entry VPS with a better client-facing route:
 
 **Copy the residential server's node URI into the entry server's manager. Your phone connects to the entry server.**
 
@@ -338,8 +340,8 @@ First identify the two servers:
 
 **Both servers need working nodes.** Open a separate SSH terminal for each server. Keep B's egress direct to retain the residential exit; disable WARP routing on B if active. Allow B's actual node port from A: TCP for Reality, UDP for HY2, including the provider firewall.
 
-1. **Open B's terminal.** Install **Reality + Vision** or **HY2** if needed; an existing working node is fine. In SKYBYTE Manager, select **2 → 1 View nodes**. Copy one complete red URI beginning with `vless://` or `hysteria2://`.
-2. **Switch to A's terminal.** Open **4 → 10 Residential landing / VPS relay**. Select **1 Import / replace landing**, then **1 Paste node URI**.
+1. **Open B's terminal.** Install **Reality + Vision** or **HY2** if needed; an existing working node is fine. In SKYBYTE Manager, select **b → 1 View nodes**. Copy one complete red URI beginning with `vless://` or `hysteria2://`.
+2. **Switch to A's terminal.** Open **d → 10 Residential landing / VPS relay**. Select **1 Import / replace landing**, then **1 Paste node URI**.
 3. **Paste B's URI and press Enter.** Hidden input displays no characters while pasting; this is expected.
 4. **Handle the certificate prompt.** For Reality or HY2 with a trusted CA certificate, press Enter. For self-signed HY2 on B, copy **B's public certificate to A**, verify its fingerprint and enter its file path on A. See the certificate commands below.
 5. **Choose `1 All node traffic through landing`, then type `y`.** Enter accepts the default mode. The script validates configurations and tests B's HTTPS connection and egress IP. Failure leaves existing routing; success backs up and restarts previously active admin/account/Argo nodes. Relay is enabled when import completes.
@@ -382,19 +384,19 @@ Existing sing-box cores handle forwarding without an extra public proxy listener
 
 ## HAProxy TCP passthrough (V2.7)
 
-Open **4 → 11 HAProxy TCP passthrough**, then **12 Usage guide**. Use this when A has a good client-facing route and B runs a TCP node, such as **VLESS + Reality + Vision** or an existing **Trojan** node. A can run only HAProxy; this mode does not require a sing-box node on A.
+Open **d → 11 HAProxy TCP passthrough**, then **12 Usage guide**. Use this when A has a good client-facing route and B runs a TCP node, such as **VLESS + Reality + Vision** or an existing **Trojan** node. A can run only HAProxy; this mode does not require a sing-box node on A.
 
 ```text
 Phone → A HAProxy TCP forwarder → B node → website
 ```
 
 1. **Prepare B.** This manager can install Reality/Vision; an existing Trojan/TCP node from another tool also works. Keep B's egress direct to retain the residential IP and allow B's actual node TCP port from A.
-2. **Add forwarding on A.** Open **4 → 11 → 1**. Enter the name, A's listen IP and forwarding port, and B's IP/hostname and TCP node port. Defaults: A listens on `0.0.0.0:8443`; B uses port `443`. IPv6 listen `::` is IPv6-only. One rule per entry port, up to 16 rules; Enter accepts the default name.
+2. **Add forwarding on A.** Open **d → 11 → 1**. Enter the name, A's listen IP and forwarding port, and B's IP/hostname and TCP node port. Defaults: A listens on `0.0.0.0:8443`; B uses port `443`. IPv6 listen `::` is IPv6-only. One rule per entry port, up to 16 rules; Enter accepts the default name.
 3. **Type `y` to enable.** Busy ports, ports reserved by managed TCP nodes, obvious local loops and B's TCP reachability are checked. The configuration must pass `haproxy -c`. Failures leave previous configuration; restart failures restore previous files, activity and boot state. Changes briefly interrupt forwarded connections. Active UFW gets an allow rule for the new TCP port; configure provider firewalls separately.
 4. **Edit B's node on the phone.** Copy B's node and change only the connection address to **A's public IP/hostname** and the connection port to **A's forwarding port**. Keep B's UUID/password, SNI, Reality public key/Short ID, fingerprint and certificate verification. A stores no node authentication/private key and needs no B CA file. For self-signed TLS on B, the phone must still securely trust B's certificate.
 5. **Connect and check.** Shadowrocket uses the edited node; destinations should see B's exit IP. Authentication, per-user usage/quotas and expiry belong on **B**. HAProxy forwarding bypasses A's sing-box account service and cannot be charged against A's personal quotas.
 
-This passes TCP bytes without terminating TLS, adding insecure TLS options or PROXY headers. **HY2/QUIC/raw UDP are unsupported**; protocol-carried UDP inside a TCP node depends on B/client support. Use the sing-box relay at **4 → 10** for HY2. TCP reachability does not verify authentication, streaming access or speed improvements; test with the client. DNS targets are re-resolved: keep aliases from pointing back to any entry rule, and avoid cross-server forwarding loops. Use your own trusted B with authenticated nodes.
+This passes TCP bytes without terminating TLS, adding insecure TLS options or PROXY headers. **HY2/QUIC/raw UDP are unsupported**; protocol-carried UDP inside a TCP node depends on B/client support. Use the sing-box relay at **d → 10** for HY2. TCP reachability does not verify authentication, streaming access or speed improvements; test with the client. DNS targets are re-resolved: keep aliases from pointing back to any entry rule, and avoid cross-server forwarding loops. Use your own trusted B with authenticated nodes.
 
 The independent service is `skybyte-haproxy.service`; files live under `/etc/singbox-v2/haproxy/`, with directory mode 700 and state/config mode 600. HAProxy is installed on demand from Ubuntu/Debian repositories with existing package configuration retained. First installation prevents the default service from starting automatically; an unenabled default service stays disabled. Existing external HAProxy services are not stopped or reconfigured. Workers use the distro `haproxy` account; the owned service restricts capabilities/filesystem access.
 
@@ -414,7 +416,7 @@ No. HY2 can generate a self-signed certificate for the public IP, but clients mu
 
 ### How do I import nodes into Shadowrocket, v2rayN or Clash Verge?
 
-Menu **2 → 2** exports client files, and **2 → 4** displays Shadowrocket node QR codes. Retrieve files from `/etc/singbox-v2/` on your VPS over SSH/SFTP. Clash Verge Rev/Mihomo uses the complete YAML; OpenClash can merge the Mihomo fragment. Check protocol support in your client core. Enable personal online subscriptions separately through **2 → 6**.
+Menu **b → 2** exports client files, and **b → 4** displays Shadowrocket node QR codes. Retrieve files from `/etc/singbox-v2/` on your VPS over SSH/SFTP. Clash Verge Rev/Mihomo uses the complete YAML; OpenClash can merge the Mihomo fragment. Check protocol support in your client core. Enable personal online subscriptions separately through **b → 6**.
 
 ### Does WARP guarantee streaming or AI service access?
 

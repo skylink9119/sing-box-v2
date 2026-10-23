@@ -167,10 +167,16 @@ RELAY_HELP_ZH
 relay_menu() (
  check_owned && warp_guard || return 1
  local choice stage rc=0
+ # --menu renders only; a numeric argument executes one selected operation.
+ if [[ $# == 0 || $1 == --menu ]]; then
  printf '%s' "$YELLOW";warp_engine relay_status "${LANGUAGE_CHOICE:-zh_CN}";printf '%s' "$RESET"
  say '路径：客户端 → 本 VPS → 落地 VPS → 网站。落地失败不自动改用本机出口。' 'Path: client → this VPS → landing VPS → destination. Landing failure does not automatically use this VPS as the exit.'
  prompt_options '1 导入 / 更换落地节点  2 测试落地连接  3 全局中转  4 恢复直连  5 删除已保存的落地凭据  6 使用说明  0 返回' '1 Import / replace landing  2 Test landing  3 Global relay  4 Restore direct  5 Remove saved landing credentials  6 Usage guide  0 Back'
+ [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
+ else
+  choice=$1
+ fi
  if [[ $choice == 1 ]];then relay_import_menu;return $?;fi
  if [[ $choice == 6 ]];then relay_help;return 0;fi
  [[ $choice != 0 ]] || return 0

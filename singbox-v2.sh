@@ -8,7 +8,7 @@
 set -Eeuo pipefail
 umask 077
 SCRIPT_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
-MANAGER_VERSION=2.8.6
+MANAGER_VERSION=2.8.7
 CORE_RECOMMENDED=1.14.3
 BASE=/etc/singbox-v2
 CONF=/etc/sing-box/config.json
@@ -838,9 +838,15 @@ hop(){
  check_owned && hop_guard || return 1
  [[ $(protocol_mode) != 1 ]] || { err "$(L '未安装 HY2' 'HY2 not installed')"; return 1; }
  local choice backend start end target
+ # --menu renders only; a numeric argument executes one selected operation.
+ if [[ $# == 0 || $1 == --menu ]]; then
  say '端口跳跃仅支持 IPv4；规则随 systemd 开机恢复，需要放行云防火墙 UDP 范围。' 'Hopping is IPv4-only, persisted with systemd; allow the provider UDP range.'
  prompt_options '1 开启  2 关闭  0 返回' '1 Enable  2 Disable  0 Back'
+ [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
+ else
+  choice=$1
+ fi
  if [[ $choice == 2 ]]; then confirm "$(L '关闭跳跃？' 'Disable hopping?')" && hop_disable; return; fi
  [[ $choice == 1 ]] || return 0
  prompt_options '1 nftables（默认）  2 iptables' '1 nftables (default)  2 iptables'
@@ -1166,10 +1172,30 @@ detect_ssh_ports(){
  printf '%s\n' "$(L '识别到 SSH 端口（请确认）：' 'Detected SSH ports (verify): ')$ports"
 }
 firewall(){
- need_root
- prompt_options '1 安装 UFW  2 开启  3 关闭  4 查看状态  5 放行端口  6 删除规则  0 返回' '1 Install UFW  2 Enable  3 Disable  4 Status  5 Allow port  6 Delete rule  0 Back'
  local choice port proto
+ need_root
+ # --menu renders only; a numeric argument executes one selected operation.
+ if [[ $# == 0 || $1 == --menu ]]; then
+ prompt_options '========== UFW 防火墙 ==========
+1. 安装 UFW
+2. 开启防火墙
+3. 关闭防火墙
+4. 查看状态
+5. 放行端口
+6. 删除规则
+0. 返回上一层' '========== UFW firewall ==========
+1. Install UFW
+2. Enable firewall
+3. Disable firewall
+4. Show status
+5. Allow a port
+6. Delete a rule
+0. Back one level'
+ [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return
+ else
+  choice=$1
+ fi
  case "$choice" in
  1) confirm "$(L '安装 UFW？' 'Install UFW?')" && apt_install ufw ;;
  2)
@@ -1203,8 +1229,15 @@ firewall(){
  return 0
 }
 service_manager(){
+ local x
+ # --menu renders only; a numeric argument executes one selected operation.
+ if [[ $# == 0 || $1 == --menu ]]; then
  prompt_options '1 状态  2 启动  3 重启  4 停止  5 开机自启  6 配置检查  0 返回' '1 Status  2 Start  3 Restart  4 Stop  5 Enable at boot  6 Config check  0 Back'
- local x; prompt_read '> ' x || return
+ [[ ${1:-} != --menu ]] || return 0
+ prompt_read '> ' x || return
+ else
+  x=$1
+ fi
  case "$x" in
  1) status;; 2) check_owned && confirm "$(L '启动 sing-box？' 'Start sing-box?')" && systemctl start sing-box;;
  3) check_owned && confirm "$(L '重启 sing-box？' 'Restart sing-box?')" && "$BIN" check -c "$CONF" && systemctl restart sing-box;;
@@ -1214,9 +1247,16 @@ service_manager(){
  return 0
 }
 traffic(){
+ local x
  say 'vnStat 统计 VPS 网卡流量，不能区分 Reality/HY2；历史数据从安装后开始。' 'vnStat tracks VPS interface traffic, NOT Reality/HY2 separately. History starts when installed.'
+ # --menu renders only; a numeric argument executes one selected operation.
+ if [[ $# == 0 || $1 == --menu ]]; then
  prompt_options '1 安装 vnStat  2 今日  3 本月  4 实时网速  5 历史汇总  0 返回' '1 Install vnStat  2 Today  3 Monthly  4 Live  5 History  0 Back'
- local x; prompt_read '> ' x || return
+ [[ ${1:-} != --menu ]] || return 0
+ prompt_read '> ' x || return
+ else
+  x=$1
+ fi
  case "$x" in
  1) confirm "$(L '安装 vnStat？' 'Install vnStat?')" && apt_install vnstat && systemctl enable --now vnstat;;
  2) require_cmd vnstat && vnstat -d;; 3) require_cmd vnstat && vnstat -m;;
@@ -1772,7 +1812,8 @@ users_qr(){
  path=$(users_engine export "$id") || return 1
  BASE=$path; META=$path/state.json; CONF=$path/server.json; shadowrocket_qr
 }
-users_manager(){
+users_manager(){ run_submenu users_menu_step; }
+users_menu_step(){
  check_owned && users_guard || return 1
  if ! python3 - "$CONF" <<'PY_USERS_PROTOCOLS'
 import json,sys
@@ -1781,24 +1822,28 @@ PY_USERS_PROTOCOLS
  then warn "$(L 'Argo 单独部署不支持配额用户；请先安装 Reality 或 HY2 直连节点。' 'Quota accounts require a direct Reality or HY2 node; standalone Argo alone is unsupported.')";return 1;fi
  warn "$(L '仅新建的受限账户执行人数、流量和到期限制。原管理员节点及 Argo 不受此配额管理。每人独立进程/端口；请放行云防火墙对应端口。' 'Limits apply only to new managed accounts. Existing admin nodes and Argo are outside these quotas. Each account uses its own process/port; allow those provider firewall ports.')"
  local choice max name quota days id action port snap
- while :; do
+ if [[ $# == 0 || $1 == --menu ]]; then
   printf '%s' "$GREEN"
   prompt_options '1 初始化用户管理  2 添加用户  3 查看用量  4 修改流量额度' '1 Initialize  2 Add account  3 Usage  4 Change quota'
   prompt_options '5 启用/禁用用户  6 删除用户  7 重置流量  8 设置人数上限' '5 Enable/disable  6 Delete  7 Reset usage  8 Set account limit'
   prompt_options '9 用户节点与二维码  10 服务状态  11 启动用户服务  12 停止用户服务' '9 User exports/QR  10 Status  11 Start supervisor  12 Stop supervisor'
   prompt_options '13 修改有效期  14 用户故障诊断  15 资源占用  16 个人在线订阅  0 返回' '13 Change validity  14 User diagnostics  15 Resources  16 Personal subscriptions  0 Back'
   printf '%s' "$RESET"
+  [[ ${1:-} != --menu ]] || return 0
   prompt_read '> ' choice || return 0
+ else
+  choice=$1
+ fi
   [[ $choice != 0 ]] || return 0
-  if [[ $choice != 1 && ! -f $BASE/users.json ]]; then err "$(L '请先初始化用户管理' 'Initialize user management first')"; continue; fi
+  if [[ $choice != 1 && ! -f $BASE/users.json ]]; then err "$(L '请先初始化用户管理' 'Initialize user management first')"; return 0; fi
   case $choice in
    1)
-    [[ ! -f $BASE/users.json ]] || { err "$(L '用户管理已存在，拒绝覆盖' 'User management exists; refusing overwrite')"; continue; }
+    [[ ! -f $BASE/users.json ]] || { err "$(L '用户管理已存在，拒绝覆盖' 'User management exists; refusing overwrite')"; return 0; }
     prompt_read "$(L '最多用户数 [10]（1-100）：' 'Maximum accounts [10] (1-100): ')" max || return 0
     max=${max:-10}
     if ! valid_port "$max" || ! (( 10#$max<=100 )); then err "$(L '账户上限须为1至100' 'Account limit must be 1-100')"; return 1; fi
     users_guard setup || return 1
-    confirm "$(L '初始化独立用户服务？已有节点将保留。' 'Initialize isolated user services? Existing nodes remain.')" || continue
+    confirm "$(L '初始化独立用户服务？已有节点将保留。' 'Initialize isolated user services? Existing nodes remain.')" || return 0
     snap=$(backup) || return 1
     users_engine init "$max" && users_start || return 1
     say "初始化完成；备份：$snap" "Initialized; backup: $snap";;
@@ -1824,7 +1869,7 @@ PY
     users_engine list
     prompt_read "$(L '用户 ID：' 'Account ID: ')" id || return 0
     prompt_read "$(L '总流量 GiB：' 'Total quota GiB: ')" quota || return 0
-    confirm "$(L '只修改流量额度，保留到期时间和累计用量？' 'Change quota only, retaining expiry and usage?')" || continue
+    confirm "$(L '只修改流量额度，保留到期时间和累计用量？' 'Change quota only, retaining expiry and usage?')" || return 0
     users_engine quota "$id" "$quota";;
    5)
     users_engine list
@@ -1834,7 +1879,7 @@ PY
    6|7)
     users_engine list
     prompt_read "$(L '用户 ID：' 'Account ID: ')" id || return 0
-    confirm "$(L '确认删除用户或重置其累计流量？' 'Confirm deleting the account or resetting its cumulative usage?')" || continue
+    confirm "$(L '确认删除用户或重置其累计流量？' 'Confirm deleting the account or resetting its cumulative usage?')" || return 0
     if [[ $choice == 6 ]]; then users_engine delete "$id"; else users_engine reset "$id"; fi;;
    8)
     prompt_read "$(L '最多用户数（1-100）：' 'Maximum accounts (1-100): ')" max || return 0
@@ -1849,7 +1894,7 @@ PY
     users_engine list
     prompt_read "$(L '用户 ID：' 'Account ID: ')" id || return 0
     prompt_read "$(L '从现在起有效天数：' 'Validity days from now: ')" days || return 0
-    confirm "$(L '从现在重新设置有效期，保留额度和累计用量？' 'Set validity from now, retaining quota and usage?')" || continue
+    confirm "$(L '从现在重新设置有效期，保留额度和累计用量？' 'Set validity from now, retaining quota and usage?')" || return 0
     users_engine validity "$id" "$days";;
    14) users_diagnostics;;
    15) resource_info;;
@@ -1857,9 +1902,7 @@ PY
    12) if confirm "$(L '停止全部受限用户节点？' 'Stop all quota-managed user nodes?')"; then users_engine service off && users_stop; fi;;
    *) err "$(L '无效选项' 'Invalid selection')";;
   esac
- done
 }
-
 
 # Argo is an add-on to an existing managed deployment; its loopback origin is separate.
 argo_state(){
@@ -2147,8 +2190,14 @@ argo_restore_snapshot(){
 }
 argo_manager(){
  local choice
+ # --menu renders only; a numeric argument executes one selected operation.
+ if [[ $# == 0 || $1 == --menu ]]; then
  prompt_options '1 临时隧道  2 固定隧道  3 状态  4 启动  5 停止  6 重启  7 刷新节点  8 卸载 Argo  9 地址族与传输设置  0 返回' '1 Quick  2 Named  3 Status  4 Start  5 Stop  6 Restart  7 Refresh nodes  8 Remove Argo  9 Address family/transport  0 Back'
+ [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
+ else
+  choice=$1
+ fi
  case $choice in
   1) argo_install quick;; 2) argo_install named;; 3) argo_status;; 4) argo_start;;
   5) argo_stop && exports;; 6) argo_stop && argo_start;; 7) exports;; 8) argo_remove;;9) argo_network_settings;; 0) return 0;; *) err "$(L '无效选项' 'Invalid choice')"; return 1;;
@@ -2446,8 +2495,14 @@ certificate_menu(){
  check_owned && certificate_guard || return 1
  certificate_identity >/dev/null || { err "$(L '未安装 HY2' 'HY2 not installed')"; return 1; }
  local choice
+ # --menu renders only; a numeric argument executes one selected operation.
+ if [[ $# == 0 || $1 == --menu ]]; then
  prompt_options '1 查看证书有效期  2 续签后同步并重载  3 开启每日检查  4 关闭每日检查  0 返回' '1 Expiry  2 Reload renewed certificate  3 Enable daily checks  4 Disable daily checks  0 Back'
+ [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
+ else
+  choice=$1
+ fi
  case $choice in
   1) certificate_info;;
   2) confirm "$(L '同步证书并重启正在运行的 HY2 服务？' 'Sync certificates and restart active HY2 services?')" && certificate_reload;;
@@ -3430,6 +3485,8 @@ warp_profile_domains(){
 warp_menu(){
  check_owned && warp_guard || return 1
  local choice port udp domains mode
+ # --menu renders only; a numeric argument executes one selected operation.
+ if [[ $# == 0 || $1 == --menu ]]; then
  printf '\n%s%s%s\n' "$CYAN" "$(L '========== WARP 管理 ==========' '========== WARP Manager ==========')" "$RESET"
  warp_engine status "${LANGUAGE_CHOICE:-zh_CN}" || return 1
  prompt_options '
@@ -3465,9 +3522,13 @@ warp_menu(){
 
 0. Back
 --------------------------------------'
+ [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
+ else
+  choice=$1
+ fi
  case $choice in
-  1) warp_install_client;; 3) warp_import_gateway;; 7) warp_dualstack;; 8) media_check;; 6) warp_rules_menu;;
+  1) warp_install_client;; 3) warp_import_gateway;; 7) warp_dualstack;; 8) media_check;; 6) run_submenu warp_rules_menu;;
   4)
    domains=$(warp_profile_domains) || return 0
    prompt_read "$(L '本机 WARP SOCKS5 端口 [40000]：' 'Local WARP SOCKS5 port [40000]: ')" port || return 0; port=${port:-40000}
@@ -3505,6 +3566,8 @@ warp_menu(){
 warp_rules_menu(){
  warp_guard || return 1
  local choice domains port udp
+ # --menu renders only; a numeric argument executes one selected operation.
+ if [[ $# == 0 || $1 == --menu ]]; then
  warp_engine catalog_status || return 1
  prompt_options '分流规则管理
 1. 验证当前 WARP 出口
@@ -3515,7 +3578,11 @@ warp_rules_menu(){
 2. Update the catalog manually
 3. Apply the catalog to selected domains
 0. Back'
+ [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
+ else
+  choice=$1
+ fi
  case $choice in
   1) port=$(warp_engine port) && warp_loopback "$port" && warp_verify "$port";;
   2) confirm "$(L '从 SKYBYTE 正式 Release 下载并验证规则列表？已有自定义分流不会改变。' 'Download/digest-verify the catalog from a SKYBYTE release? Custom routing remains unchanged.')" && warp_rules_update;;
@@ -3711,10 +3778,16 @@ RELAY_HELP_ZH
 relay_menu() (
  check_owned && warp_guard || return 1
  local choice stage rc=0
+ # --menu renders only; a numeric argument executes one selected operation.
+ if [[ $# == 0 || $1 == --menu ]]; then
  printf '%s' "$YELLOW";warp_engine relay_status "${LANGUAGE_CHOICE:-zh_CN}";printf '%s' "$RESET"
  say '路径：客户端 → 本 VPS → 落地 VPS → 网站。落地失败不自动改用本机出口。' 'Path: client → this VPS → landing VPS → destination. Landing failure does not automatically use this VPS as the exit.'
  prompt_options '1 导入 / 更换落地节点  2 测试落地连接  3 全局中转  4 恢复直连  5 删除已保存的落地凭据  6 使用说明  0 返回' '1 Import / replace landing  2 Test landing  3 Global relay  4 Restore direct  5 Remove saved landing credentials  6 Usage guide  0 Back'
+ [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
+ else
+  choice=$1
+ fi
  if [[ $choice == 1 ]];then relay_import_menu;return $?;fi
  if [[ $choice == 6 ]];then relay_help;return 0;fi
  [[ $choice != 0 ]] || return 0
@@ -4246,11 +4319,17 @@ HAPROXY_HELP_ZH
 haproxy_menu(){
  haproxy_guard || return 1
  local choice value
+ # --menu renders only; a numeric argument executes one selected operation.
+ if [[ $# == 0 || $1 == --menu ]]; then
  printf '%s' "$YELLOW"
  say 'TCP 透传：手机使用 B 的节点参数，连接 A 的转发端口；用量与配额在 B 管理。' "TCP passthrough: the phone uses B's node parameters through A's forwarding port; manage usage/quotas on B."
  printf '%s' "$RESET"
  prompt_options $' 1. 添加 TCP 规则\n 2. 修改 TCP 规则\n 3. 规则与状态\n 4. 启动与开机自启\n 5. 停止并关闭自启\n 6. 重启\n 7. 测试 B 的 TCP 连接\n 8. 删除规则\n 9. 备份\n10. 恢复\n11. 卸载 HAProxy 中转\n12. 使用说明\n 0. 返回' $' 1. Add TCP rule\n 2. Edit TCP rule\n 3. Rules/status\n 4. Start/enable at boot\n 5. Stop/disable at boot\n 6. Restart\n 7. Test B TCP\n 8. Remove rule\n 9. Backup\n10. Restore\n11. Uninstall HAProxy relay\n12. Usage guide\n 0. Back'
+ [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
+ else
+  choice=$1
+ fi
  case $choice in
   0) return 0;;12) haproxy_help;;
   1) haproxy_add;;
@@ -4313,9 +4392,15 @@ core_versions(){
  check_owned || return 1
  local choice version current
  current=$("$BIN" version | awk 'NR==1{print $3}') || return 1
+ # --menu renders only; a numeric argument executes one selected operation.
+ if [[ $# == 0 || $1 == --menu ]]; then
  say "当前内核：${current}；本版测试内核：$CORE_RECOMMENDED" "Current core: $current; tested core for this release: $CORE_RECOMMENDED"
  prompt_options '1 安装本版测试内核  2 最新稳定版  3 指定版本 / 降级  0 返回' '1 Tested core  2 Latest stable  3 Specific version / downgrade  0 Back'
+ [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
+ else
+  choice=$1
+ fi
  case $choice in 1) version=$CORE_RECOMMENDED;; 2) version=$(latest) || return 1;; 3) prompt_read "$(L '版本号（例如 1.14.3）：' 'Version (e.g. 1.14.3): ')" version || return 0;; 0) return 0;; *) return 1;; esac
  [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
  [[ $version != "$current" ]] || { ok "$(L '已是所选版本' 'Already on selected version')"; return 0; }
@@ -4487,8 +4572,14 @@ PY_BACKUP
 backup_tools(){
  check_owned || return 1
  local choice path output keep pass tmp
+ # --menu renders only; a numeric argument executes one selected operation.
+ if [[ $# == 0 || $1 == --menu ]]; then
  prompt_options '1 备份列表  2 新建备份  3 恢复预检  4 加密导出  5 导入加密备份  6 保留数量 / 清理  0 返回' '1 List  2 Create  3 Restore preflight  4 Encrypted export  5 Import encrypted backup  6 Retention cleanup  0 Back'
+ [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
+ else
+  choice=$1
+ fi
  case $choice in
   1) backup_engine list;; 2) backup;;
   3) prompt_read "$(L '备份目录：' 'Backup directory: ')" path || return 0;backup_engine preflight "$path";;
@@ -4734,8 +4825,14 @@ rescue_help(){
 }
 rescue_menu(){
  local choice mode host vp hp directory edge
+ # --menu renders only; a numeric argument executes one selected operation.
+ if [[ $# == 0 || $1 == --menu ]]; then
  prompt_options $' 1. Argo 临时隧道应急部署\n 2. Argo 固定隧道部署\n 3. 自定义监听端口安装（IPv6 / NAT）\n 4. NAT 公网地址与映射端口\n 5. Argo 地址族与传输设置\n 6. WARP 双栈补全\n 7. 检查 Cloudflare 出站 TCP 7844\n 8. 使用离线官方安装包\n 9. 使用说明\n 0. 返回' $' 1. Standalone Argo Quick Tunnel\n 2. Standalone Argo Named Tunnel\n 3. Install with custom ports (IPv6/NAT)\n 4. NAT public address and mapped ports\n 5. Argo address family/transport\n 6. WARP dual-stack egress\n 7. Check Cloudflare outbound TCP 7844\n 8. Use offline official assets\n 9. Usage guide\n 0. Back'
+ [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
+ else
+  choice=$1
+ fi
  case $choice in
   1) argo_install quick;;2) argo_install named;;
   3) prompt_options '1 Reality  2 HY2  3 双协议' '1 Reality  2 HY2  3 Dual';prompt_read '> ' mode || return 0;install_protocol "$mode" custom;;
@@ -5045,8 +5142,14 @@ configuration_resume(){
 node_settings(){
  check_owned || return 1
  local choice vp hp value protocol cert key domain up down ignore obfs bootstrap=false public='' listen='' family
+ # --menu renders only; a numeric argument executes one selected operation.
+ if [[ $# == 0 || $1 == --menu ]]; then
  prompt_options '1 修改主节点端口  2 服务器地址 / DDNS  3 Reality 握手域名  4 添加协议  5 移除协议  6 HY2 参数  7 使用已有 TLS 证书  0 返回' '1 Admin ports  2 Server address / DDNS  3 Reality handshake  4 Add protocol  5 Remove protocol  6 HY2 options  7 Existing TLS certificate  0 Back'
+ [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
+ else
+  choice=$1
+ fi
  case $choice in
   1) prompt_read 'Reality TCP [443]: ' vp || return 0;prompt_read 'HY2 UDP [443]: ' hp || return 0
    confirm "$(L '修改管理员端口，保留用户端口及凭据？' 'Change admin ports, retaining user ports and credentials?')" && configuration_apply ports "${vp:-443}" "${hp:-443}";;
@@ -5244,8 +5347,14 @@ UNIT
 acme_menu(){
  acme_guard || return 1
  local choice
+ # --menu renders only; a numeric argument executes one selected operation.
+ if [[ $# == 0 || $1 == --menu ]]; then
  prompt_options '1 申请域名证书  2 使用证书用于 HY2  3 手动续签  4 开启自动续签  5 关闭自动续签  6 清理未完成的申请  0 返回' '1 Issue domain certificate  2 Use for HY2  3 Renew  4 Enable auto-renew  5 Disable auto-renew  6 Clean failed issuance  0 Back'
+ [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
+ else
+  choice=$1
+ fi
  case $choice in
   1) acme_issue;;2) acme_use_hy2;;3) acme_renew;;4) acme_timer;;
   5) [[ ! -f $SYSTEMD_DIR/skybyte-acme.timer ]] || systemctl disable --now skybyte-acme.timer;;
@@ -5501,8 +5610,14 @@ online_user(){
 online_menu(){
  online_guard || return 1
  local choice
+ # --menu renders only; a numeric argument executes one selected operation.
+ if [[ $# == 0 || $1 == --menu ]]; then
  prompt_options '1 配置 HTTPS 服务  2 服务状态  3 启动  4 停止  5 重载证书  6 用户订阅 Token  0 返回' '1 Configure HTTPS  2 Status  3 Start  4 Stop  5 Reload certificate  6 Account tokens  0 Back'
+ [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
+ else
+  choice=$1
+ fi
  case $choice in
   1) online_setup;;2) systemctl --no-pager status skybyte-subscriptions.service || :;;
   3) [[ -f $BASE/subscriptions.json && -f $SYSTEMD_DIR/skybyte-subscriptions.service ]] && systemctl enable --now skybyte-subscriptions.service;;
@@ -5559,34 +5674,34 @@ usage_help(){
  printf '%s' "$YELLOW"
  if [[ ${LANGUAGE_CHOICE:-zh_CN} == en_US ]];then cat <<'HELP_EN'
 SKYBYTE Manager — quick guide
-1. Install: main 1 → Reality/HY2/both. Enter defaults, allow actual TCP/UDP ports in provider firewall.
-2. Node edits: main 1 → 5. Change admin ports/address/SNI or add/remove a protocol without resetting credentials/usage. Active hopping is disabled after edits; re-enable it for the current listener.
-3. Client import: main 2 → 1 or 4. Use Shadowrocket native links/QR, v2rayN, full Mihomo YAML or sing-box JSON. Self-signed HY2 needs explicit public-certificate trust; never share private keys.
-4. Accounts: main 7. Initialize, create accounts and set quota/expiry. Share personal exports, not administrator nodes. Accounts are not actual people and may share credentials.
-5. HTTPS subscriptions: obtain a trusted certificate through main 5 → 6, then main 2 → 6. Create/rotate/revoke personal links through user menu 16. Configure provider TCP access. Tokens grant access to credentials: keep links private. Revocation does not rotate node passwords.
-6. Certificates: main 5 → 6 issues isolated ACME/Certbot certificates using HTTP-01 or Cloudflare DNS-01; auto-renew is opt-in. HTTP requires public TCP80. DNS tokens remain private. Existing websites/certificates are preserved.
-7. WARP/media: main 4 → 9 / 8. WARP defaults to selected media/AI domains. It cannot guarantee location or unlocking. Anonymous tests do not verify playback. WARP menu 6 maintains catalogs; applying them is a separate confirmation.
-8. Backup: main 5 → 2 creates a backup; 3 restores it; 7 lists/preflights/encrypts/imports or explicitly prunes old backups. Backups contain keys. Restore keeps current usage/policies and current subscription tokens.
-9. Versions: main 5 → 1 selects this release's tested core, latest stable or a specific version/downgrade. Every managed config must validate; weekly auto-update remains removed.
-10. Resources: main 4 → 7. Each account uses a core. Capacity depends on measured memory/CPU/traffic. Account quotas are periodically enforced, not byte-exact billing.
-11. Residential landing / VPS relay: main 4 → 10, then 6 for step-by-step help. Import one Reality/Vision or HY2 landing URI/JSON. Clients connect to this VPS and destinations see the landing exit. Self-signed HY2 requires trusted public certificate material. Relay and WARP are alternative routing policies; failed relay traffic has no automatic direct fallback. Measure both links before judging speed.
-12. HAProxy TCP passthrough: main 4 → 11, then 12 for help. A may run only the TCP forwarder; B runs the authenticated Reality/Trojan node. On the phone, keep B's credentials/SNI/TLS trust and change only the address/port to A. HY2/raw UDP are unsupported. User quotas belong on B. This menu has separate backup/restore/uninstall controls; full sing-box backups include a haproxy subdirectory for separate restoration.
+1. Install: main a → Reality/HY2/both. Enter defaults, allow actual TCP/UDP ports in provider firewall.
+2. Node edits: main a → 5. Change admin ports/address/SNI or add/remove a protocol without resetting credentials/usage. Active hopping is disabled after edits; re-enable it for the current listener.
+3. Client import: main b → 1 or 4. Use Shadowrocket native links/QR, v2rayN, full Mihomo YAML or sing-box JSON. Self-signed HY2 needs explicit public-certificate trust; never share private keys.
+4. Accounts: main g. Initialize, create accounts and set quota/expiry. Share personal exports, not administrator nodes. Accounts are not actual people and may share credentials.
+5. HTTPS subscriptions: obtain a trusted certificate through main e → 6, then main b → 6. Create/rotate/revoke personal links through user menu 16. Configure provider TCP access. Tokens grant access to credentials: keep links private. Revocation does not rotate node passwords.
+6. Certificates: main e → 6 issues isolated ACME/Certbot certificates using HTTP-01 or Cloudflare DNS-01; auto-renew is opt-in. HTTP requires public TCP80. DNS tokens remain private. Existing websites/certificates are preserved.
+7. WARP/media: main d → 9 / 8. WARP defaults to selected media/AI domains. It cannot guarantee location or unlocking. Anonymous tests do not verify playback. WARP menu 6 maintains catalogs; applying them is a separate confirmation.
+8. Backup: main e → 2 creates a backup; 3 restores it; 7 lists/preflights/encrypts/imports or explicitly prunes old backups. Backups contain keys. Restore keeps current usage/policies and current subscription tokens.
+9. Versions: main e → 1 selects this release's tested core, latest stable or a specific version/downgrade. Every managed config must validate; weekly auto-update remains removed.
+10. Resources: main d → 7. Each account uses a core. Capacity depends on measured memory/CPU/traffic. Account quotas are periodically enforced, not byte-exact billing.
+11. Residential landing / VPS relay: main d → 10, then 6 for step-by-step help. Import one Reality/Vision or HY2 landing URI/JSON. Clients connect to this VPS and destinations see the landing exit. Self-signed HY2 requires trusted public certificate material. Relay and WARP are alternative routing policies; failed relay traffic has no automatic direct fallback. Measure both links before judging speed.
+12. HAProxy TCP passthrough: main d → 11, then 12 for help. A may run only the TCP forwarder; B runs the authenticated Reality/Trojan node. On the phone, keep B's credentials/SNI/TLS trust and change only the address/port to A. HY2/raw UDP are unsupported. User quotas belong on B. This menu has separate backup/restore/uninstall controls; full sing-box backups include a haproxy subdirectory for separate restoration.
 CLI: --help, --self-check. Maintenance flags are used by owned systemd services.
 HELP_EN
  else cat <<'HELP_ZH'
 SKYBYTE Manager — 快速使用说明
-1. 安装：主菜单1选择 Reality、HY2或双协议。回车使用默认值，云安全组需放行实际 TCP/UDP 端口。
-2. 节点修改：主菜单1 → 5，可改管理员端口、地址、SNI或增删协议，保留凭据与用量。修改后已启用的跳跃会关闭，请按当前监听端口重新开启。
-3. 导入客户端：主菜单2 → 1或4，提供小火箭专用链接/二维码、v2rayN、完整 Mihomo YAML与sing-box JSON。自签名 HY2 须信任公开证书；不要分享私钥。
-4. 用户管理：主菜单7，初始化后添加用户并设额度/有效期。只分享个人节点，不要分享管理员节点；账户数量不代表真实人数，无法阻止凭据分享。
-5. 在线订阅：主菜单5 → 6获取可信证书，再通过主菜单2 → 6配置HTTPS服务。用户菜单16签发、重置、撤销个人链接。云安全组需允许订阅 TCP 端口。Token可获取节点凭据，链接请保密；撤销订阅不等于更换节点密码。
-6. 证书：主菜单5 → 6，用隔离的 ACME/Certbot 目录通过 HTTP-01 或 Cloudflare DNS-01申请，自动续签需手动开启。HTTP须公网 TCP80可达，DNS Token私密保存，不停止已有网站、不覆盖外部证书。
-7. WARP/流媒体：主菜单4 → 9 / 8。WARP默认仅所选流媒体和AI域名，不能保证国家或解锁；匿名检测不验证播放。WARP菜单6维护规则列表，应用新列表需单独确认。
-8. 备份：主菜单5 → 2新建、3恢复、7列表/预检/加密导出/导入/确认清理旧备份。备份含私钥。恢复保留当前用量、策略和当前订阅Token。
-9. 版本：主菜单5 → 1选本版测试内核、最新稳定版或指定版本/降级，须检查全部托管配置。每周自动更新保持移除。
-10. 资源：主菜单4 → 7，每个用户一个内核，容量需实测。配额周期检查，不是精确计费。
-11. 住宅落地 / VPS 中转：主菜单4 → 10，再选6查看具体步骤，导入一个 Reality/Vision 或 HY2 落地链接/JSON。客户端连接本 VPS，网站看到落地出口。自签名 HY2 须提供可信公开证书；中转与 WARP 分流择一启用，中转失败不自动直连。速度需按两段链路实测。
-12. HAProxy TCP 透传：主菜单4 → 11，再选12查看说明。A 可只运行 TCP 转发，B 运行带认证的 Reality/Trojan 节点；手机保留 B 的认证、SNI及TLS验证，仅改连接地址和端口为 A。不支持 HY2/原生UDP。配额在 B 管理。本菜单可单独备份、恢复与卸载，完整 sing-box 备份中的 haproxy 子目录需单独恢复。
+1. 安装：主菜单 a 选择 Reality、HY2或双协议。回车使用默认值，云安全组需放行实际 TCP/UDP 端口。
+2. 节点修改：主菜单a → 5，可改管理员端口、地址、SNI或增删协议，保留凭据与用量。修改后已启用的跳跃会关闭，请按当前监听端口重新开启。
+3. 导入客户端：主菜单b → 1或4，提供小火箭专用链接/二维码、v2rayN、完整 Mihomo YAML与sing-box JSON。自签名 HY2 须信任公开证书；不要分享私钥。
+4. 用户管理：主菜单g，初始化后添加用户并设额度/有效期。只分享个人节点，不要分享管理员节点；账户数量不代表真实人数，无法阻止凭据分享。
+5. 在线订阅：主菜单e → 6获取可信证书，再通过主菜单b → 6配置HTTPS服务。用户菜单16签发、重置、撤销个人链接。云安全组需允许订阅 TCP 端口。Token可获取节点凭据，链接请保密；撤销订阅不等于更换节点密码。
+6. 证书：主菜单e → 6，用隔离的 ACME/Certbot 目录通过 HTTP-01 或 Cloudflare DNS-01申请，自动续签需手动开启。HTTP须公网 TCP80可达，DNS Token私密保存，不停止已有网站、不覆盖外部证书。
+7. WARP/流媒体：主菜单d → 9 / 8。WARP默认仅所选流媒体和AI域名，不能保证国家或解锁；匿名检测不验证播放。WARP菜单6维护规则列表，应用新列表需单独确认。
+8. 备份：主菜单e → 2新建、3恢复、7列表/预检/加密导出/导入/确认清理旧备份。备份含私钥。恢复保留当前用量、策略和当前订阅Token。
+9. 版本：主菜单e → 1选本版测试内核、最新稳定版或指定版本/降级，须检查全部托管配置。每周自动更新保持移除。
+10. 资源：主菜单d → 7，每个用户一个内核，容量需实测。配额周期检查，不是精确计费。
+11. 住宅落地 / VPS 中转：主菜单d → 10，再选6查看具体步骤，导入一个 Reality/Vision 或 HY2 落地链接/JSON。客户端连接本 VPS，网站看到落地出口。自签名 HY2 须提供可信公开证书；中转与 WARP 分流择一启用，中转失败不自动直连。速度需按两段链路实测。
+12. HAProxy TCP 透传：主菜单d → 11，再选12查看说明。A 可只运行 TCP 转发，B 运行带认证的 Reality/Trojan 节点；手机保留 B 的认证、SNI及TLS验证，仅改连接地址和端口为 A。不支持 HY2/原生UDP。配额在 B 管理。本菜单可单独备份、恢复与卸载，完整 sing-box 备份中的 haproxy 子目录需单独恢复。
 命令行：--help、--self-check。维护参数供本工具的 systemd 服务使用。
 HELP_ZH
  fi
@@ -5607,6 +5722,7 @@ action_failed(){ err "$(L '操作失败；请检查上面的输出' 'Operation f
 sub_menu(){
  local group=$1 choice
  MAIN_ACTION=""
+ MENU_BACK=0
  printf '%s\n----------------------------------------------\n' "$GREEN"
  case $group in
   1)
@@ -5700,25 +5816,66 @@ sub_menu(){
   6:2) MAIN_ACTION=notice;;
   6:3) MAIN_ACTION=uninstall;;
   6:4) MAIN_ACTION=help;;
-  *:0) return 0;; *) err "$(L '无效选项' 'Invalid choice')";;
+  *:0) MENU_BACK=1; return 0;; *) err "$(L '无效选项' 'Invalid choice')";;
  esac
 }
 dispatch_action(){
- case $1 in
+ local action=$1;shift
+ case $action in
  install_reality) install_protocol 1;; install_hy2) install_protocol 2;; install_dual) install_protocol 3;;
- argo) argo_manager;; nodes) exports;; subscription) subscription;; rename) rename_node;; qr) shadowrocket_qr;; users) users_manager;;
- service) service_manager;; logs) journalctl -u sing-box -n 80 --no-pager;; argo_status) argo_status;;
- initialize) initialize_server;; firewall) firewall;; audit) firewall_audit;; bbr) bbr;; hop) hop;; traffic) traffic;;
- media) media_check;; warp) warp_menu;; relay) relay_menu;; haproxy) haproxy_menu;;
- rescue) rescue_menu;;
- manager_update) manager_update;; certificate) certificate_menu;; resources) resource_info;;
- update) core_versions;; settings) node_settings;; online) online_menu;; acme) acme_menu;; backup_tools) backup_tools;; help) usage_help;; backup) backup;; restore) restore;;
+ argo) argo_manager "$@";; nodes) exports;; subscription) subscription;; rename) rename_node;; qr) shadowrocket_qr;; users) users_manager;;
+ service) service_manager "$@";; logs) journalctl -u sing-box -n 80 --no-pager;; argo_status) argo_status;;
+ initialize) initialize_server;; firewall) firewall "$@";; audit) firewall_audit;; bbr) bbr;; hop) hop "$@";; traffic) traffic "$@";;
+ media) media_check;; warp) warp_menu "$@";; relay) relay_menu "$@";; haproxy) haproxy_menu "$@";;
+ rescue) rescue_menu "$@";;
+ manager_update) manager_update;; certificate) certificate_menu "$@";; resources) resource_info;;
+ update) core_versions "$@";; settings) node_settings "$@";; online) online_menu "$@";; acme) acme_menu "$@";; backup_tools) backup_tools "$@";; help) usage_help;; backup) backup;; restore) restore;;
  language) select_language && startup_info;; notice) notice;; uninstall) uninstall_manager;;
+ esac
+}
+run_menu_action(){
+ # Only a selected operation owns the lock. Never hold it while a menu waits.
+ MENU_ACTION_STATUS=1
+ if ! flock -n 9;then err "$(L '其他管理任务正在运行，请稍后重试' 'Another management task is running; retry shortly')";return 0;fi
+ set +e
+ ( set -Eeuo pipefail; trap action_failed ERR; "$@" )
+ MENU_ACTION_STATUS=$?
+ set -e
+ flock -u 9
+ if [[ -n ${SKYBYTE_SESSION_FILE:-} && -s $SKYBYTE_SESSION_FILE ]];then IFS= read -r SKYBYTE_ASSET_DIR < "$SKYBYTE_SESSION_FILE";export SKYBYTE_ASSET_DIR;fi
+ load_language
+}
+run_submenu(){
+ local handler=$1 choice
+ while :;do
+  # Rendering/selection runs in the controller, outside the operation subshell.
+  "$handler" --menu || { action_failed; return 0; }
+  say '操作后留在此菜单；0 返回上一层。' 'Stay in this menu after each operation; 0 returns one level.'
+  prompt_read '> ' choice || return 0
+  [[ $choice != 0 ]] || return 0
+  # Enter child menus before taking a lock, so nested idle menus also release it.
+  case "$handler:$choice" in
+   warp_menu:6) run_submenu warp_rules_menu; continue;;
+  esac
+  run_menu_action "$handler" "$choice"
+ done
+}
+navigation_action(){
+ case $1 in
+  firewall) run_submenu firewall;; service) run_submenu service_manager;;
+  traffic) run_submenu traffic;; argo) run_submenu argo_manager;;
+  settings) run_submenu node_settings;; certificate) run_submenu certificate_menu;;
+  acme) run_submenu acme_menu;; online) run_submenu online_menu;;
+  rescue) run_submenu rescue_menu;; warp) run_submenu warp_menu;;
+  relay) run_submenu relay_menu;; haproxy) run_submenu haproxy_menu;;
+  hop) run_submenu hop;; update) run_submenu core_versions;;
+  backup_tools) run_submenu backup_tools;; users) users_manager;;
+  *) run_menu_action dispatch_action "$1";;
  esac
 }
 main() (
  need_root; require_cmd flock
- local group action_status SKYBYTE_SESSION_FILE
+ local group='' selected MENU_BACK=0 MENU_ACTION_STATUS=0 SKYBYTE_SESSION_FILE
  SKYBYTE_SESSION_FILE=$(mktemp "$BASE/.session.XXXXXX") || return 1
  trap 'rm -f -- "$SKYBYTE_SESSION_FILE"' EXIT
  retire_auto_update || return 1
@@ -5726,6 +5883,7 @@ main() (
  # An idle main menu must not hold off certificate renewal.
  flock -u 9
  while :; do
+ if [[ -z $group ]];then
   printf '%s\n==============================================\n' "$CYAN"
   cat <<LOGO
    ███████╗██╗  ██╗██╗   ██╗██████╗ ██╗   ██╗████████╗███████╗
@@ -5739,32 +5897,32 @@ main() (
 LOGO
   printf '==============================================%s\n' "$RESET"
   printf '%s' "$GREEN"
-  say ' 1. 节点安装' ' 1. Install nodes'
-  say ' 2. 节点与订阅' ' 2. Nodes and subscriptions'
-  say ' 3. 服务与日志' ' 3. Services and logs'
-  say ' 4. 服务器与网络' ' 4. Server and network'
-  say ' 5. 更新与备份' ' 5. Updates and backups'
-  say ' 6. 设置与卸载' ' 6. Settings and uninstall'
-  say ' 7. 用户与配额管理' ' 7. Users and quotas'
+  say ' a. 节点安装' ' a. Install nodes'
+  say ' b. 节点与订阅' ' b. Nodes and subscriptions'
+  say ' c. 服务与日志' ' c. Services and logs'
+  say ' d. 服务器与网络' ' d. Server and network'
+  say ' e. 更新与备份' ' e. Updates and backups'
+  say ' f. 设置与卸载' ' f. Settings and uninstall'
+  say ' g. 用户与配额管理' ' g. Users and quotas'
   users_summary
-  say ' 0. 退出' ' 0. Exit'
+  say ' q. 退出' ' q. Exit'
   printf '%s' "$RESET"
   printf '%sYouTube: %s%s\n' "$CYAN" "$YOUTUBE" "$RESET"
   printf '%s%s%s\n' "$CYAN" "$(L '如果这个脚本对你有帮助，欢迎订阅我的 YouTube 频道，支持 SKYBYTE 持续更新！' "If you find this script helpful, please subscribe to my YouTube channel and support SKYBYTE's continued development!")" "$RESET"
-  prompt_read "$(L '请选择：' 'Select: ')" group || return 0
-  [[ $group != 0 ]] || return 0
-  case $group in 7) MAIN_ACTION=users;; 1|2|3|4|5|6) sub_menu "$group" || return 0;; *) err "$(L '无效选项' 'Invalid choice')"; continue;; esac
+  prompt_read "$(L '请选择（字母）：' 'Select (letter): ')" selected || return 0
+  # Numeric aliases retain compatibility with previous releases.
+  case $selected in
+   a|A|1) group=1;; b|B|2) group=2;; c|C|3) group=3;; d|D|4) group=4;;
+   e|E|5) group=5;; f|F|6) group=6;; g|G|7) group=7;;
+   q|Q|0) return 0;; *) err "$(L '无效选项' 'Invalid choice')";continue;;
+  esac
+ fi
+  if [[ $group == 7 ]];then MAIN_ACTION=users;group=''
+  else sub_menu "$group" || return 0; [[ $MENU_BACK != 1 ]] || { group='';continue; };fi
   [[ -n $MAIN_ACTION ]] || continue
-  if ! flock -n 9;then err "$(L '其他管理任务正在运行，请稍后重试' 'Another management task is running; retry shortly')";continue;fi
-  set +e
-  ( set -Eeuo pipefail; trap action_failed ERR; dispatch_action "$MAIN_ACTION" )
-  action_status=$?
-  set -e
-  flock -u 9
-  if [[ $MAIN_ACTION == uninstall && $action_status == 0 && ! -e $META ]]; then return 0; fi
-  if [[ -s $SKYBYTE_SESSION_FILE ]];then IFS= read -r SKYBYTE_ASSET_DIR < "$SKYBYTE_SESSION_FILE";export SKYBYTE_ASSET_DIR;fi
-  if [[ $MAIN_ACTION == manager_update && $action_status == 0 && -f $MANAGER_LIB ]] && ! grep -Fxq "MANAGER_VERSION=$MANAGER_VERSION" "$MANAGER_LIB"; then rm -f -- "$SKYBYTE_SESSION_FILE";exec 9>&-; exec bash "$MANAGER_LIB"; fi
-  load_language
+  navigation_action "$MAIN_ACTION"
+  if [[ $MAIN_ACTION == uninstall && $MENU_ACTION_STATUS == 0 && ! -e $META ]]; then return 0; fi
+  if [[ $MAIN_ACTION == manager_update && $MENU_ACTION_STATUS == 0 && -f $MANAGER_LIB ]] && ! grep -Fxq "MANAGER_VERSION=$MANAGER_VERSION" "$MANAGER_LIB"; then rm -f -- "$SKYBYTE_SESSION_FILE";exec 9>&-; exec bash "$MANAGER_LIB"; fi
  done
 )
 

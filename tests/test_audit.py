@@ -187,7 +187,7 @@ fi; };service_healthy(){ :; };configuration_apply sni node.example'''
         directory=self.root/'offline';directory.mkdir()
         code='''need_root(){ :; };flock(){ :; };startup_info(){ :; };retire_auto_update(){ :; };users_summary(){ :; };
 install_protocol(){ printf 'OFFLINE=%s\n' "${SKYBYTE_ASSET_DIR:-missing}"; };unset SKYBYTE_ASSET_DIR;exec 9>"$BASE/test-lock";main'''
-        result=self.shell(code,input='1\n6\n8\n'+str(directory)+'\n1\n1\n0\n')
+        result=self.shell(code,input='a\n6\n8\n'+str(directory)+'\n0\n1\n0\nq\n')
         self.assertIn('OFFLINE='+str(directory),result.stdout);self.assertFalse(list(self.base.glob('.session.*')))
 
     def test_acme_certificate_can_be_kept_on_standalone_argo_without_hy2_prompt(self):

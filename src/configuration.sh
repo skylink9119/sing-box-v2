@@ -84,8 +84,14 @@ configuration_resume(){
 node_settings(){
  check_owned || return 1
  local choice vp hp value protocol cert key domain up down ignore obfs bootstrap=false public='' listen='' family
+ # --menu renders only; a numeric argument executes one selected operation.
+ if [[ $# == 0 || $1 == --menu ]]; then
  prompt_options '1 修改主节点端口  2 服务器地址 / DDNS  3 Reality 握手域名  4 添加协议  5 移除协议  6 HY2 参数  7 使用已有 TLS 证书  0 返回' '1 Admin ports  2 Server address / DDNS  3 Reality handshake  4 Add protocol  5 Remove protocol  6 HY2 options  7 Existing TLS certificate  0 Back'
+ [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
+ else
+  choice=$1
+ fi
  case $choice in
   1) prompt_read 'Reality TCP [443]: ' vp || return 0;prompt_read 'HY2 UDP [443]: ' hp || return 0
    confirm "$(L '修改管理员端口，保留用户端口及凭据？' 'Change admin ports, retaining user ports and credentials?')" && configuration_apply ports "${vp:-443}" "${hp:-443}";;

@@ -131,11 +131,17 @@ HAPROXY_HELP_ZH
 haproxy_menu(){
  haproxy_guard || return 1
  local choice value
+ # --menu renders only; a numeric argument executes one selected operation.
+ if [[ $# == 0 || $1 == --menu ]]; then
  printf '%s' "$YELLOW"
  say 'TCP 透传：手机使用 B 的节点参数，连接 A 的转发端口；用量与配额在 B 管理。' "TCP passthrough: the phone uses B's node parameters through A's forwarding port; manage usage/quotas on B."
  printf '%s' "$RESET"
  prompt_options $' 1. 添加 TCP 规则\n 2. 修改 TCP 规则\n 3. 规则与状态\n 4. 启动与开机自启\n 5. 停止并关闭自启\n 6. 重启\n 7. 测试 B 的 TCP 连接\n 8. 删除规则\n 9. 备份\n10. 恢复\n11. 卸载 HAProxy 中转\n12. 使用说明\n 0. 返回' $' 1. Add TCP rule\n 2. Edit TCP rule\n 3. Rules/status\n 4. Start/enable at boot\n 5. Stop/disable at boot\n 6. Restart\n 7. Test B TCP\n 8. Remove rule\n 9. Backup\n10. Restore\n11. Uninstall HAProxy relay\n12. Usage guide\n 0. Back'
+ [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
+ else
+  choice=$1
+ fi
  case $choice in
   0) return 0;;12) haproxy_help;;
   1) haproxy_add;;

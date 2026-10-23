@@ -217,8 +217,14 @@ certificate_menu(){
  check_owned && certificate_guard || return 1
  certificate_identity >/dev/null || { err "$(L '未安装 HY2' 'HY2 not installed')"; return 1; }
  local choice
+ # --menu renders only; a numeric argument executes one selected operation.
+ if [[ $# == 0 || $1 == --menu ]]; then
  prompt_options '1 查看证书有效期  2 续签后同步并重载  3 开启每日检查  4 关闭每日检查  0 返回' '1 Expiry  2 Reload renewed certificate  3 Enable daily checks  4 Disable daily checks  0 Back'
+ [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
+ else
+  choice=$1
+ fi
  case $choice in
   1) certificate_info;;
   2) confirm "$(L '同步证书并重启正在运行的 HY2 服务？' 'Sync certificates and restart active HY2 services?')" && certificate_reload;;

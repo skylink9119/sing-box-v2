@@ -114,8 +114,14 @@ UNIT
 acme_menu(){
  acme_guard || return 1
  local choice
+ # --menu renders only; a numeric argument executes one selected operation.
+ if [[ $# == 0 || $1 == --menu ]]; then
  prompt_options '1 申请域名证书  2 使用证书用于 HY2  3 手动续签  4 开启自动续签  5 关闭自动续签  6 清理未完成的申请  0 返回' '1 Issue domain certificate  2 Use for HY2  3 Renew  4 Enable auto-renew  5 Disable auto-renew  6 Clean failed issuance  0 Back'
+ [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
+ else
+  choice=$1
+ fi
  case $choice in
   1) acme_issue;;2) acme_use_hy2;;3) acme_renew;;4) acme_timer;;
   5) [[ ! -f $SYSTEMD_DIR/skybyte-acme.timer ]] || systemctl disable --now skybyte-acme.timer;;

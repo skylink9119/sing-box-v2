@@ -98,8 +98,14 @@ online_user(){
 online_menu(){
  online_guard || return 1
  local choice
+ # --menu renders only; a numeric argument executes one selected operation.
+ if [[ $# == 0 || $1 == --menu ]]; then
  prompt_options '1 配置 HTTPS 服务  2 服务状态  3 启动  4 停止  5 重载证书  6 用户订阅 Token  0 返回' '1 Configure HTTPS  2 Status  3 Start  4 Stop  5 Reload certificate  6 Account tokens  0 Back'
+ [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
+ else
+  choice=$1
+ fi
  case $choice in
   1) online_setup;;2) systemctl --no-pager status skybyte-subscriptions.service || :;;
   3) [[ -f $BASE/subscriptions.json && -f $SYSTEMD_DIR/skybyte-subscriptions.service ]] && systemctl enable --now skybyte-subscriptions.service;;

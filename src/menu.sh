@@ -12,6 +12,7 @@ action_failed(){ err "$(L '操作失败；请检查上面的输出' 'Operation f
 sub_menu(){
  local group=$1 choice
  MAIN_ACTION=""
+ MENU_BACK=0
  printf '%s\n----------------------------------------------\n' "$GREEN"
  case $group in
   1)
@@ -105,25 +106,66 @@ sub_menu(){
   6:2) MAIN_ACTION=notice;;
   6:3) MAIN_ACTION=uninstall;;
   6:4) MAIN_ACTION=help;;
-  *:0) return 0;; *) err "$(L '无效选项' 'Invalid choice')";;
+  *:0) MENU_BACK=1; return 0;; *) err "$(L '无效选项' 'Invalid choice')";;
  esac
 }
 dispatch_action(){
- case $1 in
+ local action=$1;shift
+ case $action in
  install_reality) install_protocol 1;; install_hy2) install_protocol 2;; install_dual) install_protocol 3;;
- argo) argo_manager;; nodes) exports;; subscription) subscription;; rename) rename_node;; qr) shadowrocket_qr;; users) users_manager;;
- service) service_manager;; logs) journalctl -u sing-box -n 80 --no-pager;; argo_status) argo_status;;
- initialize) initialize_server;; firewall) firewall;; audit) firewall_audit;; bbr) bbr;; hop) hop;; traffic) traffic;;
- media) media_check;; warp) warp_menu;; relay) relay_menu;; haproxy) haproxy_menu;;
- rescue) rescue_menu;;
- manager_update) manager_update;; certificate) certificate_menu;; resources) resource_info;;
- update) core_versions;; settings) node_settings;; online) online_menu;; acme) acme_menu;; backup_tools) backup_tools;; help) usage_help;; backup) backup;; restore) restore;;
+ argo) argo_manager "$@";; nodes) exports;; subscription) subscription;; rename) rename_node;; qr) shadowrocket_qr;; users) users_manager;;
+ service) service_manager "$@";; logs) journalctl -u sing-box -n 80 --no-pager;; argo_status) argo_status;;
+ initialize) initialize_server;; firewall) firewall "$@";; audit) firewall_audit;; bbr) bbr;; hop) hop "$@";; traffic) traffic "$@";;
+ media) media_check;; warp) warp_menu "$@";; relay) relay_menu "$@";; haproxy) haproxy_menu "$@";;
+ rescue) rescue_menu "$@";;
+ manager_update) manager_update;; certificate) certificate_menu "$@";; resources) resource_info;;
+ update) core_versions "$@";; settings) node_settings "$@";; online) online_menu "$@";; acme) acme_menu "$@";; backup_tools) backup_tools "$@";; help) usage_help;; backup) backup;; restore) restore;;
  language) select_language && startup_info;; notice) notice;; uninstall) uninstall_manager;;
+ esac
+}
+run_menu_action(){
+ # Only a selected operation owns the lock. Never hold it while a menu waits.
+ MENU_ACTION_STATUS=1
+ if ! flock -n 9;then err "$(L '其他管理任务正在运行，请稍后重试' 'Another management task is running; retry shortly')";return 0;fi
+ set +e
+ ( set -Eeuo pipefail; trap action_failed ERR; "$@" )
+ MENU_ACTION_STATUS=$?
+ set -e
+ flock -u 9
+ if [[ -n ${SKYBYTE_SESSION_FILE:-} && -s $SKYBYTE_SESSION_FILE ]];then IFS= read -r SKYBYTE_ASSET_DIR < "$SKYBYTE_SESSION_FILE";export SKYBYTE_ASSET_DIR;fi
+ load_language
+}
+run_submenu(){
+ local handler=$1 choice
+ while :;do
+  # Rendering/selection runs in the controller, outside the operation subshell.
+  "$handler" --menu || { action_failed; return 0; }
+  say '操作后留在此菜单；0 返回上一层。' 'Stay in this menu after each operation; 0 returns one level.'
+  prompt_read '> ' choice || return 0
+  [[ $choice != 0 ]] || return 0
+  # Enter child menus before taking a lock, so nested idle menus also release it.
+  case "$handler:$choice" in
+   warp_menu:6) run_submenu warp_rules_menu; continue;;
+  esac
+  run_menu_action "$handler" "$choice"
+ done
+}
+navigation_action(){
+ case $1 in
+  firewall) run_submenu firewall;; service) run_submenu service_manager;;
+  traffic) run_submenu traffic;; argo) run_submenu argo_manager;;
+  settings) run_submenu node_settings;; certificate) run_submenu certificate_menu;;
+  acme) run_submenu acme_menu;; online) run_submenu online_menu;;
+  rescue) run_submenu rescue_menu;; warp) run_submenu warp_menu;;
+  relay) run_submenu relay_menu;; haproxy) run_submenu haproxy_menu;;
+  hop) run_submenu hop;; update) run_submenu core_versions;;
+  backup_tools) run_submenu backup_tools;; users) users_manager;;
+  *) run_menu_action dispatch_action "$1";;
  esac
 }
 main() (
  need_root; require_cmd flock
- local group action_status SKYBYTE_SESSION_FILE
+ local group='' selected MENU_BACK=0 MENU_ACTION_STATUS=0 SKYBYTE_SESSION_FILE
  SKYBYTE_SESSION_FILE=$(mktemp "$BASE/.session.XXXXXX") || return 1
  trap 'rm -f -- "$SKYBYTE_SESSION_FILE"' EXIT
  retire_auto_update || return 1
@@ -131,6 +173,7 @@ main() (
  # An idle main menu must not hold off certificate renewal.
  flock -u 9
  while :; do
+ if [[ -z $group ]];then
   printf '%s\n==============================================\n' "$CYAN"
   cat <<LOGO
    ███████╗██╗  ██╗██╗   ██╗██████╗ ██╗   ██╗████████╗███████╗
@@ -144,32 +187,32 @@ main() (
 LOGO
   printf '==============================================%s\n' "$RESET"
   printf '%s' "$GREEN"
-  say ' 1. 节点安装' ' 1. Install nodes'
-  say ' 2. 节点与订阅' ' 2. Nodes and subscriptions'
-  say ' 3. 服务与日志' ' 3. Services and logs'
-  say ' 4. 服务器与网络' ' 4. Server and network'
-  say ' 5. 更新与备份' ' 5. Updates and backups'
-  say ' 6. 设置与卸载' ' 6. Settings and uninstall'
-  say ' 7. 用户与配额管理' ' 7. Users and quotas'
+  say ' a. 节点安装' ' a. Install nodes'
+  say ' b. 节点与订阅' ' b. Nodes and subscriptions'
+  say ' c. 服务与日志' ' c. Services and logs'
+  say ' d. 服务器与网络' ' d. Server and network'
+  say ' e. 更新与备份' ' e. Updates and backups'
+  say ' f. 设置与卸载' ' f. Settings and uninstall'
+  say ' g. 用户与配额管理' ' g. Users and quotas'
   users_summary
-  say ' 0. 退出' ' 0. Exit'
+  say ' q. 退出' ' q. Exit'
   printf '%s' "$RESET"
   printf '%sYouTube: %s%s\n' "$CYAN" "$YOUTUBE" "$RESET"
   printf '%s%s%s\n' "$CYAN" "$(L '如果这个脚本对你有帮助，欢迎订阅我的 YouTube 频道，支持 SKYBYTE 持续更新！' "If you find this script helpful, please subscribe to my YouTube channel and support SKYBYTE's continued development!")" "$RESET"
-  prompt_read "$(L '请选择：' 'Select: ')" group || return 0
-  [[ $group != 0 ]] || return 0
-  case $group in 7) MAIN_ACTION=users;; 1|2|3|4|5|6) sub_menu "$group" || return 0;; *) err "$(L '无效选项' 'Invalid choice')"; continue;; esac
+  prompt_read "$(L '请选择（字母）：' 'Select (letter): ')" selected || return 0
+  # Numeric aliases retain compatibility with previous releases.
+  case $selected in
+   a|A|1) group=1;; b|B|2) group=2;; c|C|3) group=3;; d|D|4) group=4;;
+   e|E|5) group=5;; f|F|6) group=6;; g|G|7) group=7;;
+   q|Q|0) return 0;; *) err "$(L '无效选项' 'Invalid choice')";continue;;
+  esac
+ fi
+  if [[ $group == 7 ]];then MAIN_ACTION=users;group=''
+  else sub_menu "$group" || return 0; [[ $MENU_BACK != 1 ]] || { group='';continue; };fi
   [[ -n $MAIN_ACTION ]] || continue
-  if ! flock -n 9;then err "$(L '其他管理任务正在运行，请稍后重试' 'Another management task is running; retry shortly')";continue;fi
-  set +e
-  ( set -Eeuo pipefail; trap action_failed ERR; dispatch_action "$MAIN_ACTION" )
-  action_status=$?
-  set -e
-  flock -u 9
-  if [[ $MAIN_ACTION == uninstall && $action_status == 0 && ! -e $META ]]; then return 0; fi
-  if [[ -s $SKYBYTE_SESSION_FILE ]];then IFS= read -r SKYBYTE_ASSET_DIR < "$SKYBYTE_SESSION_FILE";export SKYBYTE_ASSET_DIR;fi
-  if [[ $MAIN_ACTION == manager_update && $action_status == 0 && -f $MANAGER_LIB ]] && ! grep -Fxq "MANAGER_VERSION=$MANAGER_VERSION" "$MANAGER_LIB"; then rm -f -- "$SKYBYTE_SESSION_FILE";exec 9>&-; exec bash "$MANAGER_LIB"; fi
-  load_language
+  navigation_action "$MAIN_ACTION"
+  if [[ $MAIN_ACTION == uninstall && $MENU_ACTION_STATUS == 0 && ! -e $META ]]; then return 0; fi
+  if [[ $MAIN_ACTION == manager_update && $MENU_ACTION_STATUS == 0 && -f $MANAGER_LIB ]] && ! grep -Fxq "MANAGER_VERSION=$MANAGER_VERSION" "$MANAGER_LIB"; then rm -f -- "$SKYBYTE_SESSION_FILE";exec 9>&-; exec bash "$MANAGER_LIB"; fi
  done
 )
 

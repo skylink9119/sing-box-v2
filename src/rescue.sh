@@ -88,8 +88,14 @@ rescue_help(){
 }
 rescue_menu(){
  local choice mode host vp hp directory edge
+ # --menu renders only; a numeric argument executes one selected operation.
+ if [[ $# == 0 || $1 == --menu ]]; then
  prompt_options $' 1. Argo 临时隧道应急部署\n 2. Argo 固定隧道部署\n 3. 自定义监听端口安装（IPv6 / NAT）\n 4. NAT 公网地址与映射端口\n 5. Argo 地址族与传输设置\n 6. WARP 双栈补全\n 7. 检查 Cloudflare 出站 TCP 7844\n 8. 使用离线官方安装包\n 9. 使用说明\n 0. 返回' $' 1. Standalone Argo Quick Tunnel\n 2. Standalone Argo Named Tunnel\n 3. Install with custom ports (IPv6/NAT)\n 4. NAT public address and mapped ports\n 5. Argo address family/transport\n 6. WARP dual-stack egress\n 7. Check Cloudflare outbound TCP 7844\n 8. Use offline official assets\n 9. Usage guide\n 0. Back'
+ [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
+ else
+  choice=$1
+ fi
  case $choice in
   1) argo_install quick;;2) argo_install named;;
   3) prompt_options '1 Reality  2 HY2  3 双协议' '1 Reality  2 HY2  3 Dual';prompt_read '> ' mode || return 0;install_protocol "$mode" custom;;

@@ -8,7 +8,7 @@
 set -Eeuo pipefail
 umask 077
 SCRIPT_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
-MANAGER_VERSION=2.8.6
+MANAGER_VERSION=2.8.7
 CORE_RECOMMENDED=1.14.3
 BASE=/etc/singbox-v2
 CONF=/etc/sing-box/config.json
@@ -677,10 +677,30 @@ detect_ssh_ports(){
  printf '%s\n' "$(L '识别到 SSH 端口（请确认）：' 'Detected SSH ports (verify): ')$ports"
 }
 firewall(){
- need_root
- prompt_options '1 安装 UFW  2 开启  3 关闭  4 查看状态  5 放行端口  6 删除规则  0 返回' '1 Install UFW  2 Enable  3 Disable  4 Status  5 Allow port  6 Delete rule  0 Back'
  local choice port proto
+ need_root
+ # --menu renders only; a numeric argument executes one selected operation.
+ if [[ $# == 0 || $1 == --menu ]]; then
+ prompt_options '========== UFW 防火墙 ==========
+1. 安装 UFW
+2. 开启防火墙
+3. 关闭防火墙
+4. 查看状态
+5. 放行端口
+6. 删除规则
+0. 返回上一层' '========== UFW firewall ==========
+1. Install UFW
+2. Enable firewall
+3. Disable firewall
+4. Show status
+5. Allow a port
+6. Delete a rule
+0. Back one level'
+ [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return
+ else
+  choice=$1
+ fi
  case "$choice" in
  1) confirm "$(L '安装 UFW？' 'Install UFW?')" && apt_install ufw ;;
  2)
@@ -714,8 +734,15 @@ firewall(){
  return 0
 }
 service_manager(){
+ local x
+ # --menu renders only; a numeric argument executes one selected operation.
+ if [[ $# == 0 || $1 == --menu ]]; then
  prompt_options '1 状态  2 启动  3 重启  4 停止  5 开机自启  6 配置检查  0 返回' '1 Status  2 Start  3 Restart  4 Stop  5 Enable at boot  6 Config check  0 Back'
- local x; prompt_read '> ' x || return
+ [[ ${1:-} != --menu ]] || return 0
+ prompt_read '> ' x || return
+ else
+  x=$1
+ fi
  case "$x" in
  1) status;; 2) check_owned && confirm "$(L '启动 sing-box？' 'Start sing-box?')" && systemctl start sing-box;;
  3) check_owned && confirm "$(L '重启 sing-box？' 'Restart sing-box?')" && "$BIN" check -c "$CONF" && systemctl restart sing-box;;
@@ -725,9 +752,16 @@ service_manager(){
  return 0
 }
 traffic(){
+ local x
  say 'vnStat 统计 VPS 网卡流量，不能区分 Reality/HY2；历史数据从安装后开始。' 'vnStat tracks VPS interface traffic, NOT Reality/HY2 separately. History starts when installed.'
+ # --menu renders only; a numeric argument executes one selected operation.
+ if [[ $# == 0 || $1 == --menu ]]; then
  prompt_options '1 安装 vnStat  2 今日  3 本月  4 实时网速  5 历史汇总  0 返回' '1 Install vnStat  2 Today  3 Monthly  4 Live  5 History  0 Back'
- local x; prompt_read '> ' x || return
+ [[ ${1:-} != --menu ]] || return 0
+ prompt_read '> ' x || return
+ else
+  x=$1
+ fi
  case "$x" in
  1) confirm "$(L '安装 vnStat？' 'Install vnStat?')" && apt_install vnstat && systemctl enable --now vnstat;;
  2) require_cmd vnstat && vnstat -d;; 3) require_cmd vnstat && vnstat -m;;
@@ -1051,8 +1085,14 @@ argo_restore_snapshot(){
 }
 argo_manager(){
  local choice
+ # --menu renders only; a numeric argument executes one selected operation.
+ if [[ $# == 0 || $1 == --menu ]]; then
  prompt_options '1 临时隧道  2 固定隧道  3 状态  4 启动  5 停止  6 重启  7 刷新节点  8 卸载 Argo  9 地址族与传输设置  0 返回' '1 Quick  2 Named  3 Status  4 Start  5 Stop  6 Restart  7 Refresh nodes  8 Remove Argo  9 Address family/transport  0 Back'
+ [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
+ else
+  choice=$1
+ fi
  case $choice in
   1) argo_install quick;; 2) argo_install named;; 3) argo_status;; 4) argo_start;;
   5) argo_stop && exports;; 6) argo_stop && argo_start;; 7) exports;; 8) argo_remove;;9) argo_network_settings;; 0) return 0;; *) err "$(L '无效选项' 'Invalid choice')"; return 1;;

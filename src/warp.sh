@@ -247,6 +247,8 @@ warp_profile_domains(){
 warp_menu(){
  check_owned && warp_guard || return 1
  local choice port udp domains mode
+ # --menu renders only; a numeric argument executes one selected operation.
+ if [[ $# == 0 || $1 == --menu ]]; then
  printf '\n%s%s%s\n' "$CYAN" "$(L '========== WARP 管理 ==========' '========== WARP Manager ==========')" "$RESET"
  warp_engine status "${LANGUAGE_CHOICE:-zh_CN}" || return 1
  prompt_options '
@@ -282,9 +284,13 @@ warp_menu(){
 
 0. Back
 --------------------------------------'
+ [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
+ else
+  choice=$1
+ fi
  case $choice in
-  1) warp_install_client;; 3) warp_import_gateway;; 7) warp_dualstack;; 8) media_check;; 6) warp_rules_menu;;
+  1) warp_install_client;; 3) warp_import_gateway;; 7) warp_dualstack;; 8) media_check;; 6) run_submenu warp_rules_menu;;
   4)
    domains=$(warp_profile_domains) || return 0
    prompt_read "$(L '本机 WARP SOCKS5 端口 [40000]：' 'Local WARP SOCKS5 port [40000]: ')" port || return 0; port=${port:-40000}
@@ -322,6 +328,8 @@ warp_menu(){
 warp_rules_menu(){
  warp_guard || return 1
  local choice domains port udp
+ # --menu renders only; a numeric argument executes one selected operation.
+ if [[ $# == 0 || $1 == --menu ]]; then
  warp_engine catalog_status || return 1
  prompt_options '分流规则管理
 1. 验证当前 WARP 出口
@@ -332,7 +340,11 @@ warp_rules_menu(){
 2. Update the catalog manually
 3. Apply the catalog to selected domains
 0. Back'
+ [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
+ else
+  choice=$1
+ fi
  case $choice in
   1) port=$(warp_engine port) && warp_loopback "$port" && warp_verify "$port";;
   2) confirm "$(L '从 SKYBYTE 正式 Release 下载并验证规则列表？已有自定义分流不会改变。' 'Download/digest-verify the catalog from a SKYBYTE release? Custom routing remains unchanged.')" && warp_rules_update;;
