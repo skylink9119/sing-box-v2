@@ -1,7 +1,7 @@
 {
   "owner": "SKYBYTE WARP rules v1",
   "schema": 1,
-  "version": "2026.10.13",
+  "version": "2026.10.23",
   "media": [
     "netflix.com",
     "netflix.net",
@@ -37,6 +37,9 @@
     "oaiusercontent.com",
     "anthropic.com",
     "claude.ai",
-    "claude.com"
+    "claude.com",
+    "gemini.google.com",
+    "aistudio.google.com",
+    "generativelanguage.googleapis.com"
   ]
 }

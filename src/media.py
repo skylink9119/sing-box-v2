@@ -13,6 +13,8 @@ import urllib.parse
 PROBES={
  'Netflix':['https://www.netflix.com/title/81280792','https://www.netflix.com/title/70143836'],
  'Disney+':['https://www.disneyplus.com/'],
+ 'ChatGPT':['https://chatgpt.com/'],
+ 'Gemini':['https://gemini.google.com/'],
  'YouTube Premium':['https://www.youtube.com/premium'],
  'Amazon Prime Video':['https://www.primevideo.com/'],
  'TikTok':['https://www.tiktok.com/','https://www.tiktok.com/passport/web/store_region/']}
@@ -139,11 +141,32 @@ def status_color(status):
     if status in ('restricted','network','changed'):return '\033[1;31m'
     return '\033[1;33m'
 
+def ai_location_restricted(service,body):
+    if service not in ('ChatGPT','Gemini'):return False
+    try:
+        data=json.loads(body)
+        error=data.get('error',data) if isinstance(data,dict) else None
+    except (ValueError,TypeError):error=None
+    if isinstance(error,dict):
+        code=str(error.get('code',error.get('type',''))).lower()
+        if code in ('unsupported_country','unsupported_country_region_territory'):return True
+        visible=str(error.get('message','')).lower()
+    else:
+        # Do not mistake dormant JavaScript translations/error enums for a denial.
+        visible=re.sub(r'<(script|style)\b[^>]*>.*?</\1\s*>',' ',body,flags=re.I|re.S)
+        visible=html.unescape(re.sub(r'<[^>]+>',' ',visible)).lower()
+    phrases=('not available in your country','not available in your region','not supported in your country',
+             "gemini isn't available in your country",'gemini isn’t available in your country',
+             'user location is not supported for the api use')
+    return any(phrase in visible for phrase in phrases)
+
 def classify(service,responses):
     main=responses[0];body=main['body'];low=body.lower()
     region,region_source=region_hint(service,responses)
     result={'service':service,'status':'unknown','region':region,'region_source':region_source,'http_code':main['code']}
     if main['error']:result['status']='network';return result
+    if ai_location_restricted(service,body):
+        result['status']='restricted';return result
     if main['code'] in (401,403,429,451) or any(x in low for x in ['verify you are human','cf-chl-','robot check','unusual traffic']):
         result['status']='verification';return result
     if main['code']!=200:result['status']='changed';return result

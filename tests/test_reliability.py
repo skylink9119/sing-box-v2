@@ -168,7 +168,7 @@ download_binary(){ cp '''+shlex.quote(manager.SB)+''' "$2";chmod 755 "$2"; }
   self.assertEqual((self.base/'acme/cloudflare.ini').stat().st_mode&0o777,0o600)
   self.shell('acme_menu',input='6\ny\n');self.assertFalse((self.base/'acme').exists())
  def test_rule_catalog_update_validates_and_preserves_custom_live_routing(self):
-  self.configure();self.shell('warp_engine switch restricted 40000 false custom.example');before=(self.config/'config.json').read_bytes();catalog=json.loads((manager.ROOT/'data/warp-rules.json').read_text());catalog['version']='2026.10.14';catalog['media'].append('media.example');p=self.root/'catalog.json';p.write_text(json.dumps(catalog))
+  self.configure();self.shell('warp_engine switch restricted 40000 false custom.example');before=(self.config/'config.json').read_bytes();catalog=json.loads((manager.ROOT/'data/warp-rules.json').read_text());catalog['version']+='.1';catalog['media'].append('media.example');p=self.root/'catalog.json';p.write_text(json.dumps(catalog))
   self.shell('warp_engine catalog_update '+shlex.quote(str(p)));self.assertIn('media.example',self.shell('warp_engine defaults').stdout);self.assertEqual(before,(self.config/'config.json').read_bytes())
   old=(self.base/'warp-rules.json').read_bytes();catalog['media']=['bad;command'];p.write_text(json.dumps(catalog));self.assertNotEqual(self.shell('warp_engine catalog_update '+shlex.quote(str(p)),ok=False).returncode,0);self.assertEqual(old,(self.base/'warp-rules.json').read_bytes())
  def test_bilingual_new_menu_entries_and_rootless_help(self):

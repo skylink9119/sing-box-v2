@@ -20,8 +20,10 @@ OWNER='SKYBYTE WARP routing v1'
 MEDIA=['netflix.com','netflix.net','nflxext.com','nflximg.com','nflximg.net','nflxso.net','nflxvideo.net',
        'disneyplus.com','disney-plus.net','dssott.com','bamgrid.com','youtube.com','youtu.be','googlevideo.com','ytimg.com','youtubei.googleapis.com',
        'primevideo.com','amazonvideo.com','aiv-cdn.net','aiv-delivery.net','tiktok.com','tiktokv.com','tiktokcdn.com','tiktokcdn-us.com','byteoversea.com','ibytedtos.com']
-AI=['openai.com','chatgpt.com','oaistatic.com','oaiusercontent.com','anthropic.com','claude.ai','claude.com']
-RULE_VERSION='2026.10.13'
+AI=['openai.com','chatgpt.com','oaistatic.com','oaiusercontent.com','anthropic.com','claude.ai','claude.com',
+    'gemini.google.com','aistudio.google.com','generativelanguage.googleapis.com']
+PROFILES={'netflix':MEDIA[:7],'disney':MEDIA[7:11],'chatgpt':AI[:4],'gemini':AI[7:]}
+RULE_VERSION='2026.10.23'
 FIELDS=('route','outbounds')
 RELAY_OWNER='SKYBYTE relay profile v1'
 
@@ -445,6 +447,8 @@ if __name__=='__main__':
             state['configs'].pop(str(base/'argo-server.json'),None);atomic(base/'warp-state.json',state)
     elif action=='defaults':
         d=catalog(base);print(' '.join(d['media']+d['ai']))
+    elif action=='profile':
+        print(' '.join(PROFILES[args[0]] if args[0]!='all' else sum(PROFILES.values(),[])))
     elif action=='catalog_status':
         d=catalog(base);print('WARP rules: '+d['version']+' | suffixes: '+str(len(domains_parse(' '.join(d['media']+d['ai'])))))
     elif action=='catalog_update':

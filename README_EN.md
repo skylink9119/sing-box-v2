@@ -20,7 +20,7 @@
 
 ---
 
-# SKYBYTE Manager V2.8.4 — sing-box Installer and Ubuntu/Debian VPS Management
+# SKYBYTE Manager V2.8.5 — sing-box Installer and Ubuntu/Debian VPS Management
 
 **SKYBYTE Manager** is a Bash-based Ubuntu/Debian VPS manager with Simplified Chinese and English interfaces. It installs sing-box with **VLESS + Reality + Vision, Hysteria2 (HY2), or both protocols**, manages Cloudflare Argo tunnels and WARP routing, and provides per-user traffic quotas and expiry. Client exports support Shadowrocket, v2rayN, Clash Verge/Mihomo/OpenClash and sing-box JSON.
 
@@ -30,7 +30,7 @@ If you find this script helpful, please subscribe to my YouTube channel and supp
 
 The main menu includes the SKYBYTE ASCII logo. Menus are bold green, credential links bold red, warnings bold yellow and errors bold red on ANSI terminals. Set `NO_COLOR=1` to disable colors. Every action uses `[y/N]`: type `y` or `Y` to confirm; Enter or `n/N` cancels.
 
-V2.8.4 standardizes action confirmations as `[y/N]`: type `y` or `Y`; Enter cancels. Installation, updates, removal, firewall and network actions share the same rule.
+V2.8.5 adds Netflix/Disney+/ChatGPT/Gemini WARP routing presets, anonymous ChatGPT/Gemini response tests, bounded WARP readiness retries and egress IP/country validation. Confirm with `y` or `Y` at `[y/N]`; Enter cancels.
 
 V2.8.3 fixes first installation on minimal VPS images without `curl`: the new bootstrap checks for curl and installs it with CA certificates when missing, then starts the installer. APT or download failure stops the operation while preserving input for the language prompt and menus. Copy the complete updated installation command below.
 
@@ -237,6 +237,8 @@ V2.3.1: interactive questions, selection hints and YES confirmations use bold gr
 
 Open **4 → 9**. WARP is disabled by default. Initial setup routes only media/AI domains through WARP, leaving other traffic direct. Select **direct / global WARP / restricted domains**, or supply custom suffixes. Defaults include the five media platforms plus major OpenAI/ChatGPT and Claude domains and some CDNs. Remove AI suffixes in a custom list for media-only routing. Matching depends on domains and sniffing; literal IPs, ECH and unlisted CDNs may evade classification. WARP cannot guarantee platform unlocking or a chosen exit country.
 
+WARP submenu **8** offers Netflix, Disney+, ChatGPT, Gemini, all four, all media/AI and custom suffix presets. Readiness retries verify the actual proxy after installation; existing WARP clients/data are retained. Trace checks validate WARP status, global IP and country. Gemini uses specific web/AI Studio/API domains, not all Google traffic.
+
 Three gateway sources are supported:
 
 - **Official WARP client**: signed Cloudflare apt repository, explicit terms confirmation, registration and local SOCKS5 proxy mode. Existing installations are preserved; use the existing-proxy option instead. Supported releases follow the [official repository](https://pkg.cloudflareclient.com/).
@@ -253,9 +255,9 @@ Backups include routing, private gateway configuration and owned units. Restore 
 
 ## Streaming availability tests (V2.4)
 
-Open **4 → 8** for Netflix, Disney+, YouTube Premium, Amazon Prime Video and TikTok. Choose direct IPv4, direct IPv6, WARP or an IPv4/WARP comparison. Anonymous official-page requests identify country/region fields, final-page locale hints and explicit location restrictions; the output names the field source and reports missing or conflicting clues. Requests use verified TLS, bounded timeouts/body sizes, no account login or cookies, and no remote third-party scripts.
+Open **4 → 8** for Netflix, Disney+, ChatGPT, YouTube Premium, Amazon Prime Video and TikTok. Choose direct IPv4, direct IPv6, WARP or an IPv4/WARP comparison. Anonymous official-page requests identify country/region fields, final-page locale hints and explicit location restrictions; the output names the field source and reports missing or conflicting clues. Requests use verified TLS, bounded timeouts/body sizes, no account login or cookies, and no remote third-party scripts.
 
-Results distinguish page region clues, explicit location restrictions, catalog/subscription offers and connection failures. A page field or URL locale is only a clue; it does not prove the VPS egress country, a full catalog or playback. HTTP 200 confirms only a page response, not unlocking. 403/429, challenges and changed pages remain unknown rather than being reported as blocked. No account login, payment eligibility or playback validation is performed; AI account availability is not tested. WARP uses proxy-side DNS and does not claim a specific egress address family.
+Results distinguish page region clues, explicit location restrictions, catalog/subscription offers and connection failures. A page field or URL locale is only a clue; it does not prove the VPS egress country, a full catalog or playback. HTTP 200 confirms only a page response, not unlocking. 403/429, challenges and changed pages generally remain unknown; explicit unsupported-country/region errors from ChatGPT/Gemini are classified as location restrictions. No account login, payment eligibility or playback validation is performed; AI account availability is not tested. WARP uses proxy-side DNS and does not claim a specific egress address family.
 
 Private reports contain classifications, region hints and HTTP codes, at `/etc/singbox-v2/reports/media-*.json`, mode 600. Raw pages and node credentials are excluded. Probes run on demand without background jobs. WARP and each user core add resource usage; **4 → 7** shows process/memory/load snapshots, without a fixed account-capacity promise.
 
@@ -307,7 +309,7 @@ Restore retains current account policy/usage and current subscription tokens. HT
 
 ```bash
 python3 scripts/build.py --check
-python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.4
+python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.5
 ```
 
 Packaging includes only bootstrap.sh, install.sh, the full bundle, public rule catalog and SHA256SUMS, never runtime state or credentials.

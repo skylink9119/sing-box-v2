@@ -138,7 +138,7 @@ class FeaturesTest(unittest.TestCase):
     def test_media_reports_are_private_and_contain_no_raw_page(self):
         with patch.object(media,'probe',side_effect=lambda service,path,port:media.classify(service,[self.response('sensitive-page-body')])):
             rows=media.run(['4'],self.base/'reports',language='en_US')
-        self.assertEqual(len(rows),5)
+        self.assertEqual(len(rows),7)
         report=next((self.base/'reports').glob('*.json'))
         self.assertEqual(report.stat().st_mode&0o777,0o600)
         text=report.read_text();self.assertNotIn('sensitive-page-body',text);self.assertFalse(json.loads(text)['playback_verified'])
@@ -201,12 +201,63 @@ warp_switch restricted 40000 false netflix.com'''
         self.assertFalse((self.base/'warp-state.json').exists())
 
     def test_warp_verifies_trace_and_never_disables_tls(self):
-        self.shell('curl(){ printf "warp=on\\n"; }; warp_verify 40000')
+        self.shell('curl(){ printf "warp=on\\nip=1.1.1.1\\nloc=US\\n"; }; warp_verify 40000')
         self.assertNotEqual(self.shell('curl(){ printf "warp=off\\n"; }; warp_verify 40000',ok=False).returncode,0)
         self.assertNotEqual(self.shell('curl(){ return 1; }; warp_verify 40000',ok=False).returncode,0)
         log=self.root/'curl-args'
-        self.shell('curl(){ printf "%s\\n" "$@" > '+shlex.quote(str(log))+'; printf "warp=on\\n"; }; warp_verify 40000')
+        self.shell('curl(){ printf "%s\\n" "$@" > '+shlex.quote(str(log))+'; printf "warp=on\\nip=1.1.1.1\\nloc=US\\n"; }; warp_verify 40000')
         self.assertNotIn('--insecure',log.read_text());self.assertIn('socks5h://127.0.0.1:40000',log.read_text())
+        for trace in ['warp=on', 'warp=on\\nip=127.0.0.1\\nloc=US', 'warp=on\\nip=1.1.1.1\\nloc=invalid']:
+            self.assertNotEqual(self.shell('curl(){ printf '+shlex.quote(trace)+'; }; warp_verify 40000',ok=False).returncode,0)
+
+    def test_warp_waits_for_readiness_and_stops_after_bounded_failures(self):
+        code='''probe_calls=0
+warp_loopback(){ probe_calls=$((probe_calls+1)); [[ $probe_calls -ge 2 ]]; }
+warp_verify(){ :; }
+sleep(){ :; }
+warp_wait_ready 40000
+printf 'ATTEMPTS=%s\\n' "$probe_calls"
+'''
+        self.assertIn('ATTEMPTS=2',self.shell(code).stdout)
+        result=self.shell('warp_loopback(){ return 1; }; sleep(){ :; }; warp_wait_ready 40000',ok=False)
+        self.assertNotEqual(result.returncode,0)
+        self.assertIn('WARP is not ready',result.stderr+result.stdout)
+
+    def test_platform_presets_preserve_credentials_and_allow_direct_restore(self):
+        original=self.configure('2')
+        for profile,required,excluded in [('netflix','netflix.com','chatgpt.com'),('disney','disneyplus.com','netflix.com'),('chatgpt','chatgpt.com','disneyplus.com'),('gemini','gemini.google.com','google.com')]:
+            suffixes=self.shell('warp_engine profile '+profile).stdout.split()
+            self.assertIn(required,suffixes);self.assertNotIn(excluded,suffixes)
+            self.shell('warp_engine switch restricted 40000 false '+shlex.quote(' '.join(suffixes)))
+            cfg=json.loads((self.config/'config.json').read_text())
+            self.assertEqual(cfg['inbounds'],original['inbounds'])
+            self.assertEqual(cfg['route']['final'],'direct')
+        self.switch('direct')
+        self.assertEqual(json.loads((self.config/'config.json').read_text()),original)
+
+    def test_chatgpt_anonymous_probe_distinguishes_explicit_location_and_challenge(self):
+        self.assertIn('ChatGPT',media.PROBES)
+        for body,code,status in [('Welcome',200,'unknown'),('{"code":"unsupported_country_region_territory"}',403,'restricted'),('verify you are human',403,'verification')]:
+            self.assertEqual(media.classify('ChatGPT',[self.response(body,code)])['status'],status)
+        self.assertIn('Gemini',media.PROBES)
+        self.assertEqual(media.classify('Gemini',[self.response('Gemini is not available in your country',403)])['status'],'restricted')
+        self.assertEqual(media.classify('Gemini',[self.response('<script>const msg="not available in your country";</script>Welcome')])['status'],'unknown')
+        self.assertEqual(media.classify('ChatGPT',[self.response('<script>const code="unsupported_country";</script>Welcome')])['status'],'unknown')
+
+    def test_warp_install_refuses_residual_registration_before_packages_or_services(self):
+        self.configure('2')
+        residual=self.root/'old-warp';residual.mkdir()
+        code='''need_root(){ :; }
+command(){ if [[ $1 == -v && $2 == warp-cli ]]; then return 1; fi; builtin command "$@"; }
+apt_install(){ echo UNEXPECTED_INSTALL; return 1; }
+systemctl(){ echo UNEXPECTED_SERVICE; return 1; }
+WARP_DATA_DIR='''+shlex.quote(str(residual))+'''
+warp_install_client
+'''
+        result=self.shell(code,ok=False)
+        self.assertNotEqual(result.returncode,0)
+        self.assertIn('Existing WARP data found',result.stdout+result.stderr)
+        self.assertNotIn('UNEXPECTED',result.stdout+result.stderr)
 
     def test_warp_loopback_check_rejects_public_proxy_listener(self):
         self.shell('ss(){ echo "LISTEN 0 4096 127.0.0.1:40000 0.0.0.0:*"; }; warp_loopback 40000')

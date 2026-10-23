@@ -20,7 +20,7 @@
 
 ---
 
-# SKYBYTE Manager V2.8.4 — sing-box 一键脚本与 Ubuntu/Debian VPS 管理
+# SKYBYTE Manager V2.8.5 — sing-box 一键脚本与 Ubuntu/Debian VPS 管理
 
 **SKYBYTE Manager** 是基于 Bash 的 Ubuntu/Debian VPS 管理工具，提供简体中文和 English 界面，支持 sing-box 的 **VLESS + Reality + Vision、Hysteria2（HY2）及双协议部署**。通过交互菜单管理 Cloudflare Argo 隧道、WARP 出站分流、用户流量配额与有效期，并导出 Shadowrocket（小火箭）、v2rayN、Clash Verge/Mihomo/OpenClash 和 sing-box JSON 客户端配置。
 
@@ -30,7 +30,7 @@ YouTube：[SKYBYTE9119](https://www.youtube.com/@SKYBYTE9119) · [English](READM
 
 主菜单包含 SKYBYTE ASCII logo；菜单绿色加粗、节点链接红色加粗、警告黄色加粗、错误红色加粗。支持 ANSI 的交互终端显示颜色，`NO_COLOR=1` 可关闭。所有操作确认统一为 `[y/N]`：输入 `y` 或 `Y` 确认，回车或输入 `n/N` 取消。
 
-V2.8.4 将所有操作确认统一为 `[y/N]`：只需输入 `y` 或 `Y`，回车默认取消。安装、更新、卸载、防火墙和网络操作共用这一规则。
+V2.8.5 增加 Netflix / Disney+ / ChatGPT / Gemini 快速 WARP 分流、ChatGPT/Gemini 匿名响应检测、WARP 就绪重试及出口 IP/国家校验。操作确认仍为 `[y/N]`：输入 `y` 或 `Y`，回车取消。
 
 V2.8.3 修复精简 VPS 缺少 `curl` 时无法首次下载安装的问题：新启动命令先检测并按需安装 `curl` 与 CA 证书，再启动安装器；APT 或下载失败时停止，保留后续语言选择及菜单输入。请复制下方完整的新安装命令。
 
@@ -237,6 +237,8 @@ V2.3.1：交互问题、选择提示和 YES 确认统一绿色加粗，输入前
 
 入口 **4 → 9**。默认关闭，配置后默认仅流媒体与 AI 域名使用 WARP，其余直连。可切换 **全局直连 / 全局 WARP / 仅受限域名 WARP**，也可输入自定义域名后缀。默认列表包含上述五个平台及 OpenAI/ChatGPT、Claude 的主要域名和部分 CDN；仅希望流媒体时可自定义列表删除 AI 域名。域名规则依赖域名和协议嗅探，IP 直连、ECH、未收录 CDN 可能无法匹配。WARP 不保证任何平台解锁或指定国家出口。
 
+WARP 子菜单 **8** 提供 Netflix、Disney+、ChatGPT、Gemini、四者组合、全部流媒体与 AI 及自定义后缀预设，保留节点凭据和未匹配流量的直连策略。官方客户端安装会有限重试等待真实出口就绪；检查同时校验 `warp=on/plus`、合法公网 IP 和国家字段。已有 WARP 数据或客户端不自动覆盖。
+
 有三种网关来源：
 
 - **官方 WARP 客户端**：使用 Cloudflare 签名 apt 软件源，需确认服务条款，注册并开启本机 SOCKS5 代理模式。已安装的客户端不自动改写，使用“现有本机代理”选项。支持的发行版以 [Cloudflare 软件源](https://pkg.cloudflareclient.com/) 为准。
@@ -253,9 +255,9 @@ IPv6 地址使用正确 URI 方括号和证书 IP SAN。纯 IPv6 VPS 仍需能�
 
 ## 流媒体可用性检测（V2.4）
 
-入口 **4 → 8**，支持 Netflix、Disney+、YouTube Premium、Amazon Prime Video、TikTok，可选直连 IPv4、直连 IPv6、WARP，或比较 IPv4 与 WARP。检测临时请求官方匿名页面，识别页面中的国家/地区字段、最终页面语言区域提示及明确的地区限制；输出注明识别字段来源，地区线索缺失或冲突时如实显示未识别或多个结果。请求保留 TLS 验证、限定超时与响应大小，不登录、不发送账号 Cookie，不执行第三方检测脚本。
+入口 **4 → 8**，支持 Netflix、Disney+、ChatGPT、Gemini、YouTube Premium、Amazon Prime Video、TikTok，可选直连 IPv4、直连 IPv6、WARP，或比较 IPv4 与 WARP。检测临时请求官方匿名页面，识别页面中的国家/地区字段、最终页面语言区域提示及明确的地区限制；输出注明识别字段来源，地区线索缺失或冲突时如实显示未识别或多个结果。请求保留 TLS 验证、限定超时与响应大小，不登录、不发送账号 Cookie，不执行第三方检测脚本。
 
-结果区分页面地区线索、页面明确报告的地区限制、片目/订阅入口和连接失败；地区字段/URL 语言只代表页面线索，不能证明 VPS 出口归属、完整片库或实际播放。HTTP 200 只表示页面响应，不能证明已解锁；403/429、验证码和页面变化标记为未知，不直接判为未解锁。当前不登录账号、不验证付款资格或实际播放，也没有 AI 服务账号检测。WARP 检测使用代理远程 DNS，地址族不确定时不标成 IPv4/IPv6。
+结果区分页面地区线索、页面明确报告的地区限制、片目/订阅入口和连接失败；地区字段/URL 语言只代表页面线索，不能证明 VPS 出口归属、完整片库或实际播放。HTTP 200 只表示页面响应，不能证明已解锁；403/429、验证码和页面变化通常标记为未知；ChatGPT/Gemini 响应中的明确不支持国家/地区错误单独标为地区限制。当前不登录账号、不验证付款资格或实际播放，也没有 AI 服务账号检测。WARP 检测使用代理远程 DNS，地址族不确定时不标成 IPv4/IPv6。
 
 报告只保存分类结果、地区提示和 HTTP 状态，位于 `/etc/singbox-v2/reports/media-*.json`，权限 600，不保存原始网页或节点凭据。检测按需运行，不创建常驻探测任务。WARP 网关和每个用户实例会增加资源占用，可用 **4 → 7** 查看进程、内存和负载；没有固定的最大用户容量承诺。
 
@@ -307,7 +309,7 @@ HY2 支持上下行 Mbps、`ignore_client_bandwidth` 与 Salamander 混淆，服
 
 ```bash
 python3 scripts/build.py --check
-python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.4
+python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.5
 ```
 
 打包只包含 `bootstrap.sh` 启动命令、安装入口、完整脚本、公开规则列表及SHA256SUMS，不发布运行时配置或凭据。

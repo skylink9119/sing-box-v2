@@ -8,7 +8,7 @@
 set -Eeuo pipefail
 umask 077
 SCRIPT_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
-MANAGER_VERSION=2.8.4
+MANAGER_VERSION=2.8.5
 CORE_RECOMMENDED=1.14.3
 BASE=/etc/singbox-v2
 CONF=/etc/sing-box/config.json
@@ -2505,6 +2505,8 @@ import urllib.parse
 PROBES={
  'Netflix':['https://www.netflix.com/title/81280792','https://www.netflix.com/title/70143836'],
  'Disney+':['https://www.disneyplus.com/'],
+ 'ChatGPT':['https://chatgpt.com/'],
+ 'Gemini':['https://gemini.google.com/'],
  'YouTube Premium':['https://www.youtube.com/premium'],
  'Amazon Prime Video':['https://www.primevideo.com/'],
  'TikTok':['https://www.tiktok.com/','https://www.tiktok.com/passport/web/store_region/']}
@@ -2631,11 +2633,32 @@ def status_color(status):
     if status in ('restricted','network','changed'):return '\033[1;31m'
     return '\033[1;33m'
 
+def ai_location_restricted(service,body):
+    if service not in ('ChatGPT','Gemini'):return False
+    try:
+        data=json.loads(body)
+        error=data.get('error',data) if isinstance(data,dict) else None
+    except (ValueError,TypeError):error=None
+    if isinstance(error,dict):
+        code=str(error.get('code',error.get('type',''))).lower()
+        if code in ('unsupported_country','unsupported_country_region_territory'):return True
+        visible=str(error.get('message','')).lower()
+    else:
+        # Do not mistake dormant JavaScript translations/error enums for a denial.
+        visible=re.sub(r'<(script|style)\b[^>]*>.*?</\1\s*>',' ',body,flags=re.I|re.S)
+        visible=html.unescape(re.sub(r'<[^>]+>',' ',visible)).lower()
+    phrases=('not available in your country','not available in your region','not supported in your country',
+             "gemini isn't available in your country",'gemini isn’t available in your country',
+             'user location is not supported for the api use')
+    return any(phrase in visible for phrase in phrases)
+
 def classify(service,responses):
     main=responses[0];body=main['body'];low=body.lower()
     region,region_source=region_hint(service,responses)
     result={'service':service,'status':'unknown','region':region,'region_source':region_source,'http_code':main['code']}
     if main['error']:result['status']='network';return result
+    if ai_location_restricted(service,body):
+        result['status']='restricted';return result
     if main['code'] in (401,403,429,451) or any(x in low for x in ['verify you are human','cf-chl-','robot check','unusual traffic']):
         result['status']='verification';return result
     if main['code']!=200:result['status']='changed';return result
@@ -2708,8 +2731,10 @@ OWNER='SKYBYTE WARP routing v1'
 MEDIA=['netflix.com','netflix.net','nflxext.com','nflximg.com','nflximg.net','nflxso.net','nflxvideo.net',
        'disneyplus.com','disney-plus.net','dssott.com','bamgrid.com','youtube.com','youtu.be','googlevideo.com','ytimg.com','youtubei.googleapis.com',
        'primevideo.com','amazonvideo.com','aiv-cdn.net','aiv-delivery.net','tiktok.com','tiktokv.com','tiktokcdn.com','tiktokcdn-us.com','byteoversea.com','ibytedtos.com']
-AI=['openai.com','chatgpt.com','oaistatic.com','oaiusercontent.com','anthropic.com','claude.ai','claude.com']
-RULE_VERSION='2026.10.13'
+AI=['openai.com','chatgpt.com','oaistatic.com','oaiusercontent.com','anthropic.com','claude.ai','claude.com',
+    'gemini.google.com','aistudio.google.com','generativelanguage.googleapis.com']
+PROFILES={'netflix':MEDIA[:7],'disney':MEDIA[7:11],'chatgpt':AI[:4],'gemini':AI[7:]}
+RULE_VERSION='2026.10.23'
 FIELDS=('route','outbounds')
 RELAY_OWNER='SKYBYTE relay profile v1'
 
@@ -3133,6 +3158,8 @@ if __name__=='__main__':
             state['configs'].pop(str(base/'argo-server.json'),None);atomic(base/'warp-state.json',state)
     elif action=='defaults':
         d=catalog(base);print(' '.join(d['media']+d['ai']))
+    elif action=='profile':
+        print(' '.join(PROFILES[args[0]] if args[0]!='all' else sum(PROFILES.values(),[])))
     elif action=='catalog_status':
         d=catalog(base);print('WARP rules: '+d['version']+' | suffixes: '+str(len(domains_parse(' '.join(d['media']+d['ai'])))))
     elif action=='catalog_update':
@@ -3165,11 +3192,23 @@ warp_verify(){
  local port=$1 trace
  valid_port "$port" && ((10#$port>=1024)) || return 1
  trace=$(curl -q -fsSL --noproxy '' --proxy "socks5h://127.0.0.1:$port" --proto '=https' --proto-redir '=https' --max-time 12 --max-filesize 65536 https://www.cloudflare.com/cdn-cgi/trace) || { err "$(L 'WARP 代理连接失败' 'WARP proxy connection failed')"; return 1; }
- if ! printf '%s\n' "$trace" | grep -Eq '^warp=(on|plus)$'; then err "$(L '代理未通过 WARP 出口验证，拒绝应用' 'Proxy did not verify as WARP; refusing apply')"; return 1; fi
- ok "$(L 'WARP 出口验证通过' 'WARP egress verified')"
+ local egress
+ egress=$(printf '%s\n' "$trace" | python3 -c 'import ipaddress,re,sys; d=dict(line.split("=",1) for line in sys.stdin.read().splitlines() if "=" in line); assert d.get("warp") in ("on","plus") and ipaddress.ip_address(d.get("ip","")).is_global and re.fullmatch("[A-Z]{2}",d.get("loc","")); print(d["ip"]+" ("+d["loc"]+")")' 2>/dev/null) || { err "$(L '代理未通过 WARP 出口验证，拒绝应用' 'Proxy did not verify as WARP; refusing apply')"; return 1; }
+ ok "$(L 'WARP 出口验证通过：' 'WARP egress verified: ')$egress"
+}
+warp_wait_ready(){
+ local port=$1 attempt
+ say '等待 WARP 本机代理就绪……' 'Waiting for the WARP local proxy…'
+ for ((attempt=0;attempt<3;attempt++)); do
+  if warp_loopback "$port" && warp_verify "$port"; then return 0; fi
+  [[ $attempt == 2 ]] || sleep 2
+ done
+ err "$(L 'WARP 尚未就绪，节点分流保持原样；可稍后使用现有本机代理选项重试' 'WARP is not ready; node routing is unchanged. Retry using the existing local proxy option later')"
+ return 1
 }
 warp_loopback(){
  local port=$1 listeners address
+ valid_port "$port" && ((10#$port>=1024)) || return 1
  require_cmd ss || return 1
  listeners=$(ss -H -ltn "( sport = :$port )") || return 1
  [[ -n $listeners ]] || { err "$(L '本地代理未监听' 'Local proxy is not listening')"; return 1; }
@@ -3225,6 +3264,7 @@ warp_install_client(){
  need_root; check_owned && warp_guard || return 1
  local os_id code port tmp registration
  if command -v warp-cli >/dev/null; then err "$(L '已有 WARP 客户端，请用现有本机代理选项，避免覆盖其设置' 'WARP client exists; use the existing local proxy option to preserve its settings')"; return 1; fi
+ if [[ -e ${WARP_DATA_DIR:-/var/lib/cloudflare-warp} || -L ${WARP_DATA_DIR:-/var/lib/cloudflare-warp} ]]; then err "$(L '发现已有 WARP 数据，请先手动核对注册与模式，避免启动已有全局连接' 'Existing WARP data found; inspect registration and mode before starting a potentially global connection')"; return 1; fi
  # shellcheck source=/dev/null
  . "$OS_RELEASE"
  os_id=${ID:-};code=${VERSION_CODENAME:-}
@@ -3256,7 +3296,7 @@ fd,tmp=tempfile.mkstemp(dir=os.path.dirname(sys.argv[1]))
 with os.fdopen(fd,'w') as f:json.dump({'owner':'SKYBYTE WARP client v1','port':int(sys.argv[2]),'registration_hash':sys.argv[3]},f)
 os.replace(tmp,sys.argv[1])
 PY_CLIENT_OWNER
- sleep 2; warp_loopback "$port" && warp_verify "$port" || return 1
+ warp_wait_ready "$port" || return 1
  local udp domains
  udp=$(warp_proxy_capability "$port") || return 1; domains=$(warp_engine defaults) || return 1
  warp_switch restricted "$port" "$udp" "$domains"
@@ -3349,14 +3389,30 @@ warp_reconcile(){
  warp_engine reconcile
 }
 
+warp_profile_domains(){
+ local choice domains
+ prompt_options '1 Netflix + Disney+ + ChatGPT + Gemini（默认）\n2 仅 Netflix\n3 仅 Disney+\n4 仅 ChatGPT\n5 仅 Gemini\n6 全部流媒体与 AI\n7 自定义域名后缀\n0 返回' '1 Netflix + Disney+ + ChatGPT + Gemini (default)\n2 Netflix only\n3 Disney+ only\n4 ChatGPT only\n5 Gemini only\n6 All media and AI\n7 Custom domain suffixes\n0 Back' >&2
+ prompt_read "$(L '选择 [1]：' 'Choose [1]: ')" choice || return 1
+ case ${choice:-1} in
+  1) warp_engine profile all;; 2) warp_engine profile netflix;; 3) warp_engine profile disney;; 4) warp_engine profile chatgpt;; 5) warp_engine profile gemini;; 6) warp_engine defaults;;
+  7) prompt_read "$(L '域名后缀（空格分隔）：' 'Domain suffixes (space-separated): ')" domains || return 1; [[ -n $domains ]] || return 1; printf '%s\n' "$domains";;
+  *) return 1;;
+ esac
+}
 warp_menu(){
  check_owned && warp_guard || return 1
  local choice port udp domains mode
  warp_engine status
- prompt_options '1 安装官方 WARP  2 使用现有本机代理  3 导入 WireGuard 配置  4 切换分流  5 双栈检测  6 流媒体检测  7 分流规则管理  0 返回' '1 Install official WARP  2 Existing local proxy  3 Import WireGuard profile  4 Routing mode  5 Dual-stack tests  6 Media tests  7 Rule catalog  0 Back'
+ prompt_options '1 安装官方 WARP 本机代理\n2 使用现有本机代理\n3 导入 WireGuard 配置\n4 切换出站模式 / 自定义分流\n5 双栈检测\n6 流媒体 / AI 检测与对比\n7 分流规则管理\n8 Netflix / Disney+ / ChatGPT / Gemini 快速分流\n0 返回' '1 Install official WARP local proxy\n2 Existing local proxy\n3 Import WireGuard profile\n4 Outbound mode / custom routing\n5 Dual-stack tests\n6 Media / AI tests and comparison\n7 Rule catalog\n8 Netflix / Disney+ / ChatGPT / Gemini routing presets\n0 Back'
  prompt_read '> ' choice || return 0
  case $choice in
   1) warp_install_client;; 3) warp_import_gateway;; 5) warp_dualstack;; 6) media_check;; 7) warp_rules_menu;;
+  8)
+   domains=$(warp_profile_domains) || return 0
+   prompt_read "$(L '本机 WARP SOCKS5 端口 [40000]：' 'Local WARP SOCKS5 port [40000]: ')" port || return 0; port=${port:-40000}
+   valid_port "$port" && warp_loopback "$port" && warp_verify "$port" || return 1
+   udp=$(warp_proxy_capability "$port") || return 1
+   confirm "$(L '应用所选平台 WARP 分流并重启原先运行的节点？' 'Apply WARP for the selected platforms and restart previously running nodes?')" && warp_switch restricted "$port" "$udp" "$domains";;
   2)
    prompt_read "$(L '已有本机 WARP SOCKS5 端口 [40000]：' 'Existing local WARP SOCKS5 port [40000]: ')" port || return 0; port=${port:-40000}
    valid_port "$port" && warp_loopback "$port" && warp_verify "$port" || return 1
