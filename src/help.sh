@@ -14,6 +14,7 @@ SKYBYTE Manager — quick guide
 10. Resources: main d → 7. Each account uses a core. Capacity depends on measured memory/CPU/traffic. Account quotas are periodically enforced, not byte-exact billing.
 11. Residential landing / VPS relay: main d → 10, then 6 for step-by-step help. Import one Reality/Vision or HY2 landing URI/JSON. Clients connect to this VPS and destinations see the landing exit. Self-signed HY2 requires trusted public certificate material. Relay and WARP are alternative routing policies; failed relay traffic has no automatic direct fallback. Measure both links before judging speed.
 12. HAProxy TCP passthrough: main d → 11, then 12 for help. A may run only the TCP forwarder; B runs the authenticated Reality/Trojan node. On the phone, keep B's credentials/SNI/TLS trust and change only the address/port to A. HY2/raw UDP are unsupported. User quotas belong on B. This menu has separate backup/restore/uninstall controls; full sing-box backups include a haproxy subdirectory for separate restoration.
+13. Reality target checks: main d → 12. Check configured targets or a custom hostname/port/SNI; verify DNS, TCP, TLS 1.3, certificate and HTTP/2. Read-only, with bounded network timeouts; this does not test client-to-VPS connectivity.
 CLI: --help, --self-check. Maintenance flags are used by owned systemd services.
 HELP_EN
  else cat <<'HELP_ZH'
@@ -30,6 +31,7 @@ SKYBYTE Manager — 快速使用说明
 10. 资源：主菜单d → 7，每个用户一个内核，容量需实测。配额周期检查，不是精确计费。
 11. 住宅落地 / VPS 中转：主菜单d → 10，再选6查看具体步骤，导入一个 Reality/Vision 或 HY2 落地链接/JSON。客户端连接本 VPS，网站看到落地出口。自签名 HY2 须提供可信公开证书；中转与 WARP 分流择一启用，中转失败不自动直连。速度需按两段链路实测。
 12. HAProxy TCP 透传：主菜单d → 11，再选12查看说明。A 可只运行 TCP 转发，B 运行带认证的 Reality/Trojan 节点；手机保留 B 的认证、SNI及TLS验证，仅改连接地址和端口为 A。不支持 HY2/原生UDP。配额在 B 管理。本菜单可单独备份、恢复与卸载，完整 sing-box 备份中的 haproxy 子目录需单独恢复。
+13. Reality 握手检测：主菜单 d → 12。检测当前目标或自定义域名/端口/SNI；检查 DNS、TCP、TLS 1.3、证书和 HTTP/2。只读且有网络超时，不代表客户端到 VPS 已连通。
 命令行：--help、--self-check。维护参数供本工具的 systemd 服务使用。
 HELP_ZH
  fi

@@ -1,5 +1,13 @@
 # Audit and testing / 审计与测试
 
+## 2026-10-26 — Reality target diagnostics (v2.8.8)
+
+Added a read-only `d → 12` submenu for configured and custom Reality target/SNI checks. Local TLS peers verify TLS 1.3 + h2 success, TLS 1.2-only refusal, missing h2, certificate name/trust failures, expiry reason reporting, DNS/TLS deadlines and fallback to another resolved TCP address. Configuration tests cover target/SNI deduplication, legacy Xray targets, missing/corrupt configuration and credential omission. Both-language menu sequences cover failure recovery, custom SNI, cancellation and one-level return. The generated standalone manager was also exercised against real local TLS peers for passing and failing ALPN cases.
+
+All 16 new diagnostic tests and all 9 navigation tests passed. The 300-case local regression run, followed by three targeted certificate-fixture rechecks after correcting the local OpenSSL configuration, covered 299 passing cases and one GnuPG skip. Verification used Python 3.12/OpenSSL, sing-box 1.14.3, Mihomo 1.19.32 and HAProxy 2.6.34. On macOS, use a modern OpenSSL CLI through `OPENSSL_BIN` and `PATH`, and set `OPENSSL_CONF` to an existing configuration file when using a relocated binary; the system LibreSSL lacks required certificate-check options.
+
+Generated-source consistency, Bash syntax, ShellCheck 0.11.0, self-check and diff whitespace checks passed. No production VPS or cloud firewall was changed; a target check does not verify client-to-VPS connectivity. Ubuntu/Debian compatibility is checked separately by the required four-image CI matrix before publication.
+
 ## Reviewed baseline / 检查范围
 
 All four baseline files were read: `singbox-v2.sh`, `install.sh`, `README.md`, `README_EN.md`. The user's Desktop copies were compared byte-for-byte and match the original GitHub revision.

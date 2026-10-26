@@ -72,6 +72,17 @@ run_submenu warp_menu'''
             self.assertLess(len(result.stdout), 15000)
             self.assertFalse(list(self.base.glob('.session.*')))
 
+    def test_reality_checks_stay_open_after_failure_and_accept_custom_sni(self):
+        for language in ('zh_CN', 'en_US'):
+            code = self.mocks()+'''reality_engine(){ printf 'REALITY %s\\n' "$*";return 1; }
+LANGUAGE_CHOICE='''+language+''';main'''
+            result = self.shell(code, input='d\n12\n1\n2\ntarget.example:8443\nsni.example\n2\n0\n0\n0\nq\n')
+            self.assertIn('--project sing-box --language '+language+' --config ', result.stdout)
+            self.assertIn('--target target.example:8443 --sni sni.example', result.stdout)
+            self.assertEqual(result.stdout.count('REALITY '), 2)
+            self.assertEqual(result.stdout.count('SKYBYTE Manager v'), 2)
+            self.assertNotIn('SELECT_LOCK=1', result.stdout)
+
     def test_each_main_letter_selects_its_category_and_uppercase_works(self):
         for letter, choice, expected in [('a','1','install_reality'), ('B','1','nodes'),
                                          ('c','2','logs'), ('D','7','resources'),

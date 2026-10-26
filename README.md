@@ -20,7 +20,7 @@
 
 ---
 
-# SKYBYTE Manager V2.8.7 — sing-box 一键脚本与 Ubuntu/Debian VPS 管理
+# SKYBYTE Manager V2.8.8 — sing-box 一键脚本与 Ubuntu/Debian VPS 管理
 
 **SKYBYTE Manager** 是基于 Bash 的 Ubuntu/Debian VPS 管理工具，提供简体中文和 English 界面，支持 sing-box 的 **VLESS + Reality + Vision、Hysteria2（HY2）及双协议部署**。通过交互菜单管理 Cloudflare Argo 隧道、WARP 出站分流、用户流量配额与有效期，并导出 Shadowrocket（小火箭）、v2rayN、Clash Verge/Mihomo/OpenClash 和 sing-box JSON 客户端配置。
 
@@ -30,7 +30,9 @@ YouTube：[SKYBYTE9119](https://www.youtube.com/@SKYBYTE9119) · [English](READM
 
 主菜单包含 SKYBYTE ASCII logo；菜单绿色加粗、节点链接红色加粗、警告黄色加粗、错误红色加粗。支持 ANSI 的交互终端显示颜色，`NO_COLOR=1` 可关闭。所有操作确认统一为 `[y/N]`：输入 `y` 或 `Y` 确认，回车或输入 `n/N` 取消。
 
-V2.8.7 主菜单使用字母 `a–g`（支持大写），子菜单使用数字；操作完成、取消或失败后留在当前菜单，`0` 返回上一层，主菜单 `q` 退出。例如 `d → 2` 进入 UFW 后，可连续安装、开启和查看状态。等待菜单输入时不占用操作锁。旧主菜单数字仍作为兼容输入。
+V2.8.8 新增 **Reality 握手网站检测（d → 12）**，可检查当前节点或自定义目标，逐项显示 DNS、TCP、TLS 1.3、证书与 HTTP/2 结果。
+
+V2.8.8 主菜单使用字母 `a–g`（支持大写），子菜单使用数字；操作完成、取消或失败后留在当前菜单，`0` 返回上一层，主菜单 `q` 退出。例如 `d → 2` 进入 UFW 后，可连续安装、开启和查看状态。等待菜单输入时不占用操作锁。旧主菜单数字仍作为兼容输入。
 
 V2.8.6 修复 WARP 菜单把 `\n` 当文字显示的问题；按代理设置（1–3）、分流设置（4–6）、连接检测（7–8）分组，每项独立一行，并显示中文状态。操作确认仍为 `[y/N]`。
 
@@ -84,7 +86,7 @@ V2.8.1 完整源码审计修复：一键入口验证目标归属并原子替换�
 | a | 节点安装 | Reality / HY2 / 双协议；临时 / 固定隧道；参数修改 / 协议增删；受限网络部署 |
 | b | 节点与订阅 | 节点信息 / 订阅导出 / 自定义名称 / 小火箭二维码 / 用户管理 / HTTPS个人订阅 |
 | c | 服务与日志 | 服务控制 / 日志 / Argo 状态 |
-| d | 服务器与网络 | 初始化 / UFW / 防火墙 / BBR / 跳跃 / 流量 / 资源 / 流媒体 / WARP / sing-box 中转 / HAProxy TCP 透传 |
+| d | 服务器与网络 | 初始化 / UFW / 防火墙 / BBR / 跳跃 / 流量 / 资源 / 流媒体 / WARP / sing-box 中转 / HAProxy TCP 透传 / Reality 握手检测 |
 | e | 更新与备份 | 内核版本 / 备份 / 恢复 / 管理脚本更新 / 证书管理 / ACME / 加密备份 |
 | f | 设置与卸载 | 语言 / 隐私声明 / 卸载 / 使用说明 |
 | g | 用户与配额 | 人数 / 用量 / 额度 / 有效期 / 故障诊断 / 资源 |
@@ -95,6 +97,14 @@ V2.8.1 完整源码审计修复：一键入口验证目标归属并原子替换�
 开启 UFW 前，从 sshd 监听、`sshd -T` 和当前 `SSH_CONNECTION` 识别 SSH 端口，再要求人工核实；已识别端口与确认端口均会放行。同时按实际配置放行协议端口与已启用的 HY2 跳跃范围。菜单 d → 3 检查实际 HY2 UDP 端口和跳跃范围规则；复杂 UFW 规则可能需要人工判断，无法读取云安全组。
 
 vnStat 显示 **VPS 网卡总流量**，不能当作 Reality/HY2 各自流量；历史统计从 vnStat 开始采集时起算。
+
+## Reality 握手网站检测
+
+入口 **d → 12**：选 **1** 检测当前配置中的 Reality 握手目标，选 **2** 检测自定义网站。自定义目标可填域名或 `域名:端口`（默认 443），SNI 回车使用目标域名，也可填写独立的握手域名。同一目标与 SNI 自动去重；没有安装 Reality 时仍可使用自定义检测。
+
+逐项显示 DNS、实际连接的 TCP 地址、TLS 1.3、证书信任链 / 有效期 / 域名匹配、HTTP/2 ALPN 协商，以及醒目的“检测通过 / 检测未通过”。每个目标的网络检测总时限为 12 秒；失败显示原因，不关闭证书验证。操作后留在检测菜单，`0` 返回上一层。
+
+检测仅访问 **本 VPS → 握手目标**，不会修改节点、UUID、密钥、路由或重启服务；不代表客户端、公网节点端口或 CDN 已连通。目标正常时无需按固定周期更换，有异常时再检查或调整。
 
 ## Hysteria2 / HY2 与安全证书验证
 
@@ -311,7 +321,7 @@ HY2 支持上下行 Mbps、`ignore_client_bandwidth` 与 Salamander 混淆，服
 
 ```bash
 python3 scripts/build.py --check
-python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.7
+python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.8
 ```
 
 打包只包含 `bootstrap.sh` 启动命令、安装入口、完整脚本、公开规则列表及SHA256SUMS，不发布运行时配置或凭据。
