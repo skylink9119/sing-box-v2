@@ -36,8 +36,8 @@ def check_admin_port(value,protocol,adding=False):
    if p.exists() or p.is_symlink():
     if load(p)['port']==value:raise ValueError('Port reserved by a managed TCP service')
 
-# Any edit disables active host hopping; the wrapper stops owned rules.
-meta['hop']=False
+# Handshake-only edits retain the unrelated HY2 listener and hopping rules.
+if action!='reality':meta['hop']=False
 if action=='ports':
  vp,hp=map(port,args)
  for inbound in main['inbounds']:
@@ -63,12 +63,17 @@ elif action=='nat_exports':
   ports.append(int(item))
  if len(ports)!=2:raise ValueError('Two mapped ports required')
  meta['ip']=value;meta['export_ports']=dict(zip(('vless','hysteria2'),ports))
-elif action=='sni':
+elif action in ('sni','reality'):
  value=address(args[0])
+ host=address(args[1]) if action=='reality' else value
+ number=int(args[2]) if action=='reality' else None
+ if number is not None and not 1<=number<=65535:raise ValueError('Invalid handshake target port')
  if not any(i['type']=='vless' for i in main['inbounds']):raise ValueError('Reality is not installed')
  for _,cfg,_,s in paths:
   for i in cfg['inbounds']:
-   if i['type']=='vless':i['tls']['server_name']=value;i['tls']['reality']['handshake']['server']=value;s['sni']=value
+   if i['type']=='vless':
+    i['tls']['server_name']=value;i['tls']['reality']['handshake']['server']=host;s['sni']=value
+    if number is not None:i['tls']['reality']['handshake']['server_port']=number
 elif action=='tls':
  domain,cert,key=args;domain=address(domain)
  if 'hysteria2' not in {i['type'] for i in main['inbounds']}:raise ValueError('HY2 is not installed')

@@ -8,7 +8,7 @@
 set -Eeuo pipefail
 umask 077
 SCRIPT_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
-MANAGER_VERSION=2.8.8
+MANAGER_VERSION=2.8.9
 CORE_RECOMMENDED=1.14.3
 BASE=/etc/singbox-v2
 CONF=/etc/sing-box/config.json
@@ -2987,6 +2987,8 @@ def main(argv=None):
     parser.add_argument('--target')
     parser.add_argument('--sni', default='')
     parser.add_argument('--config')
+    parser.add_argument('--list', action='store_true', help='List configured target/SNI pairs without probing')
+    parser.add_argument('--normalize', action='store_true', help='Print validated host, port and SNI without probing')
     parser.add_argument('--project', choices=('sing-box', 'xray'), required=True)
     parser.add_argument('--language', choices=('zh', 'en', 'zh_CN', 'en_US'), default='zh')
     args = parser.parse_args(argv)
@@ -3004,8 +3006,19 @@ def main(argv=None):
               '目标 / 握手域名无效，或无法读取 Reality 配置；请输入域名或 域名:端口。', file=sys.stderr)
         return 2
     if not targets:
+        if args.list:
+            return 0
         print('No configured Reality targets; choose custom target check.' if english else
               '未找到已配置的 Reality 握手目标，可选择“检测自定义网站”。')
+        return 0
+    if args.normalize:
+        if args.target is None:
+            return 2
+        print('\t'.join((host, str(number), sni)))
+        return 0
+    if args.list:
+        for target, sni in targets:
+            print(target + '\t' + sni)
         return 0
     failed = False
     for target, sni in targets:
@@ -3021,15 +3034,59 @@ if __name__ == '__main__':
     sys.exit(main())
 PY_REALITY
 }
+reality_replace(){
+ local current choice sni target normalized host number
+ current=$(reality_engine --project sing-box --language "${LANGUAGE_CHOICE:-zh_CN}" --config "$CONF" --list) || return 1
+ [[ -n $current ]] || { warn "$(L '未安装 Reality 节点，无需更换；可选择检测自定义网站。' 'No Reality node installed; use a custom target check instead.')";return 0; }
+ printf '%s\n%s\n' "$(L '当前握手目标 / SNI：' 'Current target / SNI:')" "$current"
+ prompt_options '选择新握手网站（回车选 1）：
+1 Mozilla     addons.mozilla.org
+2 Microsoft   www.microsoft.com
+3 Apple       www.apple.com
+4 Amazon      www.amazon.com
+5 Cloudflare  www.cloudflare.com
+6 Google      dl.google.com
+7 自定义域名
+0 返回' 'New handshake site (Enter selects 1):
+1 Mozilla     addons.mozilla.org
+2 Microsoft   www.microsoft.com
+3 Apple       www.apple.com
+4 Amazon      www.amazon.com
+5 Cloudflare  www.cloudflare.com
+6 Google      dl.google.com
+7 Custom domain
+0 Back'
+ prompt_read '> ' choice || return 0
+ case ${choice:-1} in
+  1) sni=addons.mozilla.org;;2) sni=www.microsoft.com;;3) sni=www.apple.com;;
+  4) sni=www.amazon.com;;5) sni=www.cloudflare.com;;6) sni=dl.google.com;;
+  7) prompt_read 'Reality SNI: ' sni || return 0;;0) return 0;;*) return 1;;
+ esac
+ [[ -n $sni && $sni != 0 ]] || return 0
+ prompt_read "$(L "握手目标 [$sni:443]（0 返回）：" "Handshake target [$sni:443] (0 to return): ")" target || return 0
+ [[ $target != 0 ]] || return 0
+ target=${target:-$sni:443}
+ normalized=$(reality_engine --project sing-box --target "$target" --sni "$sni" --normalize) || return 1
+ IFS=$'\t' read -r host number sni <<< "$normalized"
+ if ! reality_engine --project sing-box --language "${LANGUAGE_CHOICE:-zh_CN}" --target "$target" --sni "$sni";then
+  err "$(L '新目标检测未通过，保留原配置。' 'New target failed checks; original configuration retained.')";return 1
+ fi
+ warn "$(L '更换会短暂重启正在运行的服务；保留 UUID、密钥及端口。所有 Reality 客户端需重新导入更新后的节点。' 'Running services will briefly restart; UUIDs, keys and ports are retained. Re-import updated nodes on all Reality clients.')"
+ confirm "$(L '将管理员及受限用户的 Reality 握手网站更换为上述目标？' 'Apply this target to administrator and quota-managed Reality nodes?')" || return 0
+ configuration_apply reality "$sni" "$host" "$number" || return 1
+ ok "$(L 'Reality 握手网站已更换；请重新导入节点或更新客户端 SNI。' 'Reality target updated; re-import nodes or update client SNI.')"
+}
 reality_menu(){
  local choice target sni
  if [[ $# == 0 || $1 == --menu ]];then
   prompt_options 'Reality 握手网站检测
 1. 检测当前节点的握手网站
 2. 检测自定义网站
+3. 更换握手网站（先检测后应用）
 0. 返回' 'Reality handshake target checks
 1. Check configured Reality targets
 2. Check a custom target
+3. Change handshake target (check before applying)
 0. Back'
   [[ ${1:-} != --menu ]] || return 0
   prompt_read '> ' choice || return 0
@@ -3041,6 +3098,7 @@ reality_menu(){
      [[ -n $target ]] || { err "$(L '请填写握手目标' 'Enter a target')";return 1; }
      prompt_read "$(L '握手域名 / SNI（回车使用目标域名）：' 'Handshake SNI (Enter uses target hostname): ')" sni || return 0
      reality_engine --project sing-box --language "${LANGUAGE_CHOICE:-zh_CN}" --target "$target" --sni "$sni";;
+  3) reality_replace;;
   0) return 0;; *) return 1;;
  esac
 }
@@ -5198,8 +5256,8 @@ def check_admin_port(value,protocol,adding=False):
    if p.exists() or p.is_symlink():
     if load(p)['port']==value:raise ValueError('Port reserved by a managed TCP service')
 
-# Any edit disables active host hopping; the wrapper stops owned rules.
-meta['hop']=False
+# Handshake-only edits retain the unrelated HY2 listener and hopping rules.
+if action!='reality':meta['hop']=False
 if action=='ports':
  vp,hp=map(port,args)
  for inbound in main['inbounds']:
@@ -5225,12 +5283,17 @@ elif action=='nat_exports':
   ports.append(int(item))
  if len(ports)!=2:raise ValueError('Two mapped ports required')
  meta['ip']=value;meta['export_ports']=dict(zip(('vless','hysteria2'),ports))
-elif action=='sni':
+elif action in ('sni','reality'):
  value=address(args[0])
+ host=address(args[1]) if action=='reality' else value
+ number=int(args[2]) if action=='reality' else None
+ if number is not None and not 1<=number<=65535:raise ValueError('Invalid handshake target port')
  if not any(i['type']=='vless' for i in main['inbounds']):raise ValueError('Reality is not installed')
  for _,cfg,_,s in paths:
   for i in cfg['inbounds']:
-   if i['type']=='vless':i['tls']['server_name']=value;i['tls']['reality']['handshake']['server']=value;s['sni']=value
+   if i['type']=='vless':
+    i['tls']['server_name']=value;i['tls']['reality']['handshake']['server']=host;s['sni']=value
+    if number is not None:i['tls']['reality']['handshake']['server_port']=number
 elif action=='tls':
  domain,cert,key=args;domain=address(domain)
  if 'hysteria2' not in {i['type'] for i in main['inbounds']}:raise ValueError('HY2 is not installed')
@@ -5367,8 +5430,8 @@ PY_INITIAL_ADMIN
  if systemctl is-active --quiet sing-box.service;then admin=true;fi
  if [[ -f $BASE/users.json ]] && systemctl is-active --quiet skybyte-users.service;then users=true;users_stop || { rm -rf "$stage";return 1; };fi
  if [[ -f $BASE/argo-state.json ]] && systemctl is-active --quiet skybyte-argo-node.service;then argo=true;fi
- if [[ $(state hop) == True ]];then hop_active=true;hop_disable || { warp_resume "$admin" "$argo" "$users" || :;rm -rf "$stage";return 1; };fi
- if ! configuration_commit "$stage" || ! configuration_resume "$first_admin" "$admin" "$argo" "$users";then
+ if [[ $1 != reality && $(state hop) == True ]];then hop_active=true;hop_disable || { warp_resume "$admin" "$argo" "$users" || :;rm -rf "$stage";return 1; };fi
+ if ! configuration_commit "$stage" "$1" || ! configuration_resume "$first_admin" "$admin" "$argo" "$users" || { [[ $1 == reality ]] && ! configuration_export_all; };then
   [[ $users != true ]] || users_stop || :
   [[ $first_admin != true ]] || systemctl disable --now sing-box.service || :
   configuration_rollback "$stage" || :
@@ -5378,19 +5441,29 @@ PY_INITIAL_ADMIN
   rm -rf "$stage";err "$(L '配置修改失败，已尝试恢复原配置' 'Configuration edit failed; original config restoration attempted')";return 1
  fi
  rm -rf "$stage"
- if command -v ufw >/dev/null && LC_ALL=C ufw status | grep -q '^Status: active';then
+ if [[ $1 != reality ]] && command -v ufw >/dev/null && LC_ALL=C ufw status | grep -q '^Status: active';then
   firewall_allow_protocols || return 1
  fi
- exports >/dev/null || return 1
- if [[ -f $BASE/users.json ]];then users_engine export_all | while IFS= read -r id;do users_export "$id" >/dev/null || return 1;done;fi
+ if [[ $1 != reality ]];then configuration_export_all || return 1;fi
  ok "$(L "配置已更新；备份：$snap" "Configuration updated; backup: $snap")"
  if [[ $hop_active == true ]];then warn "$(L '跳跃已关闭，请按新监听端口重新开启；旧 UFW 规则保留。' 'Hopping disabled; re-enable for the new listener. Old UFW rules remain.')";fi
 }
+configuration_export_all(){
+ exports >/dev/null || return 1
+ if [[ -f $BASE/users.json ]];then users_engine export_all | while IFS= read -r id;do users_export "$id" >/dev/null || return 1;done || return 1;fi
+}
 configuration_commit(){
- python3 - "$1" <<'PY_CONFIG_COMMIT'
+ python3 - "$1" "${2:-}" <<'PY_CONFIG_COMMIT'
 import json,os,pathlib,shutil,sys,tempfile
 stage=pathlib.Path(sys.argv[1]);plan=json.loads((stage/'plan.json').read_text());rollback=[]
-for n,(_,value) in enumerate(plan):
+targets=[value for _,value in plan]
+if sys.argv[2]=='reality':
+ # Include exports in the same rollback journal before any live files change.
+ names=('nodes.txt','subscription-base64.txt','v2rayn-nodes.txt','v2rayn-subscription.txt','shadowrocket-nodes.txt','shadowrocket-subscription.txt','shadowrocket-native-nodes.txt','shadowrocket-native-subscription.txt','outbounds.json','sing-box-client.json','clash-verge.yaml','mihomo-proxies.yaml','subscription-notes.txt','hy2-client-ca.pem','hy2-client-ca.cer','hy2-client-ca.mobileconfig')
+ for _,value in plan:
+  p=pathlib.Path(value)
+  if p.name=='state.json':targets.extend(str(p.parent/name) for name in names)
+for n,value in enumerate(dict.fromkeys(targets)):
  p=pathlib.Path(value)
  if p.is_symlink() or p.parent.is_symlink():raise ValueError('Target symlink')
  old=stage/('old-'+str(n));exists=p.exists()
@@ -5438,8 +5511,7 @@ node_settings(){
    confirm "$(L '修改管理员端口，保留用户端口及凭据？' 'Change admin ports, retaining user ports and credentials?')" && configuration_apply ports "${vp:-443}" "${hp:-443}";;
   2) prompt_read "$(L '公网 IP 或 DDNS 域名：' 'Public IP or DDNS domain: ')" value || return 0
    confirm "$(L '更新所有节点的服务器地址？' 'Update server address for all nodes?')" && configuration_apply address "$value";;
-  3) prompt_read 'Reality SNI: ' value || return 0
-   confirm "$(L '更新 Reality 握手域名？' 'Update Reality handshake domain?')" && configuration_apply sni "$value";;
+  3) reality_replace;;
   4|5)
    prompt_options '1 Reality + Vision  2 Hysteria2' '1 Reality + Vision  2 Hysteria2';prompt_read '> ' protocol || return 0
    case $protocol in 1) protocol=vless;;2) protocol=hysteria2;;*) return 1;;esac

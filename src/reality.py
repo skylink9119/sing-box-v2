@@ -223,6 +223,8 @@ def main(argv=None):
     parser.add_argument('--target')
     parser.add_argument('--sni', default='')
     parser.add_argument('--config')
+    parser.add_argument('--list', action='store_true', help='List configured target/SNI pairs without probing')
+    parser.add_argument('--normalize', action='store_true', help='Print validated host, port and SNI without probing')
     parser.add_argument('--project', choices=('sing-box', 'xray'), required=True)
     parser.add_argument('--language', choices=('zh', 'en', 'zh_CN', 'en_US'), default='zh')
     args = parser.parse_args(argv)
@@ -240,8 +242,19 @@ def main(argv=None):
               '目标 / 握手域名无效，或无法读取 Reality 配置；请输入域名或 域名:端口。', file=sys.stderr)
         return 2
     if not targets:
+        if args.list:
+            return 0
         print('No configured Reality targets; choose custom target check.' if english else
               '未找到已配置的 Reality 握手目标，可选择“检测自定义网站”。')
+        return 0
+    if args.normalize:
+        if args.target is None:
+            return 2
+        print('\t'.join((host, str(number), sni)))
+        return 0
+    if args.list:
+        for target, sni in targets:
+            print(target + '\t' + sni)
         return 0
     failed = False
     for target, sni in targets:

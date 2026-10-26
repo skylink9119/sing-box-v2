@@ -297,3 +297,62 @@ download_binary(){ cp '''+shlex.quote(manager.SB)+''' "$2";chmod 755 "$2"; }
   exe.write_text('#!/bin/sh\ncase "$*" in *-checkhost*|*-checkip*) echo "Hostname does NOT match certificate";;esac\nexit 0\n');exe.chmod(0o700)
   code='export OPENSSL_BIN='+shlex.quote(str(exe))+';'+self.inactive()+'configuration_apply tls wrong.example '+shlex.quote(str(self.cert))+' '+shlex.quote(str(self.key))
   self.assertNotEqual(self.shell(code,ok=False).returncode,0);self.assertEqual(before,(self.config/'config.json').read_bytes())
+
+class RealityReplacementTest(unittest.TestCase):
+ setUp=ReliabilityTest.setUp
+ script=ReliabilityTest.script
+ shell=ReliabilityTest.shell
+ configure=ReliabilityTest.configure
+ user_setup=ReliabilityTest.user_setup
+ add_user=ReliabilityTest.add_user
+ user_db=ReliabilityTest.user_db
+ save_user_db=ReliabilityTest.save_user_db
+ inactive=ReliabilityTest.inactive
+ def probe_stub(self,status=0):
+  return '''eval "$(declare -f reality_engine | sed '1s/reality_engine/original_reality_engine/')"
+reality_engine(){
+ if [[ " $* " != *" --target "* || " $* " == *" --normalize "* ]];then original_reality_engine "$@";else return '''+str(status)+''';fi
+};'''
+ def snapshot(self):
+  return {p:p.read_bytes() for parent in (self.base,self.config) for p in parent.rglob('*') if p.is_file() and not p.name.endswith('.lock')}
+ @unittest.skipUnless(manager.SB,'real engine required')
+ def test_replacement_syncs_user_exports_and_preserves_credentials_usage_and_hopping(self):
+  self.user_setup(2);uid=self.add_user();self.bin=pathlib.Path(manager.SB)
+  ledger=(self.base/'users.json').read_bytes();old=json.loads((self.config/'config.json').read_text());user=json.loads((self.base/'users'/uid/'server.json').read_text())
+  meta=json.loads((self.base/'state.json').read_text());meta['hop']=True;(self.base/'state.json').write_text(json.dumps(meta))
+  code=self.inactive()+self.probe_stub()+'''hop_guard(){ :; };hop_disable(){ echo BAD_HOP;return 1; };reality_menu 3'''
+  result=self.shell(code,input='7\nnode.example\nendpoint.example:8443\ny\n')
+  self.assertNotIn('BAD_HOP',result.stdout)
+  for path,expected in ((self.config/'config.json',old),(self.base/'users'/uid/'server.json',user)):
+   expected['inbounds'][0]['tls']['server_name']='node.example';expected['inbounds'][0]['tls']['reality']['handshake']={'server':'endpoint.example','server_port':8443}
+   self.assertEqual(json.loads(path.read_text()),expected)
+  self.assertEqual((self.base/'users.json').read_bytes(),ledger)
+  self.assertTrue(json.loads((self.base/'state.json').read_text())['hop'])
+  for parent in (self.base,self.base/'users'/uid):
+   self.assertIn('sni=node.example',(parent/'nodes.txt').read_text())
+   client=json.loads((parent/'sing-box-client.json').read_text());self.assertEqual(client['outbounds'][0]['tls']['server_name'],'node.example')
+ def test_failed_probe_and_cancel_leave_all_files_and_backups_unchanged(self):
+  self.configure();self.shell('exports >/dev/null');before=self.snapshot()
+  for status,answer in ((1,'y'),(0,'n')):
+   result=self.shell(self.probe_stub(status)+'reality_menu 3',input='2\n\n'+answer+'\n',ok=False)
+   if status:self.assertNotEqual(result.returncode,0)
+   self.assertEqual(self.snapshot(),before)
+ def test_no_reality_or_cancel_at_selection_does_not_add_a_node(self):
+  self.configure(mode='2');before=self.snapshot();result=self.shell('reality_menu 3')
+  self.assertIn('No Reality node',result.stdout);self.assertEqual(self.snapshot(),before)
+  self.configure();before=self.snapshot();self.shell('reality_menu 3',input='0\n');self.assertEqual(self.snapshot(),before)
+ def test_replacement_restart_failure_restores_configs_and_exports(self):
+  self.user_setup();uid=self.add_user();self.shell('exports >/dev/null;users_export '+uid+' >/dev/null')
+  files=[self.config/'config.json',self.base/'state.json',self.base/'nodes.txt',self.base/'users'/uid/'server.json',self.base/'users'/uid/'state.json',self.base/'users'/uid/'nodes.txt']
+  old={p:p.read_bytes() for p in files}
+  code=self.probe_stub()+'''systemctl(){ if [[ $1 == is-active ]];then return 0;fi;if [[ $1 == restart && $2 == sing-box.service ]] && grep -q node.example "$CONF";then return 1;fi; };service_healthy(){ :; };reality_menu 3'''
+  result=self.shell(code,input='7\nnode.example\n\ny\n',ok=False);self.assertNotEqual(result.returncode,0)
+  self.assertEqual({p:p.read_bytes() for p in files},old)
+ def test_partial_export_failure_rolls_back_configs_and_all_exports(self):
+  self.user_setup();uid=self.add_user();self.shell('exports >/dev/null;users_export '+uid+' >/dev/null')
+  before=self.snapshot()
+  code=self.inactive()+self.probe_stub()+'''exports(){ printf broken > "$BASE/nodes.txt";return 1; };reality_menu 3'''
+  result=self.shell(code,input='7\nnode.example\n\ny\n',ok=False);self.assertNotEqual(result.returncode,0)
+  after=self.snapshot()
+  # A recovery backup is retained; every original live file must be restored.
+  for path,data in before.items():self.assertEqual(after[path],data,str(path))

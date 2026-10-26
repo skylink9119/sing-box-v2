@@ -247,3 +247,16 @@ class RealityTests(unittest.TestCase):
             self.assertIn(expected, output.getvalue())
             self.assertIn('DNS', output.getvalue())
             self.assertNotIn('\x1b', output.getvalue())
+
+    def test_machine_readable_selection_and_normalization_never_probe(self):
+        with mock.patch.object(reality, 'configured_targets', return_value=[('one.example:443','one.example')]), mock.patch.object(reality,'probe') as probe:
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(reality.main(['--project','sing-box','--config','/unused','--list']),0)
+            self.assertEqual(output.getvalue(),'one.example:443\tone.example\n')
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(reality.main(['--project','sing-box','--target','[::1]:8443','--sni','LOCALHOST','--normalize']),0)
+            self.assertEqual(output.getvalue(),'::1\t8443\tlocalhost\n')
+            probe.assert_not_called()
+        with mock.patch.object(reality,'configured_targets',return_value=[]), contextlib.redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(reality.main(['--project','xray','--config','/unused','--list']),0)
+        self.assertEqual(output.getvalue(),'')

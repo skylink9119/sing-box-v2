@@ -20,7 +20,7 @@
 
 ---
 
-# SKYBYTE Manager V2.8.8 — sing-box Installer and Ubuntu/Debian VPS Management
+# SKYBYTE Manager V2.8.9 — sing-box Installer and Ubuntu/Debian VPS Management
 
 **SKYBYTE Manager** is a Bash-based Ubuntu/Debian VPS manager with Simplified Chinese and English interfaces. It installs sing-box with **VLESS + Reality + Vision, Hysteria2 (HY2), or both protocols**, manages Cloudflare Argo tunnels and WARP routing, and provides per-user traffic quotas and expiry. Client exports support Shadowrocket, v2rayN, Clash Verge/Mihomo/OpenClash and sing-box JSON.
 
@@ -30,9 +30,9 @@ If you find this script helpful, please subscribe to my YouTube channel and supp
 
 The main menu includes the SKYBYTE ASCII logo. Menus are bold green, credential links bold red, warnings bold yellow and errors bold red on ANSI terminals. Set `NO_COLOR=1` to disable colors. Every action uses `[y/N]`: type `y` or `Y` to confirm; Enter or `n/N` cancels.
 
-V2.8.8 adds **Reality handshake target checks (d → 12)** for configured or custom targets, reporting DNS, TCP, TLS 1.3, certificate and HTTP/2 results.
+V2.8.9 adds **Reality target replacement (d → 12 → 3)**: choose a preset or custom target, pass checks, then confirm with `y`; existing UUIDs, keys and ports are retained.
 
-V2.8.8 uses main-menu letters `a–g` (case-insensitive), numeric submenus, `0` to return one level and `q` to exit. Completed, cancelled and failed operations keep the current menu open. For example, `d → 2` lets you install, enable and inspect UFW consecutively. Idle menus release the operation lock. Previous main-menu numbers remain compatibility aliases.
+V2.8.9 uses main-menu letters `a–g` (case-insensitive), numeric submenus, `0` to return one level and `q` to exit. Completed, cancelled and failed operations keep the current menu open. For example, `d → 2` lets you install, enable and inspect UFW consecutively. Idle menus release the operation lock. Previous main-menu numbers remain compatibility aliases.
 
 V2.8.6 fixes literal `\n` text in WARP menus. One option per line, grouped as proxy setup (1–3), routing (4–6) and connection tests (7–8), with readable localized status. Confirm with `y` or `Y` at `[y/N]`; Enter cancels.
 
@@ -105,6 +105,8 @@ Open **d → 12**: **1** checks Reality targets from the current configuration; 
 Results show DNS, the connected TCP address, TLS 1.3, certificate trust / validity / hostname, HTTP/2 ALPN and a clear PASSED / FAILED summary. Each target has a 12-second total network budget. Failures explain the cause without disabling certificate verification. The menu stays open; `0` returns one level.
 
 Checks cover **this VPS → target** only. They do not edit nodes, credentials or routes, restart services, or verify client, public node-port or CDN connectivity. Healthy targets do not need scheduled rotation; investigate or change them when a check fails.
+
+Choose **3** to replace the target (also **a → 5 → 3**): select a preset or custom SNI and a target (default `selected-host:443`). The new target must pass checks before `y` applies it; failures and cancellation retain the original files. Administrator and quota-managed Reality nodes are updated together, preserving UUIDs, keys, ports, usage and HY2 hopping. Running services briefly restart. Configuration, restart or export failures restore the original files. Client exports are refreshed; re-import nodes or update client SNI. No Reality node is installed automatically.
 
 ## Hysteria2 / HY2 and verified TLS
 
@@ -321,7 +323,7 @@ Restore retains current account policy/usage and current subscription tokens. HT
 
 ```bash
 python3 scripts/build.py --check
-python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.8
+python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.9
 ```
 
 Packaging includes only bootstrap.sh, install.sh, the full bundle, public rule catalog and SHA256SUMS, never runtime state or credentials.

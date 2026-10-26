@@ -26,8 +26,8 @@ PY_INITIAL_ADMIN
  if systemctl is-active --quiet sing-box.service;then admin=true;fi
  if [[ -f $BASE/users.json ]] && systemctl is-active --quiet skybyte-users.service;then users=true;users_stop || { rm -rf "$stage";return 1; };fi
  if [[ -f $BASE/argo-state.json ]] && systemctl is-active --quiet skybyte-argo-node.service;then argo=true;fi
- if [[ $(state hop) == True ]];then hop_active=true;hop_disable || { warp_resume "$admin" "$argo" "$users" || :;rm -rf "$stage";return 1; };fi
- if ! configuration_commit "$stage" || ! configuration_resume "$first_admin" "$admin" "$argo" "$users";then
+ if [[ $1 != reality && $(state hop) == True ]];then hop_active=true;hop_disable || { warp_resume "$admin" "$argo" "$users" || :;rm -rf "$stage";return 1; };fi
+ if ! configuration_commit "$stage" "$1" || ! configuration_resume "$first_admin" "$admin" "$argo" "$users" || { [[ $1 == reality ]] && ! configuration_export_all; };then
   [[ $users != true ]] || users_stop || :
   [[ $first_admin != true ]] || systemctl disable --now sing-box.service || :
   configuration_rollback "$stage" || :
@@ -37,19 +37,29 @@ PY_INITIAL_ADMIN
   rm -rf "$stage";err "$(L '配置修改失败，已尝试恢复原配置' 'Configuration edit failed; original config restoration attempted')";return 1
  fi
  rm -rf "$stage"
- if command -v ufw >/dev/null && LC_ALL=C ufw status | grep -q '^Status: active';then
+ if [[ $1 != reality ]] && command -v ufw >/dev/null && LC_ALL=C ufw status | grep -q '^Status: active';then
   firewall_allow_protocols || return 1
  fi
- exports >/dev/null || return 1
- if [[ -f $BASE/users.json ]];then users_engine export_all | while IFS= read -r id;do users_export "$id" >/dev/null || return 1;done;fi
+ if [[ $1 != reality ]];then configuration_export_all || return 1;fi
  ok "$(L "配置已更新；备份：$snap" "Configuration updated; backup: $snap")"
  if [[ $hop_active == true ]];then warn "$(L '跳跃已关闭，请按新监听端口重新开启；旧 UFW 规则保留。' 'Hopping disabled; re-enable for the new listener. Old UFW rules remain.')";fi
 }
+configuration_export_all(){
+ exports >/dev/null || return 1
+ if [[ -f $BASE/users.json ]];then users_engine export_all | while IFS= read -r id;do users_export "$id" >/dev/null || return 1;done || return 1;fi
+}
 configuration_commit(){
- python3 - "$1" <<'PY_CONFIG_COMMIT'
+ python3 - "$1" "${2:-}" <<'PY_CONFIG_COMMIT'
 import json,os,pathlib,shutil,sys,tempfile
 stage=pathlib.Path(sys.argv[1]);plan=json.loads((stage/'plan.json').read_text());rollback=[]
-for n,(_,value) in enumerate(plan):
+targets=[value for _,value in plan]
+if sys.argv[2]=='reality':
+ # Include exports in the same rollback journal before any live files change.
+ names=('nodes.txt','subscription-base64.txt','v2rayn-nodes.txt','v2rayn-subscription.txt','shadowrocket-nodes.txt','shadowrocket-subscription.txt','shadowrocket-native-nodes.txt','shadowrocket-native-subscription.txt','outbounds.json','sing-box-client.json','clash-verge.yaml','mihomo-proxies.yaml','subscription-notes.txt','hy2-client-ca.pem','hy2-client-ca.cer','hy2-client-ca.mobileconfig')
+ for _,value in plan:
+  p=pathlib.Path(value)
+  if p.name=='state.json':targets.extend(str(p.parent/name) for name in names)
+for n,value in enumerate(dict.fromkeys(targets)):
  p=pathlib.Path(value)
  if p.is_symlink() or p.parent.is_symlink():raise ValueError('Target symlink')
  old=stage/('old-'+str(n));exists=p.exists()
@@ -97,8 +107,7 @@ node_settings(){
    confirm "$(L '修改管理员端口，保留用户端口及凭据？' 'Change admin ports, retaining user ports and credentials?')" && configuration_apply ports "${vp:-443}" "${hp:-443}";;
   2) prompt_read "$(L '公网 IP 或 DDNS 域名：' 'Public IP or DDNS domain: ')" value || return 0
    confirm "$(L '更新所有节点的服务器地址？' 'Update server address for all nodes?')" && configuration_apply address "$value";;
-  3) prompt_read 'Reality SNI: ' value || return 0
-   confirm "$(L '更新 Reality 握手域名？' 'Update Reality handshake domain?')" && configuration_apply sni "$value";;
+  3) reality_replace;;
   4|5)
    prompt_options '1 Reality + Vision  2 Hysteria2' '1 Reality + Vision  2 Hysteria2';prompt_read '> ' protocol || return 0
    case $protocol in 1) protocol=vless;;2) protocol=hysteria2;;*) return 1;;esac
