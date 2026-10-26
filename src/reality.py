@@ -130,7 +130,7 @@ def probe(target, sni='', ca_file=None, timeout=12):
         checks['certificate'] = {'status': 'fail', 'detail': reason}
     except socket.gaierror:
         checks[stage] = {'status': 'fail', 'detail': 'dns_failed'}
-    except TimeoutError:
+    except (TimeoutError, socket.timeout):
         checks[stage] = {'status': 'fail', 'detail': 'timeout'}
     except ssl.SSLError:
         checks[stage] = {'status': 'fail', 'detail': 'tls_failed'}

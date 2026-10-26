@@ -141,6 +141,16 @@ class RealityTests(unittest.TestCase):
         self.assertEqual(result['checks']['tcp']['detail'], 'connect_failed')
         self.assertEqual(result['checks']['tls']['status'], 'skip')
 
+    def test_legacy_python_socket_timeout_has_a_specific_failure_reason(self):
+        # Before Python 3.10 socket.timeout was a distinct OSError subclass.
+        class LegacyTimeout(OSError):
+            pass
+        with mock.patch.object(reality.socket, 'timeout', LegacyTimeout), \
+             mock.patch.object(reality, 'resolve', side_effect=LegacyTimeout):
+            result = reality.probe('example.com')
+        self.assertFalse(result['ok'])
+        self.assertEqual(result['checks']['dns']['detail'], 'timeout')
+
     @unittest.skipUnless(ssl.HAS_TLSv1_3, 'TLS 1.3 required')
     def test_stalled_tls_has_a_total_time_limit(self):
         with self.peer(stall=True) as target:
