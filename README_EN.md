@@ -20,7 +20,7 @@
 
 ---
 
-# SKYBYTE Manager V2.8.9 — sing-box Installer and Ubuntu/Debian VPS Management
+# SKYBYTE Manager V2.8.10 — sing-box Installer and Ubuntu/Debian VPS Management
 
 **SKYBYTE Manager** is a Bash-based Ubuntu/Debian VPS manager with Simplified Chinese and English interfaces. It installs sing-box with **VLESS + Reality + Vision, Hysteria2 (HY2), or both protocols**, manages Cloudflare Argo tunnels and WARP routing, and provides per-user traffic quotas and expiry. Client exports support Shadowrocket, v2rayN, Clash Verge/Mihomo/OpenClash and sing-box JSON.
 
@@ -30,9 +30,11 @@ If you find this script helpful, please subscribe to my YouTube channel and supp
 
 The main menu includes the SKYBYTE ASCII logo. Menus are bold green, credential links bold red, warnings bold yellow and errors bold red on ANSI terminals. Set `NO_COLOR=1` to disable colors. Every action uses `[y/N]`: type `y` or `Y` to confirm; Enter or `n/N` cancels.
 
+V2.8.10 adds **node parameters (b → 7)**: inspect UUID/public key/short ID/SNI/target with privacy and firewall reminders.
+
 V2.8.9 adds **Reality target replacement (d → 12 → 3)**: choose a preset or custom target, pass checks, then confirm with `y`; existing UUIDs, keys and ports are retained.
 
-V2.8.9 uses main-menu letters `a–g` (case-insensitive), numeric submenus, `0` to return one level and `q` to exit. Completed, cancelled and failed operations keep the current menu open. For example, `d → 2` lets you install, enable and inspect UFW consecutively. Idle menus release the operation lock. Previous main-menu numbers remain compatibility aliases.
+V2.8.10 uses main-menu letters `a–g` (case-insensitive), numeric submenus, `0` to return one level and `q` to exit. Completed, cancelled and failed operations keep the current menu open. For example, `d → 2` lets you install, enable and inspect UFW consecutively. Idle menus release the operation lock. Previous main-menu numbers remain compatibility aliases.
 
 V2.8.6 fixes literal `\n` text in WARP menus. One option per line, grouped as proxy setup (1–3), routing (4–6) and connection tests (7–8), with readable localized status. Confirm with `y` or `Y` at `[y/N]`; Enter cancels.
 
@@ -84,7 +86,7 @@ Fresh installation uses the official sing-box 1.14.3 binary tested for this mana
 | Menu | Category | Functions |
 | --- | --- | --- |
 | a | Install nodes | Reality / HY2 / dual; Quick / Named; node edits / protocol changes; restricted-network setup |
-| b | Nodes and subscriptions | Information / exports / custom names / QR codes / accounts / personal HTTPS subscriptions |
+| b | Nodes and subscriptions | Information / exports / custom names / QR codes / accounts / personal HTTPS subscriptions / node parameters (b → 7) |
 | c | Services and logs | Controls / logs / Argo status |
 | d | Server and network | Initialization / UFW / firewall / BBR / hopping / traffic / resources / media / WARP / sing-box relay / HAProxy TCP passthrough / Reality target checks |
 | e | Updates and backups | Core versions / backup / restore / manager updates / certificates / ACME / encrypted backups |
@@ -97,6 +99,12 @@ Initialization updates apt indexes, upgrades packages, installs administration t
 Before enabling UFW, the manager detects SSH ports from sshd listeners, `sshd -T` and `SSH_CONNECTION`, then asks you to verify the port. Detected ports and the verified port are allowed, together with deployed protocol ports and active HY2 hopping ranges. Menu d → 3 audits the configured HY2 UDP port and hopping range rules. Complex UFW rules require manual inspection; provider security groups cannot be inspected by this script.
 
 vnStat reports **total VPS interface traffic**, never separate Reality/HY2 traffic. History starts when vnStat begins collecting data.
+
+## View node parameters
+
+Main menu **b → 7** reads the current main configuration and displays VLESS UUIDs, public key, short IDs, handshake SNI/target, address and port. Argo shows its own UUID/domain with Reality fields marked not applicable. HY2-only deployments explain that these Reality parameters do not apply. No exports, network requests or service changes are performed; server private keys and HY2 passwords are excluded.
+
+**Node configuration, credentials, subscriptions and backups are stored on this VPS. Keep parameters, full links, QR codes and screenshots private. Install and enable a firewall through d → 2, allowing SSH and actual node ports first, and inspect provider security groups.**
 
 ## Reality handshake target checks
 
@@ -323,7 +331,7 @@ Restore retains current account policy/usage and current subscription tokens. HT
 
 ```bash
 python3 scripts/build.py --check
-python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.9
+python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.10
 ```
 
 Packaging includes only bootstrap.sh, install.sh, the full bundle, public rule catalog and SHA256SUMS, never runtime state or credentials.

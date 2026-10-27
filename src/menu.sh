@@ -30,6 +30,7 @@ sub_menu(){
    say ' 4. 小火箭节点二维码' ' 4. Shadowrocket node QR codes'
    say ' 5. 用户数量、流量与有效期管理' ' 5. Account limits, traffic quotas and expiry'
    say ' 6. HTTPS 个人在线订阅' ' 6. Personal HTTPS subscriptions'
+   say ' 7. 查看节点参数（UUID / 公钥 / Short ID / SNI，注意保密）' ' 7. View node parameters (UUID / public key / Short ID / SNI; private)'
    ;;
   3)
    say ' 1. sing-box 状态与启停' ' 1. sing-box status and controls'
@@ -82,6 +83,7 @@ sub_menu(){
   2:4) MAIN_ACTION=qr;;
   2:5) MAIN_ACTION=users;;
   2:6) MAIN_ACTION=online;;
+  2:7) MAIN_ACTION=node_parameters;;
   3:1) MAIN_ACTION=service;;
   3:2) MAIN_ACTION=logs;;
   3:3) MAIN_ACTION=argo_status;;
@@ -115,7 +117,7 @@ dispatch_action(){
  local action=$1;shift
  case $action in
  install_reality) install_protocol 1;; install_hy2) install_protocol 2;; install_dual) install_protocol 3;;
- argo) argo_manager "$@";; nodes) exports;; subscription) subscription;; rename) rename_node;; qr) shadowrocket_qr;; users) users_manager;;
+ argo) argo_manager "$@";; nodes) exports;; node_parameters) node_parameters;; subscription) subscription;; rename) rename_node;; qr) shadowrocket_qr;; users) users_manager;;
  service) service_manager "$@";; logs) journalctl -u sing-box -n 80 --no-pager;; argo_status) argo_status;;
  initialize) initialize_server;; firewall) firewall "$@";; audit) firewall_audit;; bbr) bbr;; hop) hop "$@";; traffic) traffic "$@";;
  media) media_check;; warp) warp_menu "$@";; relay) relay_menu "$@";; haproxy) haproxy_menu "$@";;

@@ -8,7 +8,7 @@
 set -Eeuo pipefail
 umask 077
 SCRIPT_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
-MANAGER_VERSION=2.8.9
+MANAGER_VERSION=2.8.10
 CORE_RECOMMENDED=1.14.3
 BASE=/etc/singbox-v2
 CONF=/etc/sing-box/config.json
@@ -576,6 +576,92 @@ PY_INSTALL_SAN
  committed=true
  ok "$(L '部署完成；请检查云防火墙' 'Installed; check provider firewall')"
 )
+node_parameters(){
+ if [[ -e $META || -e $CONF || -L $META || -L $CONF ]];then check_owned || return 1;fi
+ python3 - "$META" "$CONF" "$BASE" "${LANGUAGE_CHOICE:-zh_CN}" <<'PY_NODE_PARAMETERS'
+"""Read client parameters locally; never export server private keys or passwords."""
+import json
+from pathlib import Path
+import sys
+
+
+def load(path):
+    path = Path(path)
+    if any(p.is_symlink() for p in (path, *path.parents)):
+        raise ValueError('Unsafe configuration path')
+    return json.loads(path.read_text())
+
+
+def render(meta, config, base, english=False):
+    def tr(zh, en):
+        return en if english else zh
+
+    lines = [tr('========== 保密提醒 ==========', '========== KEEP PRIVATE =========='),
+             tr('本脚本的节点配置、凭据、订阅和备份等重要数据保存在当前 VPS，请妥善保管。',
+                'Node configuration, credentials, subscriptions and backups are stored on this VPS. Protect them.'),
+             tr('请在可信终端查看；不要公开节点参数、完整链接、二维码或截图。',
+                'Use a trusted terminal. Do not publish node parameters, full links, QR codes or screenshots.'),
+             tr('请务必安装并启用防火墙：主菜单 d → 2；先放行 SSH 和实际节点端口。',
+                'Install and enable a firewall: main menu d → 2. Allow SSH and actual node ports first.')]
+    if not Path(meta).exists() and not Path(config).exists():
+        return '\n'.join(lines + [tr('尚未安装节点。', 'No nodes installed.')])
+    state, main = load(meta), load(config)
+    configurations = [(main, state, 'Reality / VLESS')]
+    argo = Path(base) / 'argo-server.json'
+    if argo.exists() or argo.is_symlink():
+        argo_state = Path(base) / 'argo-state.json'
+        configurations.append((load(argo), load(argo_state) if argo_state.exists() else {}, 'Argo / VLESS + WS'))
+    found = False
+    na = tr('不适用（此节点不使用 Reality）', 'Not applicable (this node does not use Reality)')
+    missing = tr('未保存', 'Not saved')
+
+    def field(label, value):
+        # Escape terminal control characters from manually edited metadata.
+        value = json.dumps(str(value), ensure_ascii=False)[1:-1]
+        label = json.dumps(str(label), ensure_ascii=False)[1:-1]
+        lines.append(label + ': ' + value)
+
+    for cfg, metadata, kind in configurations:
+        for inbound in cfg.get('inbounds', []):
+            if inbound.get('type') != 'vless':
+                continue
+            found = True
+            tls = inbound.get('tls', {})
+            reality = tls.get('reality', {})
+            enabled = reality.get('enabled', False)
+            lines += ['-' * 60, kind]
+            field(tr('节点名称', 'Node name'), metadata.get('node_name') or 'SKYBYTE')
+            field(tr('连接地址', 'Server address'), metadata.get('ip') or metadata.get('domain') or missing)
+            field(tr('端口', 'Port'), metadata.get('export_ports', {}).get('vless') or
+                  (443 if kind.startswith('Argo') else inbound.get('listen_port', missing)))
+            for user in inbound.get('users', []):
+                field('UUID' + (' (' + str(user.get('name', '')) + ')' if len(inbound['users']) > 1 else ''), user.get('uuid', missing))
+            field(tr('公钥', 'Public key'), (metadata.get('public_key') or missing) if enabled else na)
+            ids = reality.get('short_id', [])
+            if isinstance(ids, str):
+                ids = [ids]
+            field('Short ID', ', '.join(x or tr('（空）', '(empty)') for x in ids) if enabled else na)
+            field(tr('握手网站（SNI）', 'Handshake SNI'), tls.get('server_name') or metadata.get('domain') or missing)
+            handshake = reality.get('handshake', {})
+            host = handshake.get('server', '')
+            if ':' in host:
+                host = '[' + host + ']'
+            field(tr('Reality 握手目标', 'Reality target'),
+                  host + ':' + str(handshake.get('server_port', 443)) if enabled else na)
+    if not found:
+        lines.append(tr('未安装 VLESS/Reality 节点；Hysteria2 不使用 UUID、Reality 公钥或 Short ID。',
+                        'No VLESS/Reality node installed. Hysteria2 does not use UUIDs, Reality public keys or short IDs.'))
+    return '\n'.join(lines)
+
+
+if __name__ == '__main__':
+    try:
+        print(render(*sys.argv[1:4], english=sys.argv[4] == 'en_US'))
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        print('Cannot read node parameters; inspect local managed configuration. / 无法读取节点参数，请检查本机托管配置。', file=sys.stderr)
+        sys.exit(1)
+PY_NODE_PARAMETERS
+}
 exports() (
  check_owned || return
  if command -v flock >/dev/null; then exec 8>"$BASE/export.lock"; flock 8; fi
@@ -6042,6 +6128,7 @@ SKYBYTE Manager — quick guide
 11. Residential landing / VPS relay: main d → 10, then 6 for step-by-step help. Import one Reality/Vision or HY2 landing URI/JSON. Clients connect to this VPS and destinations see the landing exit. Self-signed HY2 requires trusted public certificate material. Relay and WARP are alternative routing policies; failed relay traffic has no automatic direct fallback. Measure both links before judging speed.
 12. HAProxy TCP passthrough: main d → 11, then 12 for help. A may run only the TCP forwarder; B runs the authenticated Reality/Trojan node. On the phone, keep B's credentials/SNI/TLS trust and change only the address/port to A. HY2/raw UDP are unsupported. User quotas belong on B. This menu has separate backup/restore/uninstall controls; full sing-box backups include a haproxy subdirectory for separate restoration.
 13. Reality target checks: main d → 12. Check configured targets or a custom hostname/port/SNI; verify DNS, TCP, TLS 1.3, certificate and HTTP/2. Read-only, with bounded network timeouts; this does not test client-to-VPS connectivity.
+14. Node parameters: main b → 7 shows UUID/public key/short ID/SNI. Important data is stored on this VPS: keep it private and install/enable a firewall through d → 2 after allowing SSH and node ports.
 CLI: --help, --self-check. Maintenance flags are used by owned systemd services.
 HELP_EN
  else cat <<'HELP_ZH'
@@ -6059,6 +6146,7 @@ SKYBYTE Manager — 快速使用说明
 11. 住宅落地 / VPS 中转：主菜单d → 10，再选6查看具体步骤，导入一个 Reality/Vision 或 HY2 落地链接/JSON。客户端连接本 VPS，网站看到落地出口。自签名 HY2 须提供可信公开证书；中转与 WARP 分流择一启用，中转失败不自动直连。速度需按两段链路实测。
 12. HAProxy TCP 透传：主菜单d → 11，再选12查看说明。A 可只运行 TCP 转发，B 运行带认证的 Reality/Trojan 节点；手机保留 B 的认证、SNI及TLS验证，仅改连接地址和端口为 A。不支持 HY2/原生UDP。配额在 B 管理。本菜单可单独备份、恢复与卸载，完整 sing-box 备份中的 haproxy 子目录需单独恢复。
 13. Reality 握手检测：主菜单 d → 12。检测当前目标或自定义域名/端口/SNI；检查 DNS、TCP、TLS 1.3、证书和 HTTP/2。只读且有网络超时，不代表客户端到 VPS 已连通。
+14. 节点参数：主菜单 b → 7 查看 UUID、公钥、Short ID 和 SNI。重要数据保存在本 VPS，请做好保密；务必通过 d → 2 安装并启用防火墙，先放行 SSH 和实际节点端口。
 命令行：--help、--self-check。维护参数供本工具的 systemd 服务使用。
 HELP_ZH
  fi
@@ -6097,6 +6185,7 @@ sub_menu(){
    say ' 4. 小火箭节点二维码' ' 4. Shadowrocket node QR codes'
    say ' 5. 用户数量、流量与有效期管理' ' 5. Account limits, traffic quotas and expiry'
    say ' 6. HTTPS 个人在线订阅' ' 6. Personal HTTPS subscriptions'
+   say ' 7. 查看节点参数（UUID / 公钥 / Short ID / SNI，注意保密）' ' 7. View node parameters (UUID / public key / Short ID / SNI; private)'
    ;;
   3)
    say ' 1. sing-box 状态与启停' ' 1. sing-box status and controls'
@@ -6149,6 +6238,7 @@ sub_menu(){
   2:4) MAIN_ACTION=qr;;
   2:5) MAIN_ACTION=users;;
   2:6) MAIN_ACTION=online;;
+  2:7) MAIN_ACTION=node_parameters;;
   3:1) MAIN_ACTION=service;;
   3:2) MAIN_ACTION=logs;;
   3:3) MAIN_ACTION=argo_status;;
@@ -6182,7 +6272,7 @@ dispatch_action(){
  local action=$1;shift
  case $action in
  install_reality) install_protocol 1;; install_hy2) install_protocol 2;; install_dual) install_protocol 3;;
- argo) argo_manager "$@";; nodes) exports;; subscription) subscription;; rename) rename_node;; qr) shadowrocket_qr;; users) users_manager;;
+ argo) argo_manager "$@";; nodes) exports;; node_parameters) node_parameters;; subscription) subscription;; rename) rename_node;; qr) shadowrocket_qr;; users) users_manager;;
  service) service_manager "$@";; logs) journalctl -u sing-box -n 80 --no-pager;; argo_status) argo_status;;
  initialize) initialize_server;; firewall) firewall "$@";; audit) firewall_audit;; bbr) bbr;; hop) hop "$@";; traffic) traffic "$@";;
  media) media_check;; warp) warp_menu "$@";; relay) relay_menu "$@";; haproxy) haproxy_menu "$@";;

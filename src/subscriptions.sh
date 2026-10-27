@@ -1,3 +1,9 @@
+node_parameters(){
+ if [[ -e $META || -e $CONF || -L $META || -L $CONF ]];then check_owned || return 1;fi
+ python3 - "$META" "$CONF" "$BASE" "${LANGUAGE_CHOICE:-zh_CN}" <<'PY_NODE_PARAMETERS'
+# @include node_parameters.py
+PY_NODE_PARAMETERS
+}
 exports() (
  check_owned || return
  if command -v flock >/dev/null; then exec 8>"$BASE/export.lock"; flock 8; fi
