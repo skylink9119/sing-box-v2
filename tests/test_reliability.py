@@ -17,10 +17,11 @@ class ReliabilityTest(unittest.TestCase):
  user_db=manager.ManagerTest.user_db
  save_user_db=manager.ManagerTest.save_user_db
  prepare_uninstall=manager.ManagerTest.prepare_uninstall
- def inactive(self):return 'systemctl(){ return 1; }; '
+ def inactive(self):return 'systemctl(){ return 1; }; reality_install_check(){ :; }; '
  def install_mocks(self,extra=''):
   self.bin.unlink(missing_ok=True)
   return '''need_root(){ :; };systemctl(){ case $1 in list-unit-files) return 1;;*) return 0;;esac; };ss(){ :; };apt-get(){ :; };getent(){ :; };sleep(){ :; }
+install_check_engine(){ :; };reality_engine(){ :; }
 cat(){ if [[ ${1:-} == /proc/sys/kernel/random/uuid ]];then printf '%s' '''+shlex.quote(self.uuid)+''';else command cat "$@";fi; }
 curl(){ printf 8.8.8.8; }
 download_binary(){ cp '''+shlex.quote(manager.SB)+''' "$2";chmod 755 "$2"; }

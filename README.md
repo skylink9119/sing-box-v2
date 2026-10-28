@@ -20,7 +20,7 @@
 
 ---
 
-# SKYBYTE Manager V2.8.10 — sing-box 一键脚本与 Ubuntu/Debian VPS 管理
+# SKYBYTE Manager V2.8.11 — sing-box 一键脚本与 Ubuntu/Debian VPS 管理
 
 **SKYBYTE Manager** 是基于 Bash 的 Ubuntu/Debian VPS 管理工具，提供简体中文和 English 界面，支持 sing-box 的 **VLESS + Reality + Vision、Hysteria2（HY2）及双协议部署**。通过交互菜单管理 Cloudflare Argo 隧道、WARP 出站分流、用户流量配额与有效期，并导出 Shadowrocket（小火箭）、v2rayN、Clash Verge/Mihomo/OpenClash 和 sing-box JSON 客户端配置。
 
@@ -30,11 +30,13 @@ YouTube：[SKYBYTE9119](https://www.youtube.com/@SKYBYTE9119) · [English](READM
 
 主菜单包含 SKYBYTE ASCII logo；菜单绿色加粗、节点链接红色加粗、警告黄色加粗、错误红色加粗。支持 ANSI 的交互终端显示颜色，`NO_COLOR=1` 可关闭。所有操作确认统一为 `[y/N]`：输入 `y` 或 `Y` 确认，回车或输入 `n/N` 取消。
 
+V2.8.11 新增 **节点安装前检测（a → 7）**，新安装及追加 Reality 自动检测；同时提供 sky9119.cc 短安装入口。
+
 V2.8.10 新增 **查看节点参数（b → 7）**：查看 UUID、公钥、Short ID、握手网站（SNI）与目标，并提醒保密和安装防火墙。
 
 V2.8.9 新增 **Reality 握手网站更换（d → 12 → 3）**：提供常用网站及自定义目标，通过检测并输入 `y` 后应用，保留现有 UUID、密钥和端口。
 
-V2.8.10 主菜单使用字母 `a–g`（支持大写），子菜单使用数字；操作完成、取消或失败后留在当前菜单，`0` 返回上一层，主菜单 `q` 退出。例如 `d → 2` 进入 UFW 后，可连续安装、开启和查看状态。等待菜单输入时不占用操作锁。旧主菜单数字仍作为兼容输入。
+V2.8.11 主菜单使用字母 `a–g`（支持大写），子菜单使用数字；操作完成、取消或失败后留在当前菜单，`0` 返回上一层，主菜单 `q` 退出。例如 `d → 2` 进入 UFW 后，可连续安装、开启和查看状态。等待菜单输入时不占用操作锁。旧主菜单数字仍作为兼容输入。
 
 V2.8.6 修复 WARP 菜单把 `\n` 当文字显示的问题；按代理设置（1–3）、分流设置（4–6）、连接检测（7–8）分组，每项独立一行，并显示中文状态。操作确认仍为 `[y/N]`。
 
@@ -63,7 +65,7 @@ V2.8.1 完整源码审计修复：一键入口验证目标归属并原子替换�
 
 <!-- SKYBYTE_INSTALL_COMMAND_START -->
 ```bash
-(if ! command -v curl >/dev/null; then apt-get update && apt-get install -y curl ca-certificates; fi && script=$(curl -q -fsSL --max-time 60 https://raw.githubusercontent.com/skylink9119/sing-box-v2/main/bootstrap.sh) && bash -c "$script")
+(if ! command -v curl >/dev/null; then apt-get update && apt-get install -y curl ca-certificates; fi && s=$(curl -q -fsSL --max-time 60 https://sky9119.cc/sb.sh) && [ -n "$s" ] && bash -c "$s")
 ```
 <!-- SKYBYTE_INSTALL_COMMAND_END -->
 
@@ -85,7 +87,7 @@ V2.8.1 完整源码审计修复：一键入口验证目标归属并原子替换�
 
 | 菜单 | 分类 | 功能 |
 | --- | --- | --- |
-| a | 节点安装 | Reality / HY2 / 双协议；临时 / 固定隧道；参数修改 / 协议增删；受限网络部署 |
+| a | 节点安装 | Reality / HY2 / 双协议；临时 / 固定隧道；参数修改 / 协议增删；受限网络部署 / 安装前检测（a → 7） |
 | b | 节点与订阅 | 节点信息 / 订阅导出 / 自定义名称 / 小火箭二维码 / 用户管理 / HTTPS个人订阅 / 节点参数（b → 7） |
 | c | 服务与日志 | 服务控制 / 日志 / Argo 状态 |
 | d | 服务器与网络 | 初始化 / UFW / 防火墙 / BBR / 跳跃 / 流量 / 资源 / 流媒体 / WARP / sing-box 中转 / HAProxy TCP 透传 / Reality 握手检测 |
@@ -99,6 +101,14 @@ V2.8.1 完整源码审计修复：一键入口验证目标归属并原子替换�
 开启 UFW 前，从 sshd 监听、`sshd -T` 和当前 `SSH_CONNECTION` 识别 SSH 端口，再要求人工核实；已识别端口与确认端口均会放行。同时按实际配置放行协议端口与已启用的 HY2 跳跃范围。菜单 d → 3 检查实际 HY2 UDP 端口和跳跃范围规则；复杂 UFW 规则可能需要人工判断，无法读取云安全组。
 
 vnStat 显示 **VPS 网卡总流量**，不能当作 Reality/HY2 各自流量；历史统计从 vnStat 开始采集时起算。
+
+## 节点安装前检测
+
+**a → 7** 只检测，不安装；新装节点也会自动检查。逐项显示系统/架构/systemd、Python TLS 1.3、APT/DPKG 实际锁状态、缺少或不在 PATH 的依赖、安装存储空间、TCP/UDP 本机端口与防火墙提醒。Reality 还会检测 DNS、TCP、TLS 1.3、证书与 HTTP/2；GitHub HTTPS 检测有总时限，下载仍会验证 API/CDN 和文件摘要。
+
+失败项阻止下载核心与生成新节点。依赖软件安装仍可能修改系统软件包；独立检测不会安装依赖或修改防火墙、节点及服务。已有 HY2 请通过 **a → 5 → 4** 追加 Reality，追加前也会检测端口和目标。只检测 VPS 本机及其出站，不能确认公网入站、云安全组、NAT/CDN 或客户端连通。
+
+短入口 **https://sky9119.cc/sb.sh** 通过 Cloudflare HTTPS 跳转到最新正式 GitHub Release 的 bootstrap.sh；下载服务可看到来源 IP 与请求元数据。安装命令仍自动补装缺少的 curl，下载失败或内容为空时不执行。
 
 ## 查看节点参数
 
@@ -331,7 +341,7 @@ HY2 支持上下行 Mbps、`ignore_client_bandwidth` 与 Salamander 混淆，服
 
 ```bash
 python3 scripts/build.py --check
-python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.10
+python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.11
 ```
 
 打包只包含 `bootstrap.sh` 启动命令、安装入口、完整脚本、公开规则列表及SHA256SUMS，不发布运行时配置或凭据。

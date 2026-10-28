@@ -13,6 +13,13 @@ PY_CONFIG
 }
 configuration_apply(){
  configuration_guard && users_guard && warp_guard && argo_guard && hop_guard || return 1
+ if [[ $1 == add && ${2:-} == vless ]];then
+  local bind_family current_mode
+  current_mode=$(protocol_mode) || return 1
+  [[ $current_mode == 2 || $current_mode == 0 ]] || { err "$(L 'Reality 协议已经安装，请使用编辑或握手网站检测功能。' 'Reality is already installed; use node editing or target checks.')";return 1; }
+  bind_family=$(state listen);bind_family=${bind_family:-0.0.0.0}
+  reality_install_check "$4" "$3" "$bind_family" || return 1
+ fi
  local stage snap admin=false users=false argo=false hop_active=false first_admin=false
  if python3 - "$CONF" "$META" <<'PY_INITIAL_ADMIN'
 import json,sys

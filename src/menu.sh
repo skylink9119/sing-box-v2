@@ -22,6 +22,7 @@ sub_menu(){
    say ' 4. Argo 临时 / 固定隧道管理' ' 4. Argo Quick / Named Tunnel controls'
    say ' 5. 节点参数与协议增删' ' 5. Node settings and protocol changes'
    say ' 6. 受限网络部署（Argo / IPv6 / NAT）' ' 6. Restricted networks (Argo / IPv6 / NAT)'
+   say ' 7. 节点安装前检测（不安装）' ' 7. Node installation checks (no installation)'
    ;;
   2)
    say ' 1. 查看节点与各客户端格式' ' 1. View nodes and client formats'
@@ -77,6 +78,7 @@ sub_menu(){
   1:4) MAIN_ACTION=argo;;
   1:5) MAIN_ACTION=settings;;
   1:6) MAIN_ACTION=rescue;;
+  1:7) MAIN_ACTION=install_checks;;
   2:1) MAIN_ACTION=nodes;;
   2:2) MAIN_ACTION=subscription;;
   2:3) MAIN_ACTION=rename;;
@@ -122,6 +124,7 @@ dispatch_action(){
  initialize) initialize_server;; firewall) firewall "$@";; audit) firewall_audit;; bbr) bbr;; hop) hop "$@";; traffic) traffic "$@";;
  media) media_check;; warp) warp_menu "$@";; relay) relay_menu "$@";; haproxy) haproxy_menu "$@";;
  reality) reality_menu "$@";;
+ install_checks) installation_check_menu "$@";;
  rescue) rescue_menu "$@";;
  manager_update) manager_update;; certificate) certificate_menu "$@";; resources) resource_info;;
  update) core_versions "$@";; settings) node_settings "$@";; online) online_menu "$@";; acme) acme_menu "$@";; backup_tools) backup_tools "$@";; help) usage_help;; backup) backup;; restore) restore;;
@@ -164,6 +167,7 @@ navigation_action(){
   rescue) run_submenu rescue_menu;; warp) run_submenu warp_menu;;
   relay) run_submenu relay_menu;; haproxy) run_submenu haproxy_menu;;
   reality) run_submenu reality_menu;;
+  install_checks) run_submenu installation_check_menu;;
   hop) run_submenu hop;; update) run_submenu core_versions;;
   backup_tools) run_submenu backup_tools;; users) users_manager;;
   *) run_menu_action dispatch_action "$1";;

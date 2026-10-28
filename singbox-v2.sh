@@ -8,7 +8,7 @@
 set -Eeuo pipefail
 umask 077
 SCRIPT_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
-MANAGER_VERSION=2.8.10
+MANAGER_VERSION=2.8.11
 CORE_RECOMMENDED=1.14.3
 BASE=/etc/singbox-v2
 CONF=/etc/sing-box/config.json
@@ -264,12 +264,12 @@ startup_info(){
 
 notice(){ if [[ "$LANGUAGE_CHOICE" == en_US ]]; then cat <<'EOF_EN'
 [LEGAL & PRIVACY NOTICE] Use only for lawful networking education and server administration. You must comply with applicable law and service terms. Updating software or changing firewall/network settings may interrupt service or cause data loss; make backups first. Provided as-is to the extent permitted by law. Third-party components retain their licenses.
-Installation and updates can contact github.com, api.github.com and GitHub release CDNs; these services can see your source IP. Installation queries api.ipify.org/api64.ipify.org for your public address. Optional ACME contacts Let's Encrypt and, for DNS validation, Cloudflare; public certificates disclose domain names. HTTPS subscriptions serve personal credential exports only to token holders. Optional streaming probes contact the selected platforms; WARP installation/tests contact Cloudflare. Those services can see the egress IP and request metadata. Reports stay local in /etc/singbox-v2/reports; manage retention yourself. WARP sends selected traffic through Cloudflare. No developer telemetry or intentional upload of node credentials. Weekly automatic updates have been removed. HY2 requires TLS. A no-domain self-signed certificate mode is available, but clients must securely trust the certificate.
+Installation and updates can contact sky9119.cc (Cloudflare HTTPS redirects), github.com, api.github.com and GitHub release CDNs; these services can see your source IP. Installation queries api.ipify.org/api64.ipify.org for your public address. Optional ACME contacts Let's Encrypt and, for DNS validation, Cloudflare; public certificates disclose domain names. HTTPS subscriptions serve personal credential exports only to token holders. Optional streaming probes contact the selected platforms; WARP installation/tests contact Cloudflare. Those services can see the egress IP and request metadata. Reports stay local in /etc/singbox-v2/reports; manage retention yourself. WARP sends selected traffic through Cloudflare. No developer telemetry or intentional upload of node credentials. Weekly automatic updates have been removed. HY2 requires TLS. A no-domain self-signed certificate mode is available, but clients must securely trust the certificate.
 Optional Argo connects to Cloudflare, which terminates outer TLS and can inspect WebSocket payloads. Tunnel tokens are stored locally and included in private backups.
 EOF_EN
 else cat <<'EOF'
 【法律与隐私披露】此工具仅供合法网络技术学习和服务器管理；使用者应遵守适用法律和服务条款。更改防火墙、网络参数及更新软件可能导致中断或损失，请提前备份。软件按现状提供，不排除依法不得排除的责任。第三方软件遵循其许可证。
-安装/更新可能连接：github.com、api.github.com、GitHub 发布文件 CDN，访问服务会暴露请求来源 IP。可选 ACME 会访问 Let's Encrypt，DNS 验证还访问 Cloudflare；公开证书会披露域名。HTTPS订阅仅向持有Token者返回个人客户端凭据。安装时 api.ipify.org/api64.ipify.org 用于识别公网地址；可选流媒体检测访问对应平台，WARP 安装/检测访问 Cloudflare。第三方可能记录出口 IP、查询目标和请求时间。报告保存在本地 /etc/singbox-v2/reports，请自行清理。WARP 将选定流量交由 Cloudflare 转发。无开发者遥测或上传节点密钥；请勿公开包含凭据的配置和导出文件。每周自动更新已移除。HY2 必须有 TLS 证书，无域名用户可生成自签名证书，客户端必须正确配置信任，不能默认跳过证书验证。
+安装/更新可能连接：sky9119.cc（Cloudflare HTTPS 跳转）、github.com、api.github.com、GitHub 发布文件 CDN，访问服务会暴露请求来源 IP。可选 ACME 会访问 Let's Encrypt，DNS 验证还访问 Cloudflare；公开证书会披露域名。HTTPS订阅仅向持有Token者返回个人客户端凭据。安装时 api.ipify.org/api64.ipify.org 用于识别公网地址；可选流媒体检测访问对应平台，WARP 安装/检测访问 Cloudflare。第三方可能记录出口 IP、查询目标和请求时间。报告保存在本地 /etc/singbox-v2/reports，请自行清理。WARP 将选定流量交由 Cloudflare 转发。无开发者遥测或上传节点密钥；请勿公开包含凭据的配置和导出文件。每周自动更新已移除。HY2 必须有 TLS 证书，无域名用户可生成自签名证书，客户端必须正确配置信任，不能默认跳过证书验证。
 可选 Argo 连接 Cloudflare，外层 TLS 在其边缘终止，可检查 WebSocket 载荷。隧道 Token 保存在本地并包含在私密备份中。
 EOF
 fi
@@ -462,19 +462,15 @@ install_protocol() (
  local stage="" committed=false final_bin=$BIN final_conf=$CONF final_meta=$META final_base=$BASE
  trap installation_cleanup EXIT
  need_root
- [[ -r $OS_RELEASE ]] || return 1
- # shellcheck source=/dev/null
- . "$OS_RELEASE"
- case ${ID:-} in ubuntu|debian) ;; *) err "$(L '仅支持 Ubuntu/Debian' 'Ubuntu/Debian required')"; return 1;; esac
  local mode="${1:-}" cert_mode="" vp=443 hp=443 supplied_ip='' listen_addr=''
  if [[ -z "$mode" ]]; then prompt_options '1 Reality 单协议 | 2 HY2 单协议 | 3 双协议 | 0 返回' '1 Reality only | 2 HY2 only | 3 Dual | 0 Back'
  prompt_read '> ' mode || return; fi
  [[ "$mode" == 0 ]] && return 0
  [[ "$mode" =~ ^[123]$ ]] || { err "Invalid selection"; return 1; }
  notice; confirm "$(L '同意声明并安装所选协议？' 'Accept notice and install selected protocol(s)?')" || return 0
- if [[ -e $CONF || -L $CONF || -e $META || -L $META || -e $BIN || -L $BIN || -e $SYSTEMD_DIR/sing-box.service || -L $SYSTEMD_DIR/sing-box.service ]] || command -v sing-box >/dev/null; then err "$(L '发现已有配置，拒绝覆盖' 'Existing configuration or binary found; refusing to overwrite')"; return 1; fi
+ if [[ -e $CONF || -L $CONF || -e $META || -L $META || -e $BIN || -L $BIN || -e $SYSTEMD_DIR/sing-box.service || -L $SYSTEMD_DIR/sing-box.service ]] || command -v sing-box >/dev/null; then err "$(L '发现已有配置或核心，拒绝覆盖；若由本脚本管理，请用 a → 5 → 4 追加协议。' 'Existing configuration or binary found; refusing to overwrite. For managed nodes, add a protocol through a → 5 → 4.')"; return 1; fi
  if systemctl list-unit-files sing-box.service --no-legend 2>/dev/null | grep -q sing-box; then err "$(L '已有 sing-box 服务，拒绝覆盖' 'Existing sing-box service found; refusing to overwrite')"; return 1; fi
- require_cmd ss || { apt_install iproute2 || return 1; }
+ install_environment_check "$mode" || return 1
  if [[ ${2:-} == custom ]];then
   if [[ $mode != 2 ]];then prompt_read "$(L '本机 Reality TCP 端口 [443]：' 'Local Reality TCP port [443]: ')" vp || return 1;vp=${vp:-443};fi
   if [[ $mode != 1 ]];then prompt_read "$(L '本机 HY2 UDP 端口 [443]：' 'Local HY2 UDP port [443]: ')" hp || return 1;hp=${hp:-443};fi
@@ -489,8 +485,7 @@ install_protocol() (
  fi
  valid_port "$vp" && valid_port "$hp" || return 1;vp=$((10#$vp));hp=$((10#$hp))
  if [[ $mode != 2 ]];then haproxy_engine check_port "$vp" || return 1;fi
- if [[ $mode != 2 ]] && ss -H -ltn "( sport = :$vp )" | grep -q .; then err "TCP $vp: $(L '已被占用' 'occupied')"; return 1; fi
- if [[ $mode != 1 ]] && ss -H -lun "( sport = :$hp )" | grep -q .; then err "UDP $hp: $(L '已被占用' 'occupied')"; return 1; fi
+ install_port_check "$mode" "$vp" "$hp" "${listen_addr:-0.0.0.0}" || return 1
  local domain="" cert="" key="" sni="" node_name
  node_name=$(choose_node_name) || { err "$(L '节点名称无效' 'Invalid node name')"; return 1; }
  if [[ $mode != 1 ]]; then
@@ -516,9 +511,12 @@ install_protocol() (
   [[ $sni =~ ^[a-zA-Z0-9.-]+$ ]] || { err "$(L '无效 SNI' 'Invalid SNI')"; return 1; }
  fi
  if [[ -z ${SKYBYTE_ASSET_DIR:-} ]];then
-  say '安装依赖...' 'Installing dependencies...'; apt_install curl openssl ca-certificates python3 iproute2 util-linux nftables procps || return 1
+  say '安装依赖...' 'Installing dependencies...'
+  apt_install curl openssl ca-certificates python3 iproute2 util-linux nftables procps || { err "$(L '依赖安装失败，尚未生成节点；请检查上方 APT 锁、软件源或网络错误。' 'Dependency installation failed before node generation; inspect the APT lock, repository or network error above.')";return 1; }
   require_cmd getent; getent ahosts github.com >/dev/null || { err "$(L 'GitHub DNS 解析失败，请先修复 DNS或使用离线包' 'GitHub DNS lookup failed; repair DNS or use offline assets')"; return 1; }
  else rescue_dependencies && require_cmd openssl || return 1;fi
+ [[ $mode == 2 ]] || install_reality_target "$sni" || return 1
+ install_download_check || return 1
  mkdir -p "$(dirname "$BIN")"
  if [[ $cert_mode == 2 ]]; then validate_certificate "$cert" "$key" "$domain" || return 1; fi
  if [[ $cert_mode == 1 ]]; then
@@ -3188,6 +3186,329 @@ reality_menu(){
   0) return 0;; *) return 1;;
  esac
 }
+install_check_engine(){ python3 - "$@" <<'PY_INSTALL_CHECKS'
+"""Bounded installation diagnostics: no package, firewall or configuration changes."""
+import argparse
+import errno
+import fcntl
+import json
+import os
+from pathlib import Path
+import platform
+import queue
+import shutil
+import socket
+import ssl
+import stat
+import subprocess
+import sys
+import threading
+import urllib.error
+import urllib.request
+
+
+class Report:
+    def __init__(self, english=False):
+        self.english = english
+        self.items = []
+
+    def tr(self, zh, en):
+        return en if self.english else zh
+
+    def add(self, status, zh, en, detail_zh, detail_en=None):
+        self.items.append((status, self.tr(zh, en),
+                           self.tr(detail_zh, detail_en if detail_en is not None else detail_zh)))
+
+    def render(self):
+        def clean(value):
+            return json.dumps(str(value), ensure_ascii=False)[1:-1]
+        print(self.tr('\n========== 节点安装前检测 ==========', '\n========== NODE INSTALLATION CHECK =========='))
+        for status, label, detail in self.items:
+            title = {'pass': self.tr('通过', 'PASS'), 'warn': self.tr('提醒', 'WARN'), 'fail': self.tr('失败', 'FAIL')}[status]
+            print('[' + title + '] ' + clean(label) + ': ' + clean(detail))
+        failed = any(item[0] == 'fail' for item in self.items)
+        warnings = sum(item[0] == 'warn' for item in self.items)
+        summary = self.tr('检测未通过：请先处理失败项，停止本次安装。', 'FAILED: resolve failed checks before installing.') if failed else self.tr(
+            '本阶段检测通过；请核对提醒项。', 'This stage passed; review any warnings.')
+        color = ('\033[1;31m' if failed else '\033[1;32m') if sys.stdout.isatty() and not os.environ.get('NO_COLOR') else ''
+        print(color + '===== ' + summary + ' =====' + ('\033[0m' if color else ''))
+        print(self.tr('提醒数量：', 'Warnings: ') + str(warnings))
+        print(self.tr('仅检测本 VPS；端口可绑定不代表公网可达。云安全组、NAT 映射和客户端连接须另行核对。',
+                      'Checks this VPS only. A bindable port is not proof of public reachability; inspect provider rules, NAT mappings and client access.'))
+        return int(failed)
+
+
+def package_locks(paths):
+    """APT/dpkg use POSIX record locks; an existing unlocked file is normal."""
+    busy, unknown = [], []
+    for path in map(Path, paths):
+        fd = None
+        try:
+            if path.is_symlink():
+                unknown.append(str(path))
+                continue
+            fd = os.open(path, os.O_RDWR | getattr(os, 'O_NOFOLLOW', 0))
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                unknown.append(str(path))
+                continue
+            fcntl.lockf(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.lockf(fd, fcntl.LOCK_UN)
+        except FileNotFoundError:
+            pass
+        except OSError as error:
+            if error.errno in (errno.EACCES, errno.EAGAIN) and fd is not None:
+                busy.append(str(path))
+            else:
+                unknown.append(str(path))
+        finally:
+            if fd is not None:
+                os.close(fd)
+    return busy, unknown
+
+
+def environment(report, project, os_release='/etc/os-release', paths=(), reality=False):
+    report.add('pass' if os.geteuid() == 0 else 'fail', '运行权限', 'Privileges',
+               'root' if os.geteuid() == 0 else '请以 root 账户运行',
+               'root' if os.geteuid() == 0 else 'Run as root')
+    distro = ''
+    try:
+        for line in Path(os_release).read_text().splitlines():
+            if line.startswith('ID='):
+                distro = line.split('=', 1)[1].strip().strip('"\'')
+    except OSError:
+        pass
+    supported = platform.system() == 'Linux' and distro in ('ubuntu', 'debian')
+    report.add('pass' if supported else 'fail', '系统支持', 'Operating system',
+               'Linux / ' + distro if supported else '需要 Ubuntu/Debian Linux；检测到：' + (distro or platform.system()),
+               'Linux / ' + distro if supported else 'Ubuntu/Debian Linux required; detected: ' + (distro or platform.system()))
+    architectures = {'x86_64', 'aarch64', 'arm64'}
+    if project == 'sing-box':
+        architectures |= {'i386', 'i486', 'i586', 'i686', 'armv7l'}
+    machine = platform.machine()
+    report.add('pass' if machine in architectures else 'fail', '核心架构', 'Core architecture', machine)
+    systemd = Path('/run/systemd/system').is_dir()
+    report.add('pass' if systemd else 'fail', 'systemd', 'systemd',
+               '可用' if systemd else '未发现正在运行的 systemd；无法安装托管服务',
+               'Available' if systemd else 'Running systemd not found; managed services cannot be installed')
+    if reality:
+        report.add('pass' if ssl.HAS_TLSv1_3 else 'fail', 'Python TLS 1.3', 'Python TLS 1.3',
+                   '支持握手目标检测' if ssl.HAS_TLSv1_3 else 'Python/OpenSSL 不支持 TLS 1.3，请先升级系统依赖',
+                   'Target checks supported' if ssl.HAS_TLSv1_3 else 'Upgrade system Python/OpenSSL for TLS 1.3 target checks')
+    busy, unknown = package_locks(['/var/lib/dpkg/lock-frontend', '/var/lib/dpkg/lock',
+                                   '/var/lib/apt/lists/lock', '/var/cache/apt/archives/lock'])
+    if busy:
+        report.add('fail', 'APT/DPKG 锁', 'APT/DPKG locks',
+                   '其他软件安装任务正在占用：' + ', '.join(busy) + '；等待任务完成后重试，请勿删除锁文件。',
+                   'Another package task holds: ' + ', '.join(busy) + '; wait for it to finish. Do not delete lock files.')
+    elif unknown:
+        report.add('warn', 'APT/DPKG 锁', 'APT/DPKG locks',
+                   '无法确认锁状态，请检查权限或异常路径：' + ', '.join(unknown),
+                   'Cannot inspect locks; check permissions or unsafe paths: ' + ', '.join(unknown))
+    else:
+        report.add('pass', 'APT/DPKG 锁', 'APT/DPKG locks', '当前未被占用', 'Currently available')
+    missing = [tool for tool in ('apt-get', 'curl', 'openssl', 'ss', 'ip', 'flock') if not shutil.which(tool)]
+    report.add('fail' if 'apt-get' in missing else 'warn' if missing else 'pass', '依赖命令', 'Dependency commands',
+               '缺少或不在 PATH：' + ', '.join(missing) + '；请核对 root PATH，安装流程会补齐可安装的依赖。' if missing else '所需命令可用',
+               'Missing or outside PATH: ' + ', '.join(missing) + '; inspect root PATH; installation will add available dependencies.' if missing else 'Required commands available')
+    seen = set()
+    for destination in map(Path, paths):
+        current = destination
+        while not current.exists() and current != current.parent:
+            current = current.parent
+        if any(p.is_symlink() for p in (destination, *destination.parents)):
+            report.add('fail', '安装路径', 'Installation path', '路径包含符号链接：' + str(destination),
+                       'Path contains a symlink: ' + str(destination))
+            continue
+        try:
+            device = current.stat().st_dev
+            if device in seen:
+                continue
+            seen.add(device)
+            info = os.statvfs(current)
+            free = info.f_bavail * info.f_frsize // (1024 * 1024)
+            blocked = bool(info.f_flag & getattr(os, 'ST_RDONLY', 1)) or info.f_favail == 0 or info.f_bavail == 0
+            report.add('fail' if blocked else 'warn' if free < 256 else 'pass', '安装存储空间', 'Installation storage',
+                       str(current) + '：可用 ' + str(free) + ' MiB' + ('；空间/inode 已耗尽或文件系统只读' if blocked else '；低于 256 MiB，建议先清理' if free < 256 else ''),
+                       str(current) + ': ' + str(free) + ' MiB free' + ('; storage/inodes exhausted or filesystem read-only' if blocked else '; below 256 MiB, free space before installing' if free < 256 else ''))
+        except OSError:
+            report.add('fail', '安装存储空间', 'Installation storage', '无法检查：' + str(destination), 'Cannot inspect: ' + str(destination))
+
+
+def ports(report, listen, tcp=None, udp=None):
+    if tcp is None and udp is None:
+        raise ValueError('Port required')
+    family = socket.AF_INET6 if ':' in listen else socket.AF_INET
+    for protocol, number, kind in (('TCP', tcp, socket.SOCK_STREAM), ('UDP', udp, socket.SOCK_DGRAM)):
+        if number is None:
+            continue
+        if not 1 <= number <= 65535:
+            raise ValueError('Invalid port')
+        label = protocol + ' ' + str(number)
+        try:
+            with socket.socket(family, kind) as sock:
+                if family == socket.AF_INET6:
+                    sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+                sock.bind((listen, number))
+            report.add('pass', label, label, '本机可绑定（' + listen + '）', 'Locally bindable (' + listen + ')')
+        except OSError as error:
+            occupied = error.errno == errno.EADDRINUSE
+            report.add('fail', label, label,
+                       '已被占用，请选择其他空闲端口；TCP 与 UDP 分别检查。' if occupied else '无法绑定该地址族/端口，请检查 IPv4/IPv6 与系统权限。',
+                       'Occupied; choose another free port. TCP and UDP are checked separately.' if occupied else 'Cannot bind; check IPv4/IPv6 support and privileges.')
+    active = []
+    for executable, arguments, token in [('ufw', ['status'], 'Status: active'), ('firewall-cmd', ['--state'], 'running')]:
+        if not shutil.which(executable):
+            continue
+        try:
+            result = subprocess.run([executable, *arguments], capture_output=True, text=True, timeout=3,
+                                    env={**os.environ, 'LC_ALL': 'C'})
+            if result.returncode == 0 and token in result.stdout:
+                active.append(executable)
+        except (OSError, subprocess.SubprocessError):
+            pass
+    report.add('warn', '防火墙与公网端口', 'Firewall and public ports',
+               ('已启用 ' + ', '.join(active) + '；' if active else '未确认已启用 UFW/firewalld，请安装/启用合适的防火墙；') + '先放行 SSH 和实际 TCP/UDP 端口，并核对云安全组；不自动修改规则。',
+               ('Active: ' + ', '.join(active) + '. ' if active else 'Active UFW/firewalld not confirmed; install/enable a suitable firewall. ') + 'Allow SSH and actual TCP/UDP ports, and inspect provider rules; rules are not changed.')
+
+
+def download(report, offline=False, timeout=10, existing_core=False):
+    if offline or existing_core:
+        report.add('warn', 'GitHub HTTPS', 'GitHub HTTPS',
+                   '本机已有核心，本次沿用，跳过不必要的下载联网检测' if existing_core else '离线安装包模式，跳过联网检测',
+                   'Existing local core will be reused; unnecessary download/network check skipped' if existing_core else 'Offline asset mode; network check skipped')
+        return
+    try:
+        results = queue.Queue()
+        opener = urllib.request.urlopen
+        def request_head():
+            try:
+                request = urllib.request.Request('https://github.com/', method='HEAD', headers={'User-Agent': 'SKYBYTE-Installation-Check'})
+                with opener(request, timeout=min(8, timeout), context=ssl.create_default_context()) as response:
+                    if not 200 <= response.status < 400:
+                        raise urllib.error.HTTPError(request.full_url, response.status, '', {}, None)
+                results.put(None)
+            except Exception as error:
+                results.put(error)
+        # Socket timeouts alone do not bound libc DNS resolution.
+        threading.Thread(target=request_head, daemon=True).start()
+        try:
+            error = results.get(timeout=timeout)
+        except queue.Empty:
+            raise TimeoutError('HTTPS deadline') from None
+        if error is not None:
+            raise error
+        report.add('pass', 'GitHub HTTPS', 'GitHub HTTPS', '首页 HTTPS 与证书验证通过；正式下载仍需校验 API/CDN 与文件摘要',
+                   'Homepage HTTPS and certificate verified; downloads still require API/CDN access and digest checks')
+    except (OSError, urllib.error.URLError, ValueError) as error:
+        reason = getattr(error, 'reason', error)
+        if isinstance(reason, ssl.SSLCertVerificationError):
+            zh, en = '证书验证失败，请检查 VPS 时间、CA 证书与 HTTPS 拦截', 'Certificate verification failed; check VPS clock, CA roots and HTTPS interception'
+        elif isinstance(reason, (TimeoutError, socket.timeout)):
+            zh, en = '连接超时，请检查 VPS 出站网络或使用离线安装包', 'Connection timed out; inspect egress connectivity or use offline assets'
+        elif isinstance(reason, socket.gaierror):
+            zh, en = 'DNS 解析失败，请先修复 VPS DNS', 'DNS lookup failed; repair VPS DNS first'
+        elif isinstance(error, urllib.error.HTTPError):
+            zh, en = 'HTTP ' + str(error.code) + '，请检查访问限制或限流', 'HTTP ' + str(error.code) + '; check access restrictions or rate limits'
+        else:
+            zh, en = 'HTTPS 连接失败，请检查出站网络、DNS 与系统时间', 'HTTPS connection failed; inspect egress, DNS and system clock'
+        status = 'warn' if isinstance(error, urllib.error.HTTPError) and error.code in (403, 405, 429) else 'fail'
+        if status == 'warn':
+            zh += '；首页响应不等于发布附件可用性，将由正式下载与摘要校验确认。'
+            en += '; homepage status does not establish release-asset availability; verified download will decide.'
+        report.add(status, 'GitHub HTTPS', 'GitHub HTTPS', zh, en)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--project', choices=('sing-box', 'xray'), required=True)
+    parser.add_argument('--phase', choices=('environment', 'ports', 'download'), required=True)
+    parser.add_argument('--language', default='zh')
+    parser.add_argument('--os-release', default='/etc/os-release')
+    parser.add_argument('--paths', nargs='*', default=[])
+    parser.add_argument('--reality', action='store_true')
+    parser.add_argument('--listen', choices=('0.0.0.0', '::', '127.0.0.1', '::1'), default='0.0.0.0')
+    parser.add_argument('--tcp-port', type=int)
+    parser.add_argument('--udp-port', type=int)
+    parser.add_argument('--offline', action='store_true')
+    parser.add_argument('--existing-core', action='store_true')
+    options = parser.parse_args(argv)
+    report = Report(options.language in ('en', 'en_US'))
+    try:
+        if options.phase == 'environment':
+            environment(report, options.project, options.os_release, options.paths, options.reality)
+        elif options.phase == 'ports':
+            ports(report, options.listen, options.tcp_port, options.udp_port)
+        else:
+            print(report.tr('正在检查 GitHub HTTPS（网络等待上限 10 秒）……',
+                            'Checking GitHub HTTPS (10-second network wait limit)…'), flush=True)
+            download(report, options.offline, existing_core=options.existing_core)
+    except (OSError, ValueError, TypeError):
+        report.add('fail', '检测参数', 'Check parameters', '参数无效或无法读取本机环境', 'Invalid parameters or unreadable local environment')
+    return report.render()
+
+
+if __name__ == '__main__':
+    sys.exit(main())
+PY_INSTALL_CHECKS
+}
+install_environment_check(){
+ local options=(--project sing-box --language "${LANGUAGE_CHOICE:-zh_CN}" --phase environment --os-release "$OS_RELEASE")
+ [[ ${1:-1} == 2 ]] || options+=(--reality)
+ install_check_engine "${options[@]}" --paths "$BASE" "$(dirname "$BIN")" "${TMPDIR:-/tmp}"
+}
+install_port_check(){
+ local mode=$1 tcp=$2 udp=$3 listen=${4:-0.0.0.0} options=()
+ [[ $mode == 2 ]] || options+=(--tcp-port "$tcp")
+ [[ $mode == 1 ]] || options+=(--udp-port "$udp")
+ if ! install_check_engine --project sing-box --language "${LANGUAGE_CHOICE:-zh_CN}" --phase ports --listen "$listen" "${options[@]}";then
+  err "$(L '需要其他端口时，可用 a → 6 → 3 自定义监听端口安装；请保留现有服务并选择空闲端口。' 'For another port, use a → 6 → 3 to install with custom ports. Retain existing services and choose a free port.')"
+  return 1
+ fi
+}
+install_reality_target(){
+ say '正在检查 Reality 目标的 DNS、TCP、TLS 与证书（总时限 12 秒）……' 'Checking Reality target DNS, TCP, TLS and certificate (12-second deadline)…'
+ if ! reality_engine --project sing-box --language "${LANGUAGE_CHOICE:-zh_CN}" --target "$1:443" --sni "$1";then
+  err "$(L 'Reality 握手目标检测未通过；请更换握手网站或修复 VPS 出站网络、DNS、时间与 CA 证书后重试。尚未写入新节点。' 'Reality target failed checks. Change the target or repair VPS egress, DNS, clock and CA roots before retrying. No new node was written.')"
+  return 1
+ fi
+}
+reality_install_check(){
+ install_port_check 1 "$2" 443 "${3:-0.0.0.0}" && install_reality_target "$1"
+}
+install_download_check(){
+ local options=(--project sing-box --language "${LANGUAGE_CHOICE:-zh_CN}" --phase download)
+ [[ -z ${SKYBYTE_ASSET_DIR:-} ]] || options+=(--offline)
+ install_check_engine "${options[@]}"
+}
+installation_check_menu(){
+ local choice tcp=443 udp=443 sni=addons.mozilla.org family listen=0.0.0.0
+ if [[ $# == 0 || $1 == --menu ]];then
+  prompt_options '节点安装前检测（不安装）
+1. Reality + Vision（TCP）
+2. Hysteria2（UDP）
+3. 双协议（TCP + UDP）
+0. 返回' 'Node installation checks (no installation)
+1. Reality + Vision (TCP)
+2. Hysteria2 (UDP)
+3. Both (TCP + UDP)
+0. Back'
+  [[ ${1:-} != --menu ]] || return 0
+  prompt_read '> ' choice || return 0
+ else choice=$1;fi
+ case $choice in 1|2|3);;0)return 0;;*)return 1;;esac
+ if [[ $choice != 2 ]];then prompt_read 'Reality TCP [443]: ' tcp || return 0;tcp=${tcp:-443};fi
+ if [[ $choice != 1 ]];then prompt_read 'HY2 UDP [443]: ' udp || return 0;udp=${udp:-443};fi
+ valid_port "$tcp" && valid_port "$udp" || return 1
+ prompt_options '监听地址族：1 IPv4（默认）  2 IPv6' 'Listen family: 1 IPv4 (default)  2 IPv6'
+ prompt_read '> ' family || return 0
+ case ${family:-1} in 1);;2)listen=::;;*)return 1;;esac
+ if [[ $choice != 2 ]];then
+  prompt_read 'Reality SNI [addons.mozilla.org]: ' sni || return 0;sni=${sni:-addons.mozilla.org}
+ fi
+ install_environment_check "$choice" && install_port_check "$choice" "$tcp" "$udp" "$listen" || return 1
+ [[ $choice == 2 ]] || install_reality_target "$sni" || return 1
+ install_download_check
+}
 
 warp_engine(){
  python3 - "$BASE" "$CONF" "$BIN" "$@" <<'PY_WARP'
@@ -5503,6 +5824,13 @@ PY_CONFIG
 }
 configuration_apply(){
  configuration_guard && users_guard && warp_guard && argo_guard && hop_guard || return 1
+ if [[ $1 == add && ${2:-} == vless ]];then
+  local bind_family current_mode
+  current_mode=$(protocol_mode) || return 1
+  [[ $current_mode == 2 || $current_mode == 0 ]] || { err "$(L 'Reality 协议已经安装，请使用编辑或握手网站检测功能。' 'Reality is already installed; use node editing or target checks.')";return 1; }
+  bind_family=$(state listen);bind_family=${bind_family:-0.0.0.0}
+  reality_install_check "$4" "$3" "$bind_family" || return 1
+ fi
  local stage snap admin=false users=false argo=false hop_active=false first_admin=false
  if python3 - "$CONF" "$META" <<'PY_INITIAL_ADMIN'
 import json,sys
@@ -6129,6 +6457,7 @@ SKYBYTE Manager — quick guide
 12. HAProxy TCP passthrough: main d → 11, then 12 for help. A may run only the TCP forwarder; B runs the authenticated Reality/Trojan node. On the phone, keep B's credentials/SNI/TLS trust and change only the address/port to A. HY2/raw UDP are unsupported. User quotas belong on B. This menu has separate backup/restore/uninstall controls; full sing-box backups include a haproxy subdirectory for separate restoration.
 13. Reality target checks: main d → 12. Check configured targets or a custom hostname/port/SNI; verify DNS, TCP, TLS 1.3, certificate and HTTP/2. Read-only, with bounded network timeouts; this does not test client-to-VPS connectivity.
 14. Node parameters: main b → 7 shows UUID/public key/short ID/SNI. Important data is stored on this VPS: keep it private and install/enable a firewall through d → 2 after allowing SSH and node ports.
+15. Installation checks: main a → 7. New installs and Reality additions run preflight checks; local binds do not prove public inbound access. The short HTTPS install entry is sky9119.cc/sb.sh.
 CLI: --help, --self-check. Maintenance flags are used by owned systemd services.
 HELP_EN
  else cat <<'HELP_ZH'
@@ -6147,6 +6476,7 @@ SKYBYTE Manager — 快速使用说明
 12. HAProxy TCP 透传：主菜单d → 11，再选12查看说明。A 可只运行 TCP 转发，B 运行带认证的 Reality/Trojan 节点；手机保留 B 的认证、SNI及TLS验证，仅改连接地址和端口为 A。不支持 HY2/原生UDP。配额在 B 管理。本菜单可单独备份、恢复与卸载，完整 sing-box 备份中的 haproxy 子目录需单独恢复。
 13. Reality 握手检测：主菜单 d → 12。检测当前目标或自定义域名/端口/SNI；检查 DNS、TCP、TLS 1.3、证书和 HTTP/2。只读且有网络超时，不代表客户端到 VPS 已连通。
 14. 节点参数：主菜单 b → 7 查看 UUID、公钥、Short ID 和 SNI。重要数据保存在本 VPS，请做好保密；务必通过 d → 2 安装并启用防火墙，先放行 SSH 和实际节点端口。
+15. 安装前检测：主菜单 a → 7；新装及追加 Reality 会自动检查。端口可绑定不等于公网入站连通；短安装入口为 sky9119.cc/sb.sh。
 命令行：--help、--self-check。维护参数供本工具的 systemd 服务使用。
 HELP_ZH
  fi
@@ -6177,6 +6507,7 @@ sub_menu(){
    say ' 4. Argo 临时 / 固定隧道管理' ' 4. Argo Quick / Named Tunnel controls'
    say ' 5. 节点参数与协议增删' ' 5. Node settings and protocol changes'
    say ' 6. 受限网络部署（Argo / IPv6 / NAT）' ' 6. Restricted networks (Argo / IPv6 / NAT)'
+   say ' 7. 节点安装前检测（不安装）' ' 7. Node installation checks (no installation)'
    ;;
   2)
    say ' 1. 查看节点与各客户端格式' ' 1. View nodes and client formats'
@@ -6232,6 +6563,7 @@ sub_menu(){
   1:4) MAIN_ACTION=argo;;
   1:5) MAIN_ACTION=settings;;
   1:6) MAIN_ACTION=rescue;;
+  1:7) MAIN_ACTION=install_checks;;
   2:1) MAIN_ACTION=nodes;;
   2:2) MAIN_ACTION=subscription;;
   2:3) MAIN_ACTION=rename;;
@@ -6277,6 +6609,7 @@ dispatch_action(){
  initialize) initialize_server;; firewall) firewall "$@";; audit) firewall_audit;; bbr) bbr;; hop) hop "$@";; traffic) traffic "$@";;
  media) media_check;; warp) warp_menu "$@";; relay) relay_menu "$@";; haproxy) haproxy_menu "$@";;
  reality) reality_menu "$@";;
+ install_checks) installation_check_menu "$@";;
  rescue) rescue_menu "$@";;
  manager_update) manager_update;; certificate) certificate_menu "$@";; resources) resource_info;;
  update) core_versions "$@";; settings) node_settings "$@";; online) online_menu "$@";; acme) acme_menu "$@";; backup_tools) backup_tools "$@";; help) usage_help;; backup) backup;; restore) restore;;
@@ -6319,6 +6652,7 @@ navigation_action(){
   rescue) run_submenu rescue_menu;; warp) run_submenu warp_menu;;
   relay) run_submenu relay_menu;; haproxy) run_submenu haproxy_menu;;
   reality) run_submenu reality_menu;;
+  install_checks) run_submenu installation_check_menu;;
   hop) run_submenu hop;; update) run_submenu core_versions;;
   backup_tools) run_submenu backup_tools;; users) users_manager;;
   *) run_menu_action dispatch_action "$1";;

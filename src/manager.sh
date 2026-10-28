@@ -8,7 +8,7 @@
 set -Eeuo pipefail
 umask 077
 SCRIPT_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
-MANAGER_VERSION=2.8.10
+MANAGER_VERSION=2.8.11
 CORE_RECOMMENDED=1.14.3
 BASE=/etc/singbox-v2
 CONF=/etc/sing-box/config.json
@@ -113,12 +113,12 @@ startup_info(){
 
 notice(){ if [[ "$LANGUAGE_CHOICE" == en_US ]]; then cat <<'EOF_EN'
 [LEGAL & PRIVACY NOTICE] Use only for lawful networking education and server administration. You must comply with applicable law and service terms. Updating software or changing firewall/network settings may interrupt service or cause data loss; make backups first. Provided as-is to the extent permitted by law. Third-party components retain their licenses.
-Installation and updates can contact github.com, api.github.com and GitHub release CDNs; these services can see your source IP. Installation queries api.ipify.org/api64.ipify.org for your public address. Optional ACME contacts Let's Encrypt and, for DNS validation, Cloudflare; public certificates disclose domain names. HTTPS subscriptions serve personal credential exports only to token holders. Optional streaming probes contact the selected platforms; WARP installation/tests contact Cloudflare. Those services can see the egress IP and request metadata. Reports stay local in /etc/singbox-v2/reports; manage retention yourself. WARP sends selected traffic through Cloudflare. No developer telemetry or intentional upload of node credentials. Weekly automatic updates have been removed. HY2 requires TLS. A no-domain self-signed certificate mode is available, but clients must securely trust the certificate.
+Installation and updates can contact sky9119.cc (Cloudflare HTTPS redirects), github.com, api.github.com and GitHub release CDNs; these services can see your source IP. Installation queries api.ipify.org/api64.ipify.org for your public address. Optional ACME contacts Let's Encrypt and, for DNS validation, Cloudflare; public certificates disclose domain names. HTTPS subscriptions serve personal credential exports only to token holders. Optional streaming probes contact the selected platforms; WARP installation/tests contact Cloudflare. Those services can see the egress IP and request metadata. Reports stay local in /etc/singbox-v2/reports; manage retention yourself. WARP sends selected traffic through Cloudflare. No developer telemetry or intentional upload of node credentials. Weekly automatic updates have been removed. HY2 requires TLS. A no-domain self-signed certificate mode is available, but clients must securely trust the certificate.
 Optional Argo connects to Cloudflare, which terminates outer TLS and can inspect WebSocket payloads. Tunnel tokens are stored locally and included in private backups.
 EOF_EN
 else cat <<'EOF'
 【法律与隐私披露】此工具仅供合法网络技术学习和服务器管理；使用者应遵守适用法律和服务条款。更改防火墙、网络参数及更新软件可能导致中断或损失，请提前备份。软件按现状提供，不排除依法不得排除的责任。第三方软件遵循其许可证。
-安装/更新可能连接：github.com、api.github.com、GitHub 发布文件 CDN，访问服务会暴露请求来源 IP。可选 ACME 会访问 Let's Encrypt，DNS 验证还访问 Cloudflare；公开证书会披露域名。HTTPS订阅仅向持有Token者返回个人客户端凭据。安装时 api.ipify.org/api64.ipify.org 用于识别公网地址；可选流媒体检测访问对应平台，WARP 安装/检测访问 Cloudflare。第三方可能记录出口 IP、查询目标和请求时间。报告保存在本地 /etc/singbox-v2/reports，请自行清理。WARP 将选定流量交由 Cloudflare 转发。无开发者遥测或上传节点密钥；请勿公开包含凭据的配置和导出文件。每周自动更新已移除。HY2 必须有 TLS 证书，无域名用户可生成自签名证书，客户端必须正确配置信任，不能默认跳过证书验证。
+安装/更新可能连接：sky9119.cc（Cloudflare HTTPS 跳转）、github.com、api.github.com、GitHub 发布文件 CDN，访问服务会暴露请求来源 IP。可选 ACME 会访问 Let's Encrypt，DNS 验证还访问 Cloudflare；公开证书会披露域名。HTTPS订阅仅向持有Token者返回个人客户端凭据。安装时 api.ipify.org/api64.ipify.org 用于识别公网地址；可选流媒体检测访问对应平台，WARP 安装/检测访问 Cloudflare。第三方可能记录出口 IP、查询目标和请求时间。报告保存在本地 /etc/singbox-v2/reports，请自行清理。WARP 将选定流量交由 Cloudflare 转发。无开发者遥测或上传节点密钥；请勿公开包含凭据的配置和导出文件。每周自动更新已移除。HY2 必须有 TLS 证书，无域名用户可生成自签名证书，客户端必须正确配置信任，不能默认跳过证书验证。
 可选 Argo 连接 Cloudflare，外层 TLS 在其边缘终止，可检查 WebSocket 载荷。隧道 Token 保存在本地并包含在私密备份中。
 EOF
 fi
@@ -311,19 +311,15 @@ install_protocol() (
  local stage="" committed=false final_bin=$BIN final_conf=$CONF final_meta=$META final_base=$BASE
  trap installation_cleanup EXIT
  need_root
- [[ -r $OS_RELEASE ]] || return 1
- # shellcheck source=/dev/null
- . "$OS_RELEASE"
- case ${ID:-} in ubuntu|debian) ;; *) err "$(L '仅支持 Ubuntu/Debian' 'Ubuntu/Debian required')"; return 1;; esac
  local mode="${1:-}" cert_mode="" vp=443 hp=443 supplied_ip='' listen_addr=''
  if [[ -z "$mode" ]]; then prompt_options '1 Reality 单协议 | 2 HY2 单协议 | 3 双协议 | 0 返回' '1 Reality only | 2 HY2 only | 3 Dual | 0 Back'
  prompt_read '> ' mode || return; fi
  [[ "$mode" == 0 ]] && return 0
  [[ "$mode" =~ ^[123]$ ]] || { err "Invalid selection"; return 1; }
  notice; confirm "$(L '同意声明并安装所选协议？' 'Accept notice and install selected protocol(s)?')" || return 0
- if [[ -e $CONF || -L $CONF || -e $META || -L $META || -e $BIN || -L $BIN || -e $SYSTEMD_DIR/sing-box.service || -L $SYSTEMD_DIR/sing-box.service ]] || command -v sing-box >/dev/null; then err "$(L '发现已有配置，拒绝覆盖' 'Existing configuration or binary found; refusing to overwrite')"; return 1; fi
+ if [[ -e $CONF || -L $CONF || -e $META || -L $META || -e $BIN || -L $BIN || -e $SYSTEMD_DIR/sing-box.service || -L $SYSTEMD_DIR/sing-box.service ]] || command -v sing-box >/dev/null; then err "$(L '发现已有配置或核心，拒绝覆盖；若由本脚本管理，请用 a → 5 → 4 追加协议。' 'Existing configuration or binary found; refusing to overwrite. For managed nodes, add a protocol through a → 5 → 4.')"; return 1; fi
  if systemctl list-unit-files sing-box.service --no-legend 2>/dev/null | grep -q sing-box; then err "$(L '已有 sing-box 服务，拒绝覆盖' 'Existing sing-box service found; refusing to overwrite')"; return 1; fi
- require_cmd ss || { apt_install iproute2 || return 1; }
+ install_environment_check "$mode" || return 1
  if [[ ${2:-} == custom ]];then
   if [[ $mode != 2 ]];then prompt_read "$(L '本机 Reality TCP 端口 [443]：' 'Local Reality TCP port [443]: ')" vp || return 1;vp=${vp:-443};fi
   if [[ $mode != 1 ]];then prompt_read "$(L '本机 HY2 UDP 端口 [443]：' 'Local HY2 UDP port [443]: ')" hp || return 1;hp=${hp:-443};fi
@@ -338,8 +334,7 @@ install_protocol() (
  fi
  valid_port "$vp" && valid_port "$hp" || return 1;vp=$((10#$vp));hp=$((10#$hp))
  if [[ $mode != 2 ]];then haproxy_engine check_port "$vp" || return 1;fi
- if [[ $mode != 2 ]] && ss -H -ltn "( sport = :$vp )" | grep -q .; then err "TCP $vp: $(L '已被占用' 'occupied')"; return 1; fi
- if [[ $mode != 1 ]] && ss -H -lun "( sport = :$hp )" | grep -q .; then err "UDP $hp: $(L '已被占用' 'occupied')"; return 1; fi
+ install_port_check "$mode" "$vp" "$hp" "${listen_addr:-0.0.0.0}" || return 1
  local domain="" cert="" key="" sni="" node_name
  node_name=$(choose_node_name) || { err "$(L '节点名称无效' 'Invalid node name')"; return 1; }
  if [[ $mode != 1 ]]; then
@@ -365,9 +360,12 @@ install_protocol() (
   [[ $sni =~ ^[a-zA-Z0-9.-]+$ ]] || { err "$(L '无效 SNI' 'Invalid SNI')"; return 1; }
  fi
  if [[ -z ${SKYBYTE_ASSET_DIR:-} ]];then
-  say '安装依赖...' 'Installing dependencies...'; apt_install curl openssl ca-certificates python3 iproute2 util-linux nftables procps || return 1
+  say '安装依赖...' 'Installing dependencies...'
+  apt_install curl openssl ca-certificates python3 iproute2 util-linux nftables procps || { err "$(L '依赖安装失败，尚未生成节点；请检查上方 APT 锁、软件源或网络错误。' 'Dependency installation failed before node generation; inspect the APT lock, repository or network error above.')";return 1; }
   require_cmd getent; getent ahosts github.com >/dev/null || { err "$(L 'GitHub DNS 解析失败，请先修复 DNS或使用离线包' 'GitHub DNS lookup failed; repair DNS or use offline assets')"; return 1; }
  else rescue_dependencies && require_cmd openssl || return 1;fi
+ [[ $mode == 2 ]] || install_reality_target "$sni" || return 1
+ install_download_check || return 1
  mkdir -p "$(dirname "$BIN")"
  if [[ $cert_mode == 2 ]]; then validate_certificate "$cert" "$key" "$domain" || return 1; fi
  if [[ $cert_mode == 1 ]]; then
@@ -1175,6 +1173,7 @@ PY
 
 # @include media.sh
 # @include reality.sh
+# @include install_checks.sh
 
 # @include warp.sh
 # @include relay.sh
