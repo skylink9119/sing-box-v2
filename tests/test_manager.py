@@ -1231,7 +1231,7 @@ startup_info"""
             self.assertEqual(result.stderr.count('SYSTEM_QUERY'),1)
 
     def test_startup_info_handles_unavailable_optional_commands(self):
-        result=self.shell('OS_RELEASE=/nonexistent; BIN=/nonexistent; systemctl(){ return 1; }; ip(){ return 1; }; systemd-detect-virt(){ return 1; }; startup_info')
+        result=self.shell('OS_RELEASE=/nonexistent; BIN=/nonexistent; startup_probe(){ return 124; }; startup_info')
         self.assertIn('OS: Unknown',result.stdout)
         self.assertIn('IPv4: Not detected',result.stdout)
         self.assertIn('sing-box: Not installed',result.stdout)
