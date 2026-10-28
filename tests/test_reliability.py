@@ -16,6 +16,23 @@ class ReliabilityTest(unittest.TestCase):
  add_user=manager.ManagerTest.add_user
  user_db=manager.ManagerTest.user_db
  save_user_db=manager.ManagerTest.save_user_db
+ @unittest.skipUnless(manager.SB,'real engine required')
+ def test_append_and_edit_accept_reusable_tcp_time_wait_ports(self):
+  for action in ('add','ports'):
+   with self.subTest(action=action):
+    cfg=self.configure('2' if action=='add' else '3')
+    before=(self.config/'config.json').read_bytes()
+    with socket.socket() as server:
+     server.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
+     server.bind(('127.0.0.1',0));server.listen();number=server.getsockname()[1]
+     with socket.create_connection(('127.0.0.1',number),timeout=2) as client:
+      peer,_=server.accept();peer.close();self.assertEqual(client.recv(1),b'')
+    stage=self.base/('edit-timewait-'+action);stage.mkdir()
+    args='add vless '+str(number)+' addons.mozilla.org' if action=='add' else 'ports '+str(number)+' '+str(next(i['listen_port'] for i in cfg['inbounds'] if i['type']=='hysteria2'))
+    self.shell('BIN='+shlex.quote(manager.SB)+';configuration_engine '+shlex.quote(str(stage))+' '+args)
+    self.assertEqual((self.config/'config.json').read_bytes(),before)
+    candidate=json.loads((stage/'0-config.json').read_text())
+    self.assertEqual(next(i['listen_port'] for i in candidate['inbounds'] if i['type']=='vless'),number)
  prepare_uninstall=manager.ManagerTest.prepare_uninstall
  def inactive(self):return 'systemctl(){ return 1; }; reality_install_check(){ :; }; '
  def install_mocks(self,extra=''):
@@ -70,9 +87,13 @@ download_binary(){ cp '''+shlex.quote(manager.SB)+''' "$2";chmod 755 "$2"; }
   self.configure();before=(self.config/'config.json').read_bytes()
   for command in ('configuration_apply ports 01 443','configuration_apply address "bad;hostname"','configuration_apply hy2 10 20 true none'):
    self.assertNotEqual(self.shell(self.inactive()+command,ok=False).returncode,0);self.assertEqual(before,(self.config/'config.json').read_bytes())
-  with socket.socket() as sock:
-   sock.bind(('127.0.0.1',0));sock.listen();p=sock.getsockname()[1]
-   self.assertNotEqual(self.shell(self.inactive()+'configuration_apply ports '+str(p)+' 443',ok=False).returncode,0)
+  # BSD/macOS permits a reusable wildcard bind alongside a specific-address
+  # listener. Supported Linux CI additionally exercises that specific address.
+  hosts=('0.0.0.0','127.0.0.1') if __import__('sys').platform.startswith('linux') else ('0.0.0.0',)
+  for host in hosts:
+   with socket.socket() as sock:
+    sock.bind((host,0));sock.listen();p=sock.getsockname()[1]
+    self.assertNotEqual(self.shell(self.inactive()+'configuration_apply ports '+str(p)+' 443',ok=False).returncode,0)
   self.assertEqual(before,(self.config/'config.json').read_bytes())
  def test_node_restart_failure_rolls_back_all_user_and_admin_files(self):
   self.user_setup();uid=self.add_user();before=(self.config/'config.json').read_bytes();u=(self.base/'users'/uid/'server.json').read_bytes()

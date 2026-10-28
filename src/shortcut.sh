@@ -28,13 +28,16 @@ def atomic(p,data,mode):
   os.replace(name,p)
  finally:
   if os.path.exists(name):os.unlink(name)
-if source.absolute()!=target.absolute():atomic(target,source.read_bytes(),0o700)
+if source.absolute()!=target.absolute():
+ data=source.read_bytes()
+ if not target.exists() or target.read_bytes()!=data or target.stat().st_mode&0o7777!=0o700:atomic(target,data,0o700)
 # lrzsz is still available with arguments. Nothing changes /usr/bin/sb.
 wrapper='#!/usr/bin/env bash\n'+marker+'set -e\n'
 wrapper+='if (( $# )); then\n if [[ -x '+shlex.quote(str(sender))+' ]]; then exec '+shlex.quote(str(sender))+' "$@"; fi\n'
 wrapper+=' printf "sb opens SKYBYTE Manager; original file sender unavailable\\n" >&2\n exit 2\nfi\n'
 wrapper+='exec bash '+shlex.quote(str(target))+'\n'
-atomic(shortcut,wrapper.encode(),0o755)
+data=wrapper.encode()
+if not shortcut.exists() or shortcut.read_bytes()!=data or shortcut.stat().st_mode&0o7777!=0o755:atomic(shortcut,data,0o755)
 PY_SHORTCUT
 }
 manager_shortcut_remove(){

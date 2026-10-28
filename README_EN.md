@@ -20,7 +20,7 @@
 
 ---
 
-# SKYBYTE Manager V2.8.11 — sing-box Installer and Ubuntu/Debian VPS Management
+# SKYBYTE Manager V2.8.12 — sing-box Installer and Ubuntu/Debian VPS Management
 
 **SKYBYTE Manager** is a Bash-based Ubuntu/Debian VPS manager with Simplified Chinese and English interfaces. It installs sing-box with **VLESS + Reality + Vision, Hysteria2 (HY2), or both protocols**, manages Cloudflare Argo tunnels and WARP routing, and provides per-user traffic quotas and expiry. Client exports support Shadowrocket, v2rayN, Clash Verge/Mihomo/OpenClash and sing-box JSON.
 
@@ -29,6 +29,8 @@ YouTube: [SKYBYTE9119](https://www.youtube.com/@SKYBYTE9119) · [中文](README.
 If you find this script helpful, please subscribe to my YouTube channel and support SKYBYTE's continued development!
 
 The main menu includes the SKYBYTE ASCII logo. Menus are bold green, credential links bold red, warnings bold yellow and errors bold red on ANSI terminals. Set `NO_COLOR=1` to disable colors. Every action uses `[y/N]`: type `y` or `Y` to confirm; Enter or `n/N` cancels.
+
+V2.8.12 improves menu response: batch startup service/interface queries, bound local probes and certificate commands, read the atomic account snapshot without waiting for the quota worker lock, skip unchanged shortcut writes, and fix remaining TCP TIME_WAIT false positives when adding protocols or editing ports. No additional background service. Forwarding resource use depends on cores, traffic and enabled components; inspect processes, memory and load in **d → 7**. See the [audit record](docs/AUDIT-2026-10-28.md).
 
 V2.8.11 adds **installation preflight (a → 7)**, automatic checks for new installs/Reality additions, and a short HTTPS install entry.
 
@@ -341,7 +343,7 @@ Restore retains current account policy/usage and current subscription tokens. HT
 
 ```bash
 python3 scripts/build.py --check
-python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.11
+python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.12
 ```
 
 Packaging includes only bootstrap.sh, install.sh, the full bundle, public rule catalog and SHA256SUMS, never runtime state or credentials.

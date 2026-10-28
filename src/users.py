@@ -213,6 +213,14 @@ def watch():
    worker.close()
 
 if action=='watch':watch();sys.exit(0)
+if action=='summary':
+ # The supervisor atomically replaces the ledger. This menu-only snapshot can
+ # read either complete generation without waiting on quota work or core stops.
+ d=read()
+ count=sum(not u.get('deleted') for u in d['users'])
+ running=sum(bool(u.get('running')) and eligible(u) for u in d['users'])
+ print(tr('账户：','Accounts: ')+f"{count}/{d['limit']}"+tr('；就绪：','; ready: ')+str(running))
+ sys.exit(0)
 with lock():
  if action=='init':
   limit=int(args[0]);require(1<=limit<=100)
@@ -325,10 +333,6 @@ with lock():
    if u.get('failure_reason'):print('  '+tr(*REASONS.get(u['failure_reason'],('原因未知，请诊断','Unknown reason; run diagnostics'))))
    if eligible(u) and not u.get('running'):print('  '+tr('计量服务尚未就绪；请检查用户服务状态','Metering service not ready; inspect user service status'))
   if color:print('\033[0m',end='')
- elif action=='summary':
-  count=sum(not u.get('deleted') for u in d['users'])
-  running=sum(bool(u.get('running')) and eligible(u) for u in d['users'])
-  print(tr('账户：','Accounts: ')+f"{count}/{d['limit']}"+tr('；就绪：','; ready: ')+str(running))
  elif action=='diagnose':
   for u in d['users']:
    if u.get('deleted') or (args and args[0] and args[0]!=u['id']):continue

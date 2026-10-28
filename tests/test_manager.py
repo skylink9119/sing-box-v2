@@ -1216,8 +1216,9 @@ apply_update 9.9.9"""
     def test_startup_info_uses_local_system_and_actual_service_state(self):
         code="""uname(){ case "$1" in -r) echo test-kernel;; -m) echo x86_64;; esac; }
 systemd-detect-virt(){ echo kvm; }
-ip(){ case "$*" in *-4*) echo '2: eth0 inet 192.0.2.10/24 scope global eth0';; *-6*) echo '2: eth0 inet6 2001:db8::10/64 scope global';; esac; }
-systemctl(){ [[ "$*" == 'is-active --quiet sing-box.service' ]]; }
+startup_probe(){ "$@"; }
+ip(){ printf '%s\\n' '2: eth0 inet 192.0.2.10/24 scope global eth0' '2: eth0 inet6 2001:db8::10/64 scope global'; }
+systemctl(){ echo SYSTEM_QUERY >&2; printf 'ActiveState=active\\nLoadState=loaded\\nId=sing-box.service\\n\\n'; }
 nginx(){ :; }
 curl(){ echo SHOULD_NOT_QUERY_NETWORK; return 1; }
 startup_info"""
@@ -1227,6 +1228,7 @@ startup_info"""
             for value in ['test-kernel','amd64','kvm','192.0.2.10/24','2001:db8::10/64','sing-box: '+running]:
                 self.assertIn(value,result.stdout)
             self.assertNotIn('SHOULD_NOT_QUERY_NETWORK',result.stdout)
+            self.assertEqual(result.stderr.count('SYSTEM_QUERY'),1)
 
     def test_startup_info_handles_unavailable_optional_commands(self):
         result=self.shell('OS_RELEASE=/nonexistent; BIN=/nonexistent; systemctl(){ return 1; }; ip(){ return 1; }; systemd-detect-virt(){ return 1; }; startup_info')

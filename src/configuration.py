@@ -47,6 +47,7 @@ if action=='ports':
   if inbound['type']=='hysteria2' and old_meta.get('hop') and old_meta['hop_start']<=value<=old_meta['hop_end']:raise ValueError('HY2 listener overlaps hopping range')
   family=socket.SOCK_STREAM if inbound['type']=='vless' else socket.SOCK_DGRAM
   with socket.socket(socket.AF_INET6 if ':' in inbound['listen'] else socket.AF_INET,family) as s:
+   if family==socket.SOCK_STREAM:s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
    if s.family==socket.AF_INET6:s.setsockopt(socket.IPPROTO_IPV6,socket.IPV6_V6ONLY,0)
    s.bind((inbound['listen'],value))
   inbound['listen_port']=value
@@ -104,6 +105,7 @@ elif action in ('add','remove'):
   family=socket.AF_INET6 if ':' in listen else socket.AF_INET
   sock=socket.socket(family,socket.SOCK_STREAM if protocol=='vless' else socket.SOCK_DGRAM)
   try:
+   if protocol=='vless':sock.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
    if family==socket.AF_INET6:sock.setsockopt(socket.IPPROTO_IPV6,socket.IPV6_V6ONLY,0)
    sock.bind(('::' if family==socket.AF_INET6 else '0.0.0.0',value))
   finally:sock.close()
@@ -134,6 +136,7 @@ elif action in ('add','remove'):
   for p,cfg,_,s in paths[1:]:
    user_listen=cfg['inbounds'][0]['listen']
    with socket.socket(socket.AF_INET6 if ':' in user_listen else socket.AF_INET,socket.SOCK_STREAM if protocol=='vless' else socket.SOCK_DGRAM) as sock:
+    if protocol=='vless':sock.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
     if sock.family==socket.AF_INET6:sock.setsockopt(socket.IPPROTO_IPV6,socket.IPV6_V6ONLY,0)
     sock.bind((user_listen,cfg['inbounds'][0]['listen_port']))
    inbound=copy.deepcopy(template);inbound['listen_port']=cfg['inbounds'][0]['listen_port'];inbound['listen']=cfg['inbounds'][0]['listen']

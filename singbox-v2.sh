@@ -8,7 +8,7 @@
 set -Eeuo pipefail
 umask 077
 SCRIPT_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
-MANAGER_VERSION=2.8.11
+MANAGER_VERSION=2.8.12
 CORE_RECOMMENDED=1.14.3
 BASE=/etc/singbox-v2
 CONF=/etc/sing-box/config.json
@@ -203,13 +203,16 @@ def atomic(p,data,mode):
   os.replace(name,p)
  finally:
   if os.path.exists(name):os.unlink(name)
-if source.absolute()!=target.absolute():atomic(target,source.read_bytes(),0o700)
+if source.absolute()!=target.absolute():
+ data=source.read_bytes()
+ if not target.exists() or target.read_bytes()!=data or target.stat().st_mode&0o7777!=0o700:atomic(target,data,0o700)
 # lrzsz is still available with arguments. Nothing changes /usr/bin/sb.
 wrapper='#!/usr/bin/env bash\n'+marker+'set -e\n'
 wrapper+='if (( $# )); then\n if [[ -x '+shlex.quote(str(sender))+' ]]; then exec '+shlex.quote(str(sender))+' "$@"; fi\n'
 wrapper+=' printf "sb opens SKYBYTE Manager; original file sender unavailable\\n" >&2\n exit 2\nfi\n'
 wrapper+='exec bash '+shlex.quote(str(target))+'\n'
-atomic(shortcut,wrapper.encode(),0o755)
+data=wrapper.encode()
+if not shortcut.exists() or shortcut.read_bytes()!=data or shortcut.stat().st_mode&0o7777!=0o755:atomic(shortcut,data,0o755)
 PY_SHORTCUT
 }
 manager_shortcut_remove(){
@@ -218,16 +221,28 @@ manager_shortcut_remove(){
 }
 need_root(){ [[ $EUID == 0 ]] || { err "$(L '需要 root 权限' 'Root privileges required')"; exit 1; }; }
 confirm(){ local answer; prompt_read "$1 [y/N]: " answer || return 1; [[ $answer =~ ^[[:space:]]*[Yy][[:space:]]*$ ]]; }
+startup_probe(){
+ # coreutils timeout is standard on supported Ubuntu/Debian systems. If absent,
+ # omit optional information rather than launch an unbounded startup query.
+ command -v timeout >/dev/null || return 124
+ timeout --kill-after=1s 2s "$@" 2>/dev/null
+}
 startup_service_info(){
- local label=$1 installed=$2 unit=$3 value
- if command -v systemctl >/dev/null && systemctl is-active --quiet "$unit" 2>/dev/null; then
-  value=$(L '运行中' 'Running')
- elif [[ $installed == true ]]; then value=$(L '已安装，未运行' 'Installed, inactive')
- else value=$(L '未安装' 'Not installed'); fi
+ local label=$1 installed=$2 unit=$3 value snapshot=${4:-} state
+ if (( $# < 4 )); then snapshot=$(startup_probe systemctl show --no-pager --property=Id,LoadState,ActiveState "$unit") || snapshot=''; fi
+ state=$(awk -v unit="$unit" 'BEGIN {RS="";FS="\n"} {id="";active="";for(i=1;i<=NF;i++){if($i=="Id="unit)id=unit;if($i~/^ActiveState=/)active=substr($i,13)}if(id==unit){print active;exit}}' <<< "$snapshot")
+ case $state in
+ active|reloading) value=$(L '运行中' 'Running');;
+ failed) value=$(L '运行失败' 'Failed');;
+ activating) value=$(L '启动中' 'Starting');;
+ deactivating) value=$(L '停止中' 'Stopping');;
+ inactive) if [[ $installed == true ]]; then value=$(L '已安装，未运行' 'Installed, inactive'); else value=$(L '未安装' 'Not installed'); fi;;
+ *) if [[ $installed == true ]]; then value=$(L '已安装，状态未知' 'Installed, status unknown'); else value=$(L '未安装' 'Not installed'); fi;;
+ esac
  printf '  %s: %s\n' "$label" "$value"
 }
 startup_info(){
- local os kernel arch virtual ipv4 ipv6 sb=false argo=false nginx=false users=false hp=false cert_info
+ local os kernel arch virtual ipv4 ipv6 addresses services sb=false argo=false nginx=false users=false hp=false cert_info
  # shellcheck disable=SC1090
  os=$( ( . "$OS_RELEASE"; printf '%s' "${PRETTY_NAME:-${ID:-}}" ) 2>/dev/null) || os=''
  os=${os:-$(L '未知' 'Unknown')}
@@ -235,28 +250,30 @@ startup_info(){
  arch=$(uname -m 2>/dev/null) || arch=$(L '未知' 'Unknown')
  case $arch in x86_64) arch=amd64;; aarch64) arch=arm64;; esac
  virtual=$(L '未知' 'Unknown')
- if command -v systemd-detect-virt >/dev/null; then virtual=$(systemd-detect-virt 2>/dev/null) || virtual=${virtual:-none}; fi
+ if command -v systemd-detect-virt >/dev/null; then virtual=$(startup_probe systemd-detect-virt) || virtual=${virtual:-$(L '未知' 'Unknown')}; fi
  ipv4=''; ipv6=''
  if command -v ip >/dev/null; then
-  ipv4=$(ip -o -4 addr show scope global 2>/dev/null | awk '{print $4}' | paste -sd ', ' -) || ipv4=''
-  ipv6=$(ip -o -6 addr show scope global 2>/dev/null | awk '{print $4}' | paste -sd ', ' -) || ipv6=''
+  addresses=$(startup_probe ip -o addr show scope global) || addresses=''
+  ipv4=$(awk '$3=="inet" {print $4}' <<< "$addresses" | paste -sd ', ' -)
+  ipv6=$(awk '$3=="inet6" {print $4}' <<< "$addresses" | paste -sd ', ' -)
  fi
  [[ ! -x $BIN ]] || sb=true
  if [[ -x $BASE/cloudflared ]] || command -v cloudflared >/dev/null; then argo=true; fi
  if command -v nginx >/dev/null; then nginx=true; fi
+ services=$(startup_probe systemctl show --no-pager --property=Id,LoadState,ActiveState sing-box.service skybyte-argo-tunnel.service nginx.service skybyte-haproxy.service skybyte-users.service) || services=''
  printf '%s\n----------------------------------------------\n' "$GREEN"
  say "脚本版本：SKYBYTE Manager v$MANAGER_VERSION" "Script version: SKYBYTE Manager v$MANAGER_VERSION"
  say '功能更新：受限网络部署（1 → 6）、独立 Argo、IPv6/NAT、WARP 双栈与流媒体地区线索识别' 'Features: restricted-network deployment (1 → 6), standalone Argo, IPv6/NAT, WARP dual-stack and media region clues'
  say '系统信息：' 'System information:'
  printf '  %s: %s\n' "$(L '操作系统' 'OS')" "$os" "$(L '内核' 'Kernel')" "$kernel" "$(L '处理器架构' 'Architecture')" "$arch" "$(L '虚拟化' 'Virtualization')" "$virtual"
  printf '  IPv4: %s\n  IPv6: %s\n' "${ipv4:-$(L '未检测到' 'Not detected')}" "${ipv6:-$(L '未检测到' 'Not detected')}"
- startup_service_info sing-box "$sb" sing-box.service
- startup_service_info Argo "$argo" skybyte-argo-tunnel.service
- startup_service_info Nginx "$nginx" nginx.service
+ startup_service_info sing-box "$sb" sing-box.service "$services"
+ startup_service_info Argo "$argo" skybyte-argo-tunnel.service "$services"
+ startup_service_info Nginx "$nginx" nginx.service "$services"
  [[ ! -d $BASE/haproxy ]] || hp=true
- startup_service_info 'HAProxy TCP' "$hp" skybyte-haproxy.service
+ startup_service_info 'HAProxy TCP' "$hp" skybyte-haproxy.service "$services"
  [[ ! -f $BASE/users.json ]] || users=true
- startup_service_info "$(L '用户配额服务' 'User quota supervisor')" "$users" skybyte-users.service
+ startup_service_info "$(L '用户配额服务' 'User quota supervisor')" "$users" skybyte-users.service "$services"
  say 'IP 为本机网卡地址，可能与公网出口不同。' 'IPs are local interface addresses; they may differ from public egress.'
  printf '%s\n' "$RESET"
  if [[ -f $CONF ]] && command -v openssl >/dev/null; then cert_info=$(certificate_info) || cert_info=$(L '证书检查失败' 'Certificate check failed'); [[ -z $cert_info ]] || warn "$cert_info"; fi
@@ -1595,6 +1612,14 @@ def watch():
    worker.close()
 
 if action=='watch':watch();sys.exit(0)
+if action=='summary':
+ # The supervisor atomically replaces the ledger. This menu-only snapshot can
+ # read either complete generation without waiting on quota work or core stops.
+ d=read()
+ count=sum(not u.get('deleted') for u in d['users'])
+ running=sum(bool(u.get('running')) and eligible(u) for u in d['users'])
+ print(tr('账户：','Accounts: ')+f"{count}/{d['limit']}"+tr('；就绪：','; ready: ')+str(running))
+ sys.exit(0)
 with lock():
  if action=='init':
   limit=int(args[0]);require(1<=limit<=100)
@@ -1707,10 +1732,6 @@ with lock():
    if u.get('failure_reason'):print('  '+tr(*REASONS.get(u['failure_reason'],('原因未知，请诊断','Unknown reason; run diagnostics'))))
    if eligible(u) and not u.get('running'):print('  '+tr('计量服务尚未就绪；请检查用户服务状态','Metering service not ready; inspect user service status'))
   if color:print('\033[0m',end='')
- elif action=='summary':
-  count=sum(not u.get('deleted') for u in d['users'])
-  running=sum(bool(u.get('running')) and eligible(u) for u in d['users'])
-  print(tr('账户：','Accounts: ')+f"{count}/{d['limit']}"+tr('；就绪：','; ready: ')+str(running))
  elif action=='diagnose':
   for u in d['users']:
    if u.get('deleted') or (args and args[0] and args[0]!=u['id']):continue
@@ -2494,7 +2515,9 @@ cfg=json.load(open(sys.argv[1]));en=sys.argv[2]=='en_US'
 for inbound in cfg.get('inbounds',[]):
  if inbound['type']!='hysteria2':continue
  path=inbound['tls']['certificate_path']
- r=subprocess.run(['openssl','x509','-in',path,'-noout','-enddate'],capture_output=True,text=True)
+ try:r=subprocess.run(['openssl','x509','-in',path,'-noout','-enddate'],capture_output=True,text=True,timeout=2)
+ except (OSError,subprocess.TimeoutExpired):
+  print('HY2 certificate check unavailable or timed out' if en else 'HY2 证书检查不可用或超时');continue
  if r.returncode:
   print('HY2 certificate unreadable' if en else 'HY2 证书无法读取');continue
  expiry=ssl.cert_time_to_seconds(r.stdout.strip().split('=',1)[1])
@@ -5677,6 +5700,7 @@ if action=='ports':
   if inbound['type']=='hysteria2' and old_meta.get('hop') and old_meta['hop_start']<=value<=old_meta['hop_end']:raise ValueError('HY2 listener overlaps hopping range')
   family=socket.SOCK_STREAM if inbound['type']=='vless' else socket.SOCK_DGRAM
   with socket.socket(socket.AF_INET6 if ':' in inbound['listen'] else socket.AF_INET,family) as s:
+   if family==socket.SOCK_STREAM:s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
    if s.family==socket.AF_INET6:s.setsockopt(socket.IPPROTO_IPV6,socket.IPV6_V6ONLY,0)
    s.bind((inbound['listen'],value))
   inbound['listen_port']=value
@@ -5734,6 +5758,7 @@ elif action in ('add','remove'):
   family=socket.AF_INET6 if ':' in listen else socket.AF_INET
   sock=socket.socket(family,socket.SOCK_STREAM if protocol=='vless' else socket.SOCK_DGRAM)
   try:
+   if protocol=='vless':sock.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
    if family==socket.AF_INET6:sock.setsockopt(socket.IPPROTO_IPV6,socket.IPV6_V6ONLY,0)
    sock.bind(('::' if family==socket.AF_INET6 else '0.0.0.0',value))
   finally:sock.close()
@@ -5764,6 +5789,7 @@ elif action in ('add','remove'):
   for p,cfg,_,s in paths[1:]:
    user_listen=cfg['inbounds'][0]['listen']
    with socket.socket(socket.AF_INET6 if ':' in user_listen else socket.AF_INET,socket.SOCK_STREAM if protocol=='vless' else socket.SOCK_DGRAM) as sock:
+    if protocol=='vless':sock.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
     if sock.family==socket.AF_INET6:sock.setsockopt(socket.IPPROTO_IPV6,socket.IPV6_V6ONLY,0)
     sock.bind((user_listen,cfg['inbounds'][0]['listen_port']))
    inbound=copy.deepcopy(template);inbound['listen_port']=cfg['inbounds'][0]['listen_port'];inbound['listen']=cfg['inbounds'][0]['listen']

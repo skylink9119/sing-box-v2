@@ -132,7 +132,9 @@ cfg=json.load(open(sys.argv[1]));en=sys.argv[2]=='en_US'
 for inbound in cfg.get('inbounds',[]):
  if inbound['type']!='hysteria2':continue
  path=inbound['tls']['certificate_path']
- r=subprocess.run(['openssl','x509','-in',path,'-noout','-enddate'],capture_output=True,text=True)
+ try:r=subprocess.run(['openssl','x509','-in',path,'-noout','-enddate'],capture_output=True,text=True,timeout=2)
+ except (OSError,subprocess.TimeoutExpired):
+  print('HY2 certificate check unavailable or timed out' if en else 'HY2 证书检查不可用或超时');continue
  if r.returncode:
   print('HY2 certificate unreadable' if en else 'HY2 证书无法读取');continue
  expiry=ssl.cert_time_to_seconds(r.stdout.strip().split('=',1)[1])
