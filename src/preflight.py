@@ -157,6 +157,9 @@ def ports(report, listen, tcp=None, udp=None):
         label = protocol + ' ' + str(number)
         try:
             with socket.socket(family, kind) as sock:
+                if kind == socket.SOCK_STREAM:
+                    # Match server binds: TCP TIME_WAIT is reusable, active listeners are not.
+                    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 if family == socket.AF_INET6:
                     sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
                 sock.bind((listen, number))

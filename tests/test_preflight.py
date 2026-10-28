@@ -67,6 +67,7 @@ class PreflightTests(unittest.TestCase):
 
     def test_tcp_occupied_does_not_imply_udp_occupied(self):
         with socket.socket() as listener:
+            listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             listener.bind(('127.0.0.1', 0));listener.listen()
             number = listener.getsockname()[1]
             report = checks.Report(True)
@@ -94,6 +95,20 @@ class PreflightTests(unittest.TestCase):
             checks.ports(report, '::', tcp=number)
         self.assertEqual(report.items[0][0], 'fail')
         self.assertIn('IPv4/IPv6', report.items[0][2])
+
+    def test_tcp_time_wait_does_not_block_a_reusable_server_port(self):
+        with socket.socket() as server:
+            server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            server.bind(('127.0.0.1', 0));server.listen()
+            number = server.getsockname()[1]
+            with socket.create_connection(('127.0.0.1', number), timeout=2) as client:
+                peer, _ = server.accept()
+                peer.close()
+                self.assertEqual(client.recv(1), b'')
+        report = checks.Report(True)
+        with mock.patch.object(checks.shutil, 'which', return_value=None):
+            checks.ports(report, '127.0.0.1', tcp=number)
+        self.assertEqual(report.items[0][0], 'pass', report.items)
 
     def test_firewall_probes_are_bounded_and_read_only(self):
         report = checks.Report(True)
