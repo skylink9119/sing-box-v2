@@ -59,6 +59,7 @@ sub_menu(){
    say '10. 住宅落地 / VPS 中转' '10. Residential landing / VPS relay'
    say '11. HAProxy TCP 透传' '11. HAProxy TCP passthrough'
    say '12. Reality 握手网站检测' '12. Reality handshake target checks'
+   say '13. IPv6 备用入口' '13. IPv6 backup entry'
    ;;
   5)
    say ' 1. 手动更新 sing-box' ' 1. Update sing-box'
@@ -109,6 +110,7 @@ sub_menu(){
   4:10) MAIN_ACTION=relay;;
   4:11) MAIN_ACTION=haproxy;;
   4:12) MAIN_ACTION=reality;;
+  4:13) MAIN_ACTION=ipv6;;
   5:1) MAIN_ACTION=update;;
   5:2) MAIN_ACTION=backup;;
   5:3) MAIN_ACTION=restore;;
@@ -131,6 +133,7 @@ dispatch_action(){
  service) service_manager "$@";; logs) report_output journalctl -u sing-box -n 80 --no-pager;; argo_status) report_output argo_status;;
  initialize) initialize_server;; firewall) firewall "$@";; audit) report_output firewall_audit;; bbr) bbr;; hop) hop "$@";; traffic) traffic "$@";;
  media) media_check "$@";; warp) warp_menu "$@";; relay) relay_menu "$@";; haproxy) haproxy_menu "$@";;
+ ipv6) ipv6_menu "$@";;
  reality) reality_menu "$@";;
  install_checks) installation_check_menu "$@";;
  rescue) rescue_menu "$@";;
@@ -176,6 +179,7 @@ navigation_action(){
   acme) run_submenu acme_menu;; online) run_submenu online_menu;;
   rescue) run_submenu rescue_menu;; warp) run_submenu warp_menu;;
   relay) run_submenu relay_menu;; haproxy) run_submenu haproxy_menu;;
+  ipv6) run_submenu ipv6_menu;;
   reality) run_submenu reality_menu;;
   install_checks) run_submenu installation_check_menu;;
   hop) run_submenu hop;; update) run_submenu core_versions;;

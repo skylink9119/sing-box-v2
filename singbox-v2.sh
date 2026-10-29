@@ -8,7 +8,7 @@
 set -Eeuo pipefail
 umask 077
 SCRIPT_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
-MANAGER_VERSION=2.8.15
+MANAGER_VERSION=2.8.16
 CORE_RECOMMENDED=1.14.3
 BASE=/etc/singbox-v2
 CONF=/etc/sing-box/config.json
@@ -712,7 +712,7 @@ exports() (
  check_owned || return
  if command -v flock >/dev/null; then exec 8>"$BASE/export.lock"; flock 8; fi
  python3 - "$META" "$BASE" "$CONF" "${LANGUAGE_CHOICE:-zh_CN}" <<'PY'
-import base64,json,os,sys,urllib.parse,subprocess,plistlib,uuid,re,tempfile
+import copy,ipaddress,base64,json,os,sys,urllib.parse,subprocess,plistlib,uuid,re,tempfile
 s=json.load(open(sys.argv[1]));base=sys.argv[2];ip=s['ip']
 en=sys.argv[4]=='en_US'
 def tr(zh,english): return english if en else zh
@@ -728,6 +728,7 @@ if 'hysteria2' in inbound:
  i=inbound['hysteria2'];s.update(hy2_password=i['users'][0]['password'],domain=i['tls']['server_name'],cert_path=i['tls']['certificate_path'])
 d=s.get('domain','');sni=s.get('sni','')
 vp=inbound.get('vless',{}).get('listen_port',443); hp=inbound.get('hysteria2',{}).get('listen_port',443)
+actual_vp,actual_hp=vp,hp
 export_ports=s.get('export_ports',{})
 vp=export_ports.get('vless',0) or vp;hp=export_ports.get('hysteria2',0) or hp
 assert type(vp) is int and type(hp) is int and 1<=vp<=65535 and 1<=hp<=65535
@@ -764,6 +765,17 @@ if os.path.isfile(argo_state):
   links.append('vless://{}@{}:443?{}#{}'.format(uid,host,urllib.parse.urlencode(query),urllib.parse.quote(argo_name,safe='')))
   link_names.append(argo_name)
  else:argo_note=tr('Argo 未注册连接，暂不导出旧隧道节点。','Argo is not registered; stale tunnel nodes are not exported.')
+backup=s.get('ipv6_backup')
+backup_links=[]
+if backup and inbound:
+ addr=str(ipaddress.IPv6Address(backup['address']))
+ if not ipaddress.ip_address(addr).is_global or any(i['listen']!='::' or i.get('ipv6_only') for i in inbound.values()):raise ValueError('Invalid IPv6 backup state')
+ for link,label,number in zip(links[:len(inbound)],link_names[:len(inbound)],([actual_vp] if mode=='1' else [actual_hp] if mode=='2' else [actual_vp,actual_hp])):
+  parsed=urllib.parse.urlsplit(link)
+  label+='-IPv6备用'
+  link=urllib.parse.urlunsplit((parsed.scheme,parsed.username+'@['+addr+']:'+str(number),parsed.path,parsed.query,urllib.parse.quote(label,safe='')))
+  backup_links.append((link,label))
+ for link,label in backup_links:links.append(link);link_names.append(label)
 def write(name,content):
  path=os.path.join(base,name)
  if os.path.islink(path):raise ValueError('Export symlink')
@@ -780,7 +792,7 @@ if not links:
  # A stopped standalone tunnel must never export an old address or direct fallback.
  for name in ('shadowrocket-native-nodes.txt','shadowrocket-native-subscription.txt'):write(name,'')
  write('outbounds.json',json.dumps({'outbounds':[]})+'\n')
- for name in ('sing-box-client.json','clash-verge.yaml','mihomo-proxies.yaml'):
+ for name in ('sing-box-client.json','sing-box-client-ipv6.json','clash-verge.yaml','mihomo-proxies.yaml'):
   path=os.path.join(base,name)
   if os.path.islink(path):raise ValueError('Export symlink')
   if os.path.isfile(path):os.remove(path)
@@ -834,11 +846,32 @@ if argo:
  proxy.append({'name':argo_name,'type':'vless','server':host,'port':443,'uuid':uid,'network':'ws',
                'tls':True,'servername':host,'skip-cert-verify':False,
                'ws-opts':{'path':path,'headers':{'Host':host}}})
+if backup and inbound:
+ for item in list(out):
+  if item['type'] not in inbound or item.get('transport'):continue
+  extra=copy.deepcopy(item);extra.update(tag=item['tag']+'-IPv6备用',server=addr,server_port=actual_vp if item['type']=='vless' else actual_hp)
+  # IPv4 REDIRECT hopping rules do not apply to the IPv6 backup entry.
+  extra.pop('server_ports',None);extra.pop('hop_interval',None);out.append(extra)
+ for item in list(proxy):
+  if item['type'] not in inbound or item.get('network')=='ws':continue
+  extra=copy.deepcopy(item);extra.update(name=item['name']+'-IPv6备用',server=addr,port=actual_vp if item['type']=='vless' else actual_hp)
+  extra.pop('ports',None);extra.pop('hop-interval',None);proxy.append(extra)
 write('outbounds.json',json.dumps({'outbounds':out},ensure_ascii=False,indent=2)+'\n')
 client_config={'inbounds':[{'type':'mixed','tag':'mixed-in','listen':'127.0.0.1','listen_port':1080}],
                'outbounds':out+[{'type':'direct','tag':'direct'}], 'route':{'final':out[0]['tag']}}
 client_json=json.dumps(client_config,ensure_ascii=False,indent=2)+'\n'
 write('sing-box-client.json',client_json)
+if backup and inbound:
+ backup_config=copy.deepcopy(client_config)
+ backup_out=[o for o in out if o['tag'].endswith('-IPv6备用')]
+ backup_config['outbounds']=backup_out+[{'type':'direct','tag':'direct'}]
+ backup_config['route']['final']=backup_out[0]['tag']
+ write('sing-box-client-ipv6.json',json.dumps(backup_config,ensure_ascii=False,indent=2)+'\n')
+else:
+ stale=os.path.join(base,'sing-box-client-ipv6.json')
+ if os.path.islink(stale):raise ValueError('Export symlink')
+ if os.path.isfile(stale):os.remove(stale)
+
 trust_files=[]
 # Remove obsolete public trust exports, so a changed certificate cannot leave stale instructions.
 for name in ['hy2-client-ca.pem','hy2-client-ca.cer','hy2-client-ca.mobileconfig']:
@@ -886,6 +919,7 @@ clash_config.update({'mixed-port':7890,'allow-lan':False,'mode':'rule',
 clash_yaml='\n'.join(yaml_dump(clash_config))+'\n'
 write('clash-verge.yaml',clash_yaml)
 notes=[]
+if backup:notes.append(tr('IPv6 备用保留原凭据、SNI 和实际端口；客户端需要 IPv6，需放行云防火墙 IPv6 TCP/UDP 端口。IPv6 备用不使用 IPv4 端口跳跃。链接含凭据，请保密。','IPv6 backup keeps credentials, SNI and actual ports. Requires client IPv6 and provider IPv6 TCP/UDP rules. IPv4 hopping is not applied. Keep credential links private.'))
 if argo_note:notes.append(argo_note)
 if argo:
  notes.append(tr('Argo 使用 VLESS+WS+TLS，不是 Reality/Vision 或 HY2。临时隧道重启后请重新导入新地址。','Argo uses VLESS+WS+TLS, not Reality/Vision or HY2. Re-import changed Quick Tunnel hostnames after restarting.'))
@@ -928,6 +962,7 @@ for link,name in zip(rocket_links,link_names):
  sensitive(link)
  print(separator)
 print(separator)
+if backup:info(tr('IPv6 备用专用 JSON：','IPv6-only backup client JSON: ')+os.path.join(base,'sing-box-client-ipv6.json'))
 info(tr('兼容导出和证书说明：','Legacy exports and certificate notes:'))
 for name in ['nodes.txt','subscription-base64.txt','mihomo-proxies.yaml','subscription-notes.txt']+trust_files:info('  '+os.path.join(base,name))
 
@@ -1559,7 +1594,7 @@ def config_check(path,exe=None):
  r=subprocess.run([exe or binary,'check','-c',str(path)],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=30)
  if r.returncode:error('sing-box 配置检查失败（需支持 Clash API）','sing-box config check failed (Clash API required)')
 
-GENERATED={'server.json','state.json','certificate.crt','private.key','nodes.txt','subscription-base64.txt','v2rayn-nodes.txt','v2rayn-subscription.txt','shadowrocket-nodes.txt','shadowrocket-subscription.txt','shadowrocket-native-nodes.txt','shadowrocket-native-subscription.txt','sing-box-client.json','clash-verge.yaml','outbounds.json','mihomo-proxies.yaml','subscription-notes.txt','hy2-client-ca.pem','hy2-client-ca.cer','hy2-client-ca.mobileconfig','export.lock','core.log'}
+GENERATED={'server.json','state.json','certificate.crt','private.key','nodes.txt','subscription-base64.txt','v2rayn-nodes.txt','v2rayn-subscription.txt','shadowrocket-nodes.txt','shadowrocket-subscription.txt','shadowrocket-native-nodes.txt','shadowrocket-native-subscription.txt','sing-box-client.json','sing-box-client-ipv6.json','clash-verge.yaml','outbounds.json','mihomo-proxies.yaml','subscription-notes.txt','hy2-client-ca.pem','hy2-client-ca.cer','hy2-client-ca.mobileconfig','export.lock','core.log'}
 def cleanup():
  for u in read()['users']:
   p=userdir(u['id'])
@@ -2477,7 +2512,7 @@ PY
  # Remove explicit managed files only; never recursively delete user configuration directories.
  rm -f -- "$unit" "$SYSTEMD_DIR/singbox-v2-update.service" "$SYSTEMD_DIR/singbox-v2-update.timer" "$SYSTEMD_DIR/singbox-v2-hop.service" "$BIN" "$CONF"
  while IFS= read -r file; do if [[ -n $file ]]; then rm -f -- "$file"; fi; done <<<"$managed_certs"
- for file in state.json language.conf hop.nft hop-iptables.sh core-version.json warp-rules.json warp-rules.previous.json nodes.txt subscription-base64.txt v2rayn-nodes.txt v2rayn-subscription.txt shadowrocket-nodes.txt shadowrocket-subscription.txt shadowrocket-native-nodes.txt shadowrocket-native-subscription.txt sing-box-client.json clash-verge.yaml outbounds.json mihomo-proxies.yaml subscription-notes.txt hy2-client-ca.pem hy2-client-ca.cer hy2-client-ca.mobileconfig; do rm -f -- "$BASE/$file"; done
+ for file in state.json language.conf hop.nft hop-iptables.sh core-version.json warp-rules.json warp-rules.previous.json nodes.txt subscription-base64.txt v2rayn-nodes.txt v2rayn-subscription.txt shadowrocket-nodes.txt shadowrocket-subscription.txt shadowrocket-native-nodes.txt shadowrocket-native-subscription.txt sing-box-client.json sing-box-client-ipv6.json clash-verge.yaml outbounds.json mihomo-proxies.yaml subscription-notes.txt hy2-client-ca.pem hy2-client-ca.cer hy2-client-ca.mobileconfig; do rm -f -- "$BASE/$file"; done
  # Remove executable copies only when they are identifiable manager scripts.
  manager_shortcut_remove || return 1
  for file in "$MANAGER_BIN" "$MANAGER_LIB"; do
@@ -5394,7 +5429,7 @@ if s['cert_mode']=='1':
    s['cert_path']=i['tls']['certificate_path'];s['managed_certificates']=[i['tls']['certificate_path'],i['tls']['key_path']]
 (stage/'config/config.json').write_text(json.dumps(cfg,indent=2));(stage/'state.json').write_text(json.dumps(s,indent=2))
 pairs.extend([(stage/'config/config.json',conf,0o600),(stage/'state.json',meta,0o600)])
-for name in ('nodes.txt','subscription-base64.txt','v2rayn-nodes.txt','v2rayn-subscription.txt','shadowrocket-nodes.txt','shadowrocket-subscription.txt','shadowrocket-native-nodes.txt','shadowrocket-native-subscription.txt','sing-box-client.json','clash-verge.yaml','outbounds.json','mihomo-proxies.yaml','subscription-notes.txt','hy2-client-ca.pem','hy2-client-ca.cer','hy2-client-ca.mobileconfig'):
+for name in ('nodes.txt','subscription-base64.txt','v2rayn-nodes.txt','v2rayn-subscription.txt','shadowrocket-nodes.txt','shadowrocket-subscription.txt','shadowrocket-native-nodes.txt','shadowrocket-native-subscription.txt','sing-box-client.json','sing-box-client-ipv6.json','clash-verge.yaml','outbounds.json','mihomo-proxies.yaml','subscription-notes.txt','hy2-client-ca.pem','hy2-client-ca.cer','hy2-client-ca.mobileconfig'):
  if (stage/name).exists():pairs.append((stage/name,base/name,0o600))
 created=[];journal=stage/'created.json';journal.write_text('[]')
 for src,dest,mode in pairs:
@@ -5986,8 +6021,27 @@ def check_admin_port(value,protocol,adding=False):
     if load(p)['port']==value:raise ValueError('Port reserved by a managed TCP service')
 
 # Handshake-only edits retain the unrelated HY2 listener and hopping rules.
-if action!='reality':meta['hop']=False
-if action=='ports':
+if action not in ('reality','ipv6'):meta['hop']=False
+if action=='ipv6':
+ value=args[0]
+ if value!='off':
+  ip=ipaddress.IPv6Address(value)
+  if not ip.is_global or ip.is_multicast or ip.ipv4_mapped or ip.is_reserved:raise ValueError('Public native IPv6 required')
+  if not main['inbounds']:raise ValueError('No direct node installed / 尚未安装直连节点')
+ for _,cfg,_,s in paths:
+  if value=='off':
+   backup=s.pop('ipv6_backup',None)
+   if backup:
+    for i in cfg['inbounds']:i['listen']=backup['previous_listen']
+    s['listen']=backup['previous_listen']
+  else:
+   addresses={i['listen'] for i in cfg['inbounds']}
+   if len(addresses)!=1 or not addresses <= {'::','0.0.0.0'} or any(i.get('ipv6_only') for i in cfg['inbounds']):raise ValueError('Public dual-stack compatible listeners required')
+   previous=s.get('ipv6_backup',{}).get('previous_listen',next(iter(addresses)))
+   if previous not in ('::','0.0.0.0'):raise ValueError('Invalid saved listener')
+   s['ipv6_backup']={'address':str(ip),'previous_listen':previous};s['listen']='::'
+   for i in cfg['inbounds']:i['listen']='::'
+elif action=='ports':
  vp,hp=map(port,args)
  for inbound in main['inbounds']:
   value=vp if inbound['type']=='vless' else hp
@@ -6169,8 +6223,8 @@ PY_INITIAL_ADMIN
  if systemctl is-active --quiet sing-box.service;then admin=true;fi
  if [[ -f $BASE/users.json ]] && systemctl is-active --quiet skybyte-users.service;then users=true;users_stop || { rm -rf "$stage";return 1; };fi
  if [[ -f $BASE/argo-state.json ]] && systemctl is-active --quiet skybyte-argo-node.service;then argo=true;fi
- if [[ $1 != reality && $(state hop) == True ]];then hop_active=true;hop_disable || { warp_resume "$admin" "$argo" "$users" || :;rm -rf "$stage";return 1; };fi
- if ! configuration_commit "$stage" "$1" || ! configuration_resume "$first_admin" "$admin" "$argo" "$users" || { [[ $1 == reality ]] && ! configuration_export_all; };then
+ if [[ $1 != reality && $1 != ipv6 && $(state hop) == True ]];then hop_active=true;hop_disable || { warp_resume "$admin" "$argo" "$users" || :;rm -rf "$stage";return 1; };fi
+ if ! configuration_commit "$stage" "$1" || ! configuration_resume "$first_admin" "$admin" "$argo" "$users" || { [[ $1 == ipv6 && ${2:-} != off && $admin == true ]] && ! ipv6_engine ready; } || { [[ $1 == reality || $1 == ipv6 ]] && ! configuration_export_all; };then
   [[ $users != true ]] || users_stop || :
   [[ $first_admin != true ]] || systemctl disable --now sing-box.service || :
   configuration_rollback "$stage" || :
@@ -6183,7 +6237,7 @@ PY_INITIAL_ADMIN
  if [[ $1 != reality ]] && command -v ufw >/dev/null && LC_ALL=C ufw status | grep -q '^Status: active';then
   firewall_allow_protocols || return 1
  fi
- if [[ $1 != reality ]];then configuration_export_all || return 1;fi
+ if [[ $1 != reality && $1 != ipv6 ]];then configuration_export_all || return 1;fi
  ok "$(L "配置已更新；备份：$snap" "Configuration updated; backup: $snap")"
  if [[ $hop_active == true ]];then warn "$(L '跳跃已关闭，请按新监听端口重新开启；旧 UFW 规则保留。' 'Hopping disabled; re-enable for the new listener. Old UFW rules remain.')";fi
 }
@@ -6196,9 +6250,9 @@ configuration_commit(){
 import json,os,pathlib,shutil,sys,tempfile
 stage=pathlib.Path(sys.argv[1]);plan=json.loads((stage/'plan.json').read_text());rollback=[]
 targets=[value for _,value in plan]
-if sys.argv[2]=='reality':
+if sys.argv[2] in ('reality','ipv6'):
  # Include exports in the same rollback journal before any live files change.
- names=('nodes.txt','subscription-base64.txt','v2rayn-nodes.txt','v2rayn-subscription.txt','shadowrocket-nodes.txt','shadowrocket-subscription.txt','shadowrocket-native-nodes.txt','shadowrocket-native-subscription.txt','outbounds.json','sing-box-client.json','clash-verge.yaml','mihomo-proxies.yaml','subscription-notes.txt','hy2-client-ca.pem','hy2-client-ca.cer','hy2-client-ca.mobileconfig')
+ names=('nodes.txt','subscription-base64.txt','v2rayn-nodes.txt','v2rayn-subscription.txt','shadowrocket-nodes.txt','shadowrocket-subscription.txt','shadowrocket-native-nodes.txt','shadowrocket-native-subscription.txt','outbounds.json','sing-box-client.json','sing-box-client-ipv6.json','clash-verge.yaml','mihomo-proxies.yaml','subscription-notes.txt','hy2-client-ca.pem','hy2-client-ca.cer','hy2-client-ca.mobileconfig')
  for _,value in plan:
   p=pathlib.Path(value)
   if p.name=='state.json':targets.extend(str(p.parent/name) for name in names)
@@ -6351,6 +6405,213 @@ PY_ALLOW
   if [[ $(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["method"])' "$BASE/acme-state.json") == http ]];then ufw allow 80/tcp || return 1;fi
  fi
  users_firewall_allow
+}
+# shellcheck shell=bash
+ipv6_engine(){
+ python3 - sing-box "$BASE" "$CONF" "$@" <<'PY_IPV6'
+"""Native IPv6 backup checks. No downloads, routing changes, or credential output."""
+import ipaddress
+import json
+import pathlib
+import socket
+import subprocess
+import time
+
+
+def public_ipv6(value):
+    if isinstance(value, str) and "%" in value:
+        raise ValueError("Scoped IPv6 is not a public entry address")
+    try:
+        address = ipaddress.IPv6Address(value)
+    except (ValueError, TypeError):
+        raise ValueError('请输入公网 IPv6，不含方括号、端口或网卡后缀 / Enter a public IPv6 without brackets, port or scope') from None
+    if not address.is_global or address.is_multicast or address.ipv4_mapped or address.is_reserved:
+        raise ValueError('需要原生公网 IPv6，不能使用回环、内网或映射地址 / Native public IPv6 required')
+    return str(address)
+
+
+def ipv6_candidates():
+    result = subprocess.run(['ip', '-j', '-6', 'addr', 'show', 'scope', 'global'],
+                            capture_output=True, text=True, check=True, timeout=4)
+    candidates = []
+    for interface in json.loads(result.stdout):
+        if 'UP' not in interface.get('flags', []):
+            continue
+        for item in interface.get('addr_info', []):
+            if item.get('family') != 'inet6' or item.get('scope') != 'global':
+                continue
+            flags = set(item.get('flags', []))
+            if flags & {'tentative', 'dadfailed', 'deprecated', 'temporary'} or any(item.get(k) for k in ('tentative', 'dadfailed', 'deprecated', 'temporary')) or item.get('preferred_life_time') == 0:
+                continue
+            try:
+                value = public_ipv6(item['local'])
+            except ValueError:
+                continue
+            if value not in candidates:
+                candidates.append(value)
+    return candidates
+
+
+def ipv6_local(value):
+    value = public_ipv6(value)
+    if value not in ipv6_candidates():
+        raise ValueError('IPv6 未配置在本机可用网卡，或地址尚未就绪 / IPv6 is not assigned and ready on this VPS')
+    result = subprocess.run(['ip', '-6', 'route', 'get', '2606:4700:4700::1111', 'from', value],
+                            capture_output=True, text=True, check=True, timeout=3)
+    if not result.stdout.strip() or any(word in result.stdout.split() for word in ('unreachable', 'prohibit', 'blackhole')):
+        raise ValueError('没有可用的 IPv6 路由 / No usable IPv6 route')
+    with socket.socket(socket.AF_INET6, socket.SOCK_DGRAM) as probe:
+        probe.bind((value, 0))
+    return value
+
+
+def ipv6_firewall():
+    """UFW must manage IPv6 when active; never silently edit/reload SSH policy."""
+    import os
+    import shutil
+    if not shutil.which('ufw'):
+        print('提示：未安装 UFW，请安装防火墙并放行 SSH 和节点端口 / Install a firewall; allow SSH and node ports')
+        return
+    result = subprocess.run(['ufw', 'status'], capture_output=True, text=True, timeout=5,
+                            env={**os.environ, 'LC_ALL': 'C'})
+    if result.returncode:
+        raise ValueError('无法读取 UFW 状态 / Cannot inspect UFW')
+    if 'Status: active' not in result.stdout:
+        print('提示：UFW 未启用，请配置防火墙 / UFW is inactive; configure your firewall')
+        return
+    import re
+    if not re.search(r'^IPV6\s*=\s*["\x27]?yes["\x27]?\s*(?:#.*)?$', pathlib.Path('/etc/default/ufw').read_text(), re.M | re.I):
+        raise ValueError('UFW 已启用但未管理 IPv6；请先设置 IPV6=yes 并核对 SSH 的 IPv6 放行规则 / Active UFW does not manage IPv6; enable IPV6=yes and verify IPv6 SSH rules first')
+
+
+def ipv6_bind_check(listeners):
+    for item in listeners:
+        if item['listen'] not in ('0.0.0.0', '::') or item.get('ipv6_only'):
+            raise ValueError('仅支持公网通配监听，拒绝更改回环或 IPv6-only 节点 / Public wildcard listeners required; loopback/IPv6-only nodes are preserved')
+        if item['listen'] == '::':
+            continue
+        transport = socket.SOCK_DGRAM if item['protocol'] == 'udp' else socket.SOCK_STREAM
+        with socket.socket(socket.AF_INET6, transport) as probe:
+            # The current IPv4 listener remains running during preflight.
+            probe.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+            probe.bind(('::', item['port']))
+
+
+def ipv6_listeners(project, root, conf=None, users=True):
+    root = pathlib.Path(root)
+    state = json.loads((root / 'state.json').read_text())
+    if project == 'xray':
+        return [{'listen': n['listen'], 'port': n['port'], 'protocol': 'tcp'}
+                for n in state['nodes'].values() if not n.get('cdn')]
+    configs = [pathlib.Path(conf)]
+    ledger = root / 'users.json'
+    if users and ledger.exists():
+        for user in json.loads(ledger.read_text())['users']:
+            if not user.get('deleted'):
+                identity = user['id']
+                import re
+                if not re.fullmatch('[0-9a-f]{16}', identity):
+                    raise ValueError('Invalid managed user ID')
+                configs.append(root / 'users' / identity / 'server.json')
+    listeners = []
+    for filename in configs:
+        for inbound in json.loads(filename.read_text())['inbounds']:
+            if inbound['type'] in ('vless', 'hysteria2'):
+                listeners.append({'listen': inbound['listen'], 'port': inbound['listen_port'],
+                                  'protocol': 'udp' if inbound['type'] == 'hysteria2' else 'tcp',
+                                  'ipv6_only': inbound.get('ipv6_only', False)})
+    return listeners
+
+
+def ipv6_ready(listeners):
+    """Local TCP dual-stack and UDP6 listener checks; not a public ingress test."""
+    deadline = time.monotonic() + 5
+    while True:
+        try:
+            for item in listeners:
+                if item['protocol'] == 'tcp':
+                    for host in ('127.0.0.1', '::1'):
+                        with socket.create_connection((host, item['port']), timeout=.3):
+                            pass
+                else:
+                    result = subprocess.run(['ss', '-H', '-lnu6'], capture_output=True, text=True, check=True, timeout=2)
+                    endpoints = [line.split()[3] for line in result.stdout.splitlines() if len(line.split()) > 4]
+                    if not any(endpoint.rsplit(':', 1)[-1] == str(item['port']) and endpoint.rsplit(':', 1)[0] in ('*', '[::]', '::') for endpoint in endpoints):
+                        raise ValueError('IPv6 UDP listener missing')
+            return
+        except (OSError, ValueError, subprocess.SubprocessError):
+            if time.monotonic() >= deadline:
+                raise ValueError('双栈监听检查失败；恢复原配置 / Dual-stack listener check failed; restoring the previous configuration') from None
+            time.sleep(.2)
+
+
+def ipv6_cli(project, root, conf, action, value=''):
+    if action == 'detect':
+        values = ipv6_candidates()
+        if not values:
+            raise ValueError('VPS 未发现可用的原生公网 IPv6；请先向服务商开通 / No native public IPv6; provision it with your VPS provider first')
+        print('\n'.join(values))
+    elif action == 'check':
+        ipv6_local(value)
+        listeners = ipv6_listeners(project, root, conf)
+        if not listeners:
+            raise ValueError('没有可用的直连节点；Argo/CDN 节点保持不变 / No direct nodes; Argo/CDN nodes are preserved')
+        ipv6_bind_check(listeners)
+        ipv6_firewall()
+    elif action == 'ready':
+        ipv6_ready(ipv6_listeners(project, root, conf, users=False))
+    elif action == 'status':
+        state = json.loads((pathlib.Path(root) / 'state.json').read_text())
+        states = list(state['nodes'].values()) if project == 'xray' else [state]
+        for node in states:
+            backup = node.get('ipv6_backup')
+            print(node.get('name', node.get('node_name', 'SKYBYTE')) + ': ' +
+                  ('IPv6 备用已配置 / IPv6 backup configured: ' + backup['address'] if backup else '未配置 IPv6 备用 / IPv6 backup not configured'))
+        print('客户端网络也必须支持 IPv6；本机检查不等于公网可达。请放行云防火墙的实际 IPv6 TCP/UDP 端口。\nClient IPv6 is required; local checks do not prove public reachability. Allow the actual IPv6 TCP/UDP ports in your provider firewall.')
+    else:
+        raise ValueError('Invalid IPv6 action')
+import sys
+try:ipv6_cli(*sys.argv[1:])
+except (ValueError,OSError,KeyError,subprocess.SubprocessError) as error:
+ print(str(error),file=sys.stderr);sys.exit(1)
+PY_IPV6
+}
+ipv6_menu(){
+ local choice candidates selected
+ if [[ $# == 0 || $1 == --menu ]];then
+  prompt_options 'IPv6 备用入口
+1. 查看 IPv6 备用状态
+2. 检测并启用 IPv6 备用入口
+3. 移除 IPv6 备用入口（保留原节点）
+0. 返回' 'IPv6 backup entry
+1. Show IPv6 backup status
+2. Detect and enable IPv6 backup
+3. Remove IPv6 backup (keep original nodes)
+0. Back'
+  [[ ${1:-} != --menu ]] || return 0
+  prompt_read '> ' choice || return 0
+ else choice=$1;fi
+ configuration_guard && users_guard || return 1
+ case $choice in
+  1) report_output ipv6_engine status;;
+  2)
+   candidates=$(ipv6_engine detect) || return 1
+   say '本机可用公网 IPv6：' 'Available native IPv6:'
+   printf '%s\n' "$candidates"
+   prompt_read "$(L '备用 IPv6（回车使用第一个）：' 'Backup IPv6 (Enter uses first): ')" selected || return 0
+   selected=${selected:-${candidates%%$'\n'*}}
+   ipv6_engine check "$selected" || return 1
+   warn "$(L '保留原地址、UUID、密钥、端口和 SNI，主节点及受限用户节点启用双栈并额外导出 IPv6 备用节点；Argo 保持不变。客户端网络必须支持 IPv6，请放行云防火墙的实际 IPv6 TCP/UDP 端口。节点参数及链接保存在当前 VPS，请勿公开。' 'Keeps original addresses, UUIDs, keys, ports and SNI. Administrator and quota-managed nodes gain dual-stack IPv6 backups; Argo is preserved. Client IPv6 and provider IPv6 TCP/UDP rules are required. Exports remain private on this VPS.')"
+   confirm "$(L '启用 IPv6 备用入口并重载正在运行的节点？' 'Enable IPv6 backup and reload running nodes?')" || return 0
+   configuration_apply ipv6 "$selected" || return 1
+   report_output ipv6_engine status
+   say '重新导入节点后选择“IPv6备用”。已验证运行中主节点的本地监听；公网连通请从有 IPv6 的客户端测试。停止的服务保持停止。' 'Re-import and select the IPv6 backup node. Running administrator listeners checked locally; test public ingress from an IPv6 client. Stopped services remain stopped.';;
+  3)
+   confirm "$(L '移除 IPv6 备用链接并恢复启用前监听？原节点凭据保持不变。' 'Remove IPv6 backup links and restore previous listeners, keeping credentials?')" || return 0
+   configuration_apply ipv6 off || return 1
+   report_output ipv6_engine status;;
+  0) return 0;;*) return 1;;
+ esac
 }
 
 acme_guard(){
@@ -6929,6 +7190,7 @@ sub_menu(){
    say '10. 住宅落地 / VPS 中转' '10. Residential landing / VPS relay'
    say '11. HAProxy TCP 透传' '11. HAProxy TCP passthrough'
    say '12. Reality 握手网站检测' '12. Reality handshake target checks'
+   say '13. IPv6 备用入口' '13. IPv6 backup entry'
    ;;
   5)
    say ' 1. 手动更新 sing-box' ' 1. Update sing-box'
@@ -6979,6 +7241,7 @@ sub_menu(){
   4:10) MAIN_ACTION=relay;;
   4:11) MAIN_ACTION=haproxy;;
   4:12) MAIN_ACTION=reality;;
+  4:13) MAIN_ACTION=ipv6;;
   5:1) MAIN_ACTION=update;;
   5:2) MAIN_ACTION=backup;;
   5:3) MAIN_ACTION=restore;;
@@ -7001,6 +7264,7 @@ dispatch_action(){
  service) service_manager "$@";; logs) report_output journalctl -u sing-box -n 80 --no-pager;; argo_status) report_output argo_status;;
  initialize) initialize_server;; firewall) firewall "$@";; audit) report_output firewall_audit;; bbr) bbr;; hop) hop "$@";; traffic) traffic "$@";;
  media) media_check "$@";; warp) warp_menu "$@";; relay) relay_menu "$@";; haproxy) haproxy_menu "$@";;
+ ipv6) ipv6_menu "$@";;
  reality) reality_menu "$@";;
  install_checks) installation_check_menu "$@";;
  rescue) rescue_menu "$@";;
@@ -7046,6 +7310,7 @@ navigation_action(){
   acme) run_submenu acme_menu;; online) run_submenu online_menu;;
   rescue) run_submenu rescue_menu;; warp) run_submenu warp_menu;;
   relay) run_submenu relay_menu;; haproxy) run_submenu haproxy_menu;;
+  ipv6) run_submenu ipv6_menu;;
   reality) run_submenu reality_menu;;
   install_checks) run_submenu installation_check_menu;;
   hop) run_submenu hop;; update) run_submenu core_versions;;

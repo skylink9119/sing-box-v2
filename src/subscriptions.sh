@@ -8,7 +8,7 @@ exports() (
  check_owned || return
  if command -v flock >/dev/null; then exec 8>"$BASE/export.lock"; flock 8; fi
  python3 - "$META" "$BASE" "$CONF" "${LANGUAGE_CHOICE:-zh_CN}" <<'PY'
-import base64,json,os,sys,urllib.parse,subprocess,plistlib,uuid,re,tempfile
+import copy,ipaddress,base64,json,os,sys,urllib.parse,subprocess,plistlib,uuid,re,tempfile
 s=json.load(open(sys.argv[1]));base=sys.argv[2];ip=s['ip']
 en=sys.argv[4]=='en_US'
 def tr(zh,english): return english if en else zh
@@ -24,6 +24,7 @@ if 'hysteria2' in inbound:
  i=inbound['hysteria2'];s.update(hy2_password=i['users'][0]['password'],domain=i['tls']['server_name'],cert_path=i['tls']['certificate_path'])
 d=s.get('domain','');sni=s.get('sni','')
 vp=inbound.get('vless',{}).get('listen_port',443); hp=inbound.get('hysteria2',{}).get('listen_port',443)
+actual_vp,actual_hp=vp,hp
 export_ports=s.get('export_ports',{})
 vp=export_ports.get('vless',0) or vp;hp=export_ports.get('hysteria2',0) or hp
 assert type(vp) is int and type(hp) is int and 1<=vp<=65535 and 1<=hp<=65535
@@ -60,6 +61,17 @@ if os.path.isfile(argo_state):
   links.append('vless://{}@{}:443?{}#{}'.format(uid,host,urllib.parse.urlencode(query),urllib.parse.quote(argo_name,safe='')))
   link_names.append(argo_name)
  else:argo_note=tr('Argo 未注册连接，暂不导出旧隧道节点。','Argo is not registered; stale tunnel nodes are not exported.')
+backup=s.get('ipv6_backup')
+backup_links=[]
+if backup and inbound:
+ addr=str(ipaddress.IPv6Address(backup['address']))
+ if not ipaddress.ip_address(addr).is_global or any(i['listen']!='::' or i.get('ipv6_only') for i in inbound.values()):raise ValueError('Invalid IPv6 backup state')
+ for link,label,number in zip(links[:len(inbound)],link_names[:len(inbound)],([actual_vp] if mode=='1' else [actual_hp] if mode=='2' else [actual_vp,actual_hp])):
+  parsed=urllib.parse.urlsplit(link)
+  label+='-IPv6备用'
+  link=urllib.parse.urlunsplit((parsed.scheme,parsed.username+'@['+addr+']:'+str(number),parsed.path,parsed.query,urllib.parse.quote(label,safe='')))
+  backup_links.append((link,label))
+ for link,label in backup_links:links.append(link);link_names.append(label)
 def write(name,content):
  path=os.path.join(base,name)
  if os.path.islink(path):raise ValueError('Export symlink')
@@ -76,7 +88,7 @@ if not links:
  # A stopped standalone tunnel must never export an old address or direct fallback.
  for name in ('shadowrocket-native-nodes.txt','shadowrocket-native-subscription.txt'):write(name,'')
  write('outbounds.json',json.dumps({'outbounds':[]})+'\n')
- for name in ('sing-box-client.json','clash-verge.yaml','mihomo-proxies.yaml'):
+ for name in ('sing-box-client.json','sing-box-client-ipv6.json','clash-verge.yaml','mihomo-proxies.yaml'):
   path=os.path.join(base,name)
   if os.path.islink(path):raise ValueError('Export symlink')
   if os.path.isfile(path):os.remove(path)
@@ -130,11 +142,32 @@ if argo:
  proxy.append({'name':argo_name,'type':'vless','server':host,'port':443,'uuid':uid,'network':'ws',
                'tls':True,'servername':host,'skip-cert-verify':False,
                'ws-opts':{'path':path,'headers':{'Host':host}}})
+if backup and inbound:
+ for item in list(out):
+  if item['type'] not in inbound or item.get('transport'):continue
+  extra=copy.deepcopy(item);extra.update(tag=item['tag']+'-IPv6备用',server=addr,server_port=actual_vp if item['type']=='vless' else actual_hp)
+  # IPv4 REDIRECT hopping rules do not apply to the IPv6 backup entry.
+  extra.pop('server_ports',None);extra.pop('hop_interval',None);out.append(extra)
+ for item in list(proxy):
+  if item['type'] not in inbound or item.get('network')=='ws':continue
+  extra=copy.deepcopy(item);extra.update(name=item['name']+'-IPv6备用',server=addr,port=actual_vp if item['type']=='vless' else actual_hp)
+  extra.pop('ports',None);extra.pop('hop-interval',None);proxy.append(extra)
 write('outbounds.json',json.dumps({'outbounds':out},ensure_ascii=False,indent=2)+'\n')
 client_config={'inbounds':[{'type':'mixed','tag':'mixed-in','listen':'127.0.0.1','listen_port':1080}],
                'outbounds':out+[{'type':'direct','tag':'direct'}], 'route':{'final':out[0]['tag']}}
 client_json=json.dumps(client_config,ensure_ascii=False,indent=2)+'\n'
 write('sing-box-client.json',client_json)
+if backup and inbound:
+ backup_config=copy.deepcopy(client_config)
+ backup_out=[o for o in out if o['tag'].endswith('-IPv6备用')]
+ backup_config['outbounds']=backup_out+[{'type':'direct','tag':'direct'}]
+ backup_config['route']['final']=backup_out[0]['tag']
+ write('sing-box-client-ipv6.json',json.dumps(backup_config,ensure_ascii=False,indent=2)+'\n')
+else:
+ stale=os.path.join(base,'sing-box-client-ipv6.json')
+ if os.path.islink(stale):raise ValueError('Export symlink')
+ if os.path.isfile(stale):os.remove(stale)
+
 trust_files=[]
 # Remove obsolete public trust exports, so a changed certificate cannot leave stale instructions.
 for name in ['hy2-client-ca.pem','hy2-client-ca.cer','hy2-client-ca.mobileconfig']:
@@ -182,6 +215,7 @@ clash_config.update({'mixed-port':7890,'allow-lan':False,'mode':'rule',
 clash_yaml='\n'.join(yaml_dump(clash_config))+'\n'
 write('clash-verge.yaml',clash_yaml)
 notes=[]
+if backup:notes.append(tr('IPv6 备用保留原凭据、SNI 和实际端口；客户端需要 IPv6，需放行云防火墙 IPv6 TCP/UDP 端口。IPv6 备用不使用 IPv4 端口跳跃。链接含凭据，请保密。','IPv6 backup keeps credentials, SNI and actual ports. Requires client IPv6 and provider IPv6 TCP/UDP rules. IPv4 hopping is not applied. Keep credential links private.'))
 if argo_note:notes.append(argo_note)
 if argo:
  notes.append(tr('Argo 使用 VLESS+WS+TLS，不是 Reality/Vision 或 HY2。临时隧道重启后请重新导入新地址。','Argo uses VLESS+WS+TLS, not Reality/Vision or HY2. Re-import changed Quick Tunnel hostnames after restarting.'))
@@ -224,6 +258,7 @@ for link,name in zip(rocket_links,link_names):
  sensitive(link)
  print(separator)
 print(separator)
+if backup:info(tr('IPv6 备用专用 JSON：','IPv6-only backup client JSON: ')+os.path.join(base,'sing-box-client-ipv6.json'))
 info(tr('兼容导出和证书说明：','Legacy exports and certificate notes:'))
 for name in ['nodes.txt','subscription-base64.txt','mihomo-proxies.yaml','subscription-notes.txt']+trust_files:info('  '+os.path.join(base,name))
 

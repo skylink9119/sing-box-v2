@@ -1071,6 +1071,9 @@ time.sleep(60)
 
     @unittest.skipUnless(SB and ssl.HAS_TLSv1_3,'sing-box and Python TLS 1.3 required for Reality metering test')
     def test_users_reality_forwarding_is_metered_with_local_tls_decoy(self):
+        self.reality_metered_connection()
+
+    def reality_metered_connection(self,ipv6=False):
         import socketserver
         self.user_setup(mode='1',real=True)
         context=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -1090,10 +1093,15 @@ time.sleep(60)
         threading.Thread(target=tls.serve_forever,daemon=True).start()
         self.addCleanup(tls.server_close);self.addCleanup(tls.shutdown)
         config=json.loads((self.config/'config.json').read_text())
+        if ipv6:config['inbounds'][0]['listen']='::'
         config['inbounds'][0]['tls']['server_name']='node.example'
         config['inbounds'][0]['tls']['reality']['handshake']={'server':'127.0.0.1','server_port':tls.server_address[1]}
         (self.config/'config.json').write_text(json.dumps(config))
-        a=self.add_user('Reality');self.shell('users_export '+a+' >/dev/null')
+        a=self.add_user('Reality')
+        if ipv6:
+            user_file=self.base/'users'/a/'server.json';user_config=json.loads(user_file.read_text())
+            user_config['inbounds'][0]['listen']='::';user_file.write_text(json.dumps(user_config))
+        self.shell('users_export '+a+' >/dev/null')
         payload=b'REALITY METERED'*4096
         class Handler(http.server.BaseHTTPRequestHandler):
             def do_GET(self):self.send_response(200);self.end_headers();self.wfile.write(payload)
@@ -1103,6 +1111,7 @@ time.sleep(60)
         self.addCleanup(web.server_close);self.addCleanup(web.shutdown)
         client=json.loads((self.base/'users'/a/'sing-box-client.json').read_text());mixed=port()
         client['inbounds'][0]['listen_port']=mixed
+        if ipv6:client['outbounds'][0]['server']='::1'
         f=self.root/'reality-client.json';f.write_text(json.dumps(client))
         worker=subprocess.Popen([BASH,'-c',self.script('users_engine watch')],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
         proxy=subprocess.Popen([SB,'run','-c',str(f)],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
@@ -1419,9 +1428,12 @@ apply_update 1.14.3'''
 
     @unittest.skipUnless(SB, 'Set SING_BOX_BIN to run real HY2 connectivity tests')
     def test_hy2_handshake_with_trust_and_reject_untrusted(self):
+        self.hy2_connection()
+
+    def hy2_connection(self,dual_stack=False,entry='127.0.0.1'):
         cfg = self.configure('2')
         udp, mixed = port(socket.SOCK_DGRAM), port()
-        cfg['inbounds'][0]['listen'] = '127.0.0.1'
+        cfg['inbounds'][0]['listen'] = '::' if dual_stack else '127.0.0.1'
         cfg['inbounds'][0]['listen_port'] = udp
         server_file = self.root/'server.json'
         server_file.write_text(json.dumps(cfg))
@@ -1429,6 +1441,7 @@ apply_update 1.14.3'''
         client=json.loads((self.base/'sing-box-client.json').read_text())
         client['inbounds'][0]['listen_port']=mixed
         client['outbounds'][0]['server_port']=udp
+        client['outbounds'][0]['server']=entry
         client_file = self.root/'client.json'
         class Handler(http.server.BaseHTTPRequestHandler):
             def do_GET(self):
@@ -1482,9 +1495,10 @@ apply_update 1.14.3'''
                 import yaml
                 config=yaml.safe_load((self.base/'clash-verge.yaml').read_text())
                 config['proxies'][0]['port']=udp
+                config['proxies'][0]['server']=entry
                 proxy_port=port()
                 config.update({'mixed-port':proxy_port,'mode':'rule',
-                               'external-controller':'','ipv6':False})
+                               'external-controller':'','ipv6':dual_stack})
                 config_file=self.root/'mihomo.yaml'
                 config_file.write_text(quoted_yaml_dump(config))
                 mh_log=stack.enter_context(open(self.root/'mihomo.log','w+'))

@@ -16,7 +16,7 @@ def assemble(name, chain=()):
     if path.parent != ROOT / 'src':
         raise ValueError('Invalid source include')
     source = path.read_text()
-    return re.sub(r'^# @include ([a-z_]+\.(?:sh|py))\n',
+    return re.sub(r'^# @include ([a-z0-9_]+\.(?:sh|py))\n',
                   lambda match: assemble(match[1], chain + (name,)), source, flags=re.M)
 
 

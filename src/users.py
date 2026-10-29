@@ -101,7 +101,7 @@ def config_check(path,exe=None):
  r=subprocess.run([exe or binary,'check','-c',str(path)],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=30)
  if r.returncode:error('sing-box 配置检查失败（需支持 Clash API）','sing-box config check failed (Clash API required)')
 
-GENERATED={'server.json','state.json','certificate.crt','private.key','nodes.txt','subscription-base64.txt','v2rayn-nodes.txt','v2rayn-subscription.txt','shadowrocket-nodes.txt','shadowrocket-subscription.txt','shadowrocket-native-nodes.txt','shadowrocket-native-subscription.txt','sing-box-client.json','clash-verge.yaml','outbounds.json','mihomo-proxies.yaml','subscription-notes.txt','hy2-client-ca.pem','hy2-client-ca.cer','hy2-client-ca.mobileconfig','export.lock','core.log'}
+GENERATED={'server.json','state.json','certificate.crt','private.key','nodes.txt','subscription-base64.txt','v2rayn-nodes.txt','v2rayn-subscription.txt','shadowrocket-nodes.txt','shadowrocket-subscription.txt','shadowrocket-native-nodes.txt','shadowrocket-native-subscription.txt','sing-box-client.json','sing-box-client-ipv6.json','clash-verge.yaml','outbounds.json','mihomo-proxies.yaml','subscription-notes.txt','hy2-client-ca.pem','hy2-client-ca.cer','hy2-client-ca.mobileconfig','export.lock','core.log'}
 def cleanup():
  for u in read()['users']:
   p=userdir(u['id'])

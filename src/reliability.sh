@@ -11,7 +11,7 @@ if s['cert_mode']=='1':
    s['cert_path']=i['tls']['certificate_path'];s['managed_certificates']=[i['tls']['certificate_path'],i['tls']['key_path']]
 (stage/'config/config.json').write_text(json.dumps(cfg,indent=2));(stage/'state.json').write_text(json.dumps(s,indent=2))
 pairs.extend([(stage/'config/config.json',conf,0o600),(stage/'state.json',meta,0o600)])
-for name in ('nodes.txt','subscription-base64.txt','v2rayn-nodes.txt','v2rayn-subscription.txt','shadowrocket-nodes.txt','shadowrocket-subscription.txt','shadowrocket-native-nodes.txt','shadowrocket-native-subscription.txt','sing-box-client.json','clash-verge.yaml','outbounds.json','mihomo-proxies.yaml','subscription-notes.txt','hy2-client-ca.pem','hy2-client-ca.cer','hy2-client-ca.mobileconfig'):
+for name in ('nodes.txt','subscription-base64.txt','v2rayn-nodes.txt','v2rayn-subscription.txt','shadowrocket-nodes.txt','shadowrocket-subscription.txt','shadowrocket-native-nodes.txt','shadowrocket-native-subscription.txt','sing-box-client.json','sing-box-client-ipv6.json','clash-verge.yaml','outbounds.json','mihomo-proxies.yaml','subscription-notes.txt','hy2-client-ca.pem','hy2-client-ca.cer','hy2-client-ca.mobileconfig'):
  if (stage/name).exists():pairs.append((stage/name,base/name,0o600))
 created=[];journal=stage/'created.json';journal.write_text('[]')
 for src,dest,mode in pairs:

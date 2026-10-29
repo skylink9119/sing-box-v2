@@ -33,8 +33,8 @@ PY_INITIAL_ADMIN
  if systemctl is-active --quiet sing-box.service;then admin=true;fi
  if [[ -f $BASE/users.json ]] && systemctl is-active --quiet skybyte-users.service;then users=true;users_stop || { rm -rf "$stage";return 1; };fi
  if [[ -f $BASE/argo-state.json ]] && systemctl is-active --quiet skybyte-argo-node.service;then argo=true;fi
- if [[ $1 != reality && $(state hop) == True ]];then hop_active=true;hop_disable || { warp_resume "$admin" "$argo" "$users" || :;rm -rf "$stage";return 1; };fi
- if ! configuration_commit "$stage" "$1" || ! configuration_resume "$first_admin" "$admin" "$argo" "$users" || { [[ $1 == reality ]] && ! configuration_export_all; };then
+ if [[ $1 != reality && $1 != ipv6 && $(state hop) == True ]];then hop_active=true;hop_disable || { warp_resume "$admin" "$argo" "$users" || :;rm -rf "$stage";return 1; };fi
+ if ! configuration_commit "$stage" "$1" || ! configuration_resume "$first_admin" "$admin" "$argo" "$users" || { [[ $1 == ipv6 && ${2:-} != off && $admin == true ]] && ! ipv6_engine ready; } || { [[ $1 == reality || $1 == ipv6 ]] && ! configuration_export_all; };then
   [[ $users != true ]] || users_stop || :
   [[ $first_admin != true ]] || systemctl disable --now sing-box.service || :
   configuration_rollback "$stage" || :
@@ -47,7 +47,7 @@ PY_INITIAL_ADMIN
  if [[ $1 != reality ]] && command -v ufw >/dev/null && LC_ALL=C ufw status | grep -q '^Status: active';then
   firewall_allow_protocols || return 1
  fi
- if [[ $1 != reality ]];then configuration_export_all || return 1;fi
+ if [[ $1 != reality && $1 != ipv6 ]];then configuration_export_all || return 1;fi
  ok "$(L "配置已更新；备份：$snap" "Configuration updated; backup: $snap")"
  if [[ $hop_active == true ]];then warn "$(L '跳跃已关闭，请按新监听端口重新开启；旧 UFW 规则保留。' 'Hopping disabled; re-enable for the new listener. Old UFW rules remain.')";fi
 }
@@ -60,9 +60,9 @@ configuration_commit(){
 import json,os,pathlib,shutil,sys,tempfile
 stage=pathlib.Path(sys.argv[1]);plan=json.loads((stage/'plan.json').read_text());rollback=[]
 targets=[value for _,value in plan]
-if sys.argv[2]=='reality':
+if sys.argv[2] in ('reality','ipv6'):
  # Include exports in the same rollback journal before any live files change.
- names=('nodes.txt','subscription-base64.txt','v2rayn-nodes.txt','v2rayn-subscription.txt','shadowrocket-nodes.txt','shadowrocket-subscription.txt','shadowrocket-native-nodes.txt','shadowrocket-native-subscription.txt','outbounds.json','sing-box-client.json','clash-verge.yaml','mihomo-proxies.yaml','subscription-notes.txt','hy2-client-ca.pem','hy2-client-ca.cer','hy2-client-ca.mobileconfig')
+ names=('nodes.txt','subscription-base64.txt','v2rayn-nodes.txt','v2rayn-subscription.txt','shadowrocket-nodes.txt','shadowrocket-subscription.txt','shadowrocket-native-nodes.txt','shadowrocket-native-subscription.txt','outbounds.json','sing-box-client.json','sing-box-client-ipv6.json','clash-verge.yaml','mihomo-proxies.yaml','subscription-notes.txt','hy2-client-ca.pem','hy2-client-ca.cer','hy2-client-ca.mobileconfig')
  for _,value in plan:
   p=pathlib.Path(value)
   if p.name=='state.json':targets.extend(str(p.parent/name) for name in names)

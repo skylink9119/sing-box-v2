@@ -37,8 +37,27 @@ def check_admin_port(value,protocol,adding=False):
     if load(p)['port']==value:raise ValueError('Port reserved by a managed TCP service')
 
 # Handshake-only edits retain the unrelated HY2 listener and hopping rules.
-if action!='reality':meta['hop']=False
-if action=='ports':
+if action not in ('reality','ipv6'):meta['hop']=False
+if action=='ipv6':
+ value=args[0]
+ if value!='off':
+  ip=ipaddress.IPv6Address(value)
+  if not ip.is_global or ip.is_multicast or ip.ipv4_mapped or ip.is_reserved:raise ValueError('Public native IPv6 required')
+  if not main['inbounds']:raise ValueError('No direct node installed / 尚未安装直连节点')
+ for _,cfg,_,s in paths:
+  if value=='off':
+   backup=s.pop('ipv6_backup',None)
+   if backup:
+    for i in cfg['inbounds']:i['listen']=backup['previous_listen']
+    s['listen']=backup['previous_listen']
+  else:
+   addresses={i['listen'] for i in cfg['inbounds']}
+   if len(addresses)!=1 or not addresses <= {'::','0.0.0.0'} or any(i.get('ipv6_only') for i in cfg['inbounds']):raise ValueError('Public dual-stack compatible listeners required')
+   previous=s.get('ipv6_backup',{}).get('previous_listen',next(iter(addresses)))
+   if previous not in ('::','0.0.0.0'):raise ValueError('Invalid saved listener')
+   s['ipv6_backup']={'address':str(ip),'previous_listen':previous};s['listen']='::'
+   for i in cfg['inbounds']:i['listen']='::'
+elif action=='ports':
  vp,hp=map(port,args)
  for inbound in main['inbounds']:
   value=vp if inbound['type']=='vless' else hp

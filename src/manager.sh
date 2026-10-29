@@ -8,7 +8,7 @@
 set -Eeuo pipefail
 umask 077
 SCRIPT_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
-MANAGER_VERSION=2.8.15
+MANAGER_VERSION=2.8.16
 CORE_RECOMMENDED=1.14.3
 BASE=/etc/singbox-v2
 CONF=/etc/sing-box/config.json
@@ -1244,7 +1244,7 @@ PY
  # Remove explicit managed files only; never recursively delete user configuration directories.
  rm -f -- "$unit" "$SYSTEMD_DIR/singbox-v2-update.service" "$SYSTEMD_DIR/singbox-v2-update.timer" "$SYSTEMD_DIR/singbox-v2-hop.service" "$BIN" "$CONF"
  while IFS= read -r file; do if [[ -n $file ]]; then rm -f -- "$file"; fi; done <<<"$managed_certs"
- for file in state.json language.conf hop.nft hop-iptables.sh core-version.json warp-rules.json warp-rules.previous.json nodes.txt subscription-base64.txt v2rayn-nodes.txt v2rayn-subscription.txt shadowrocket-nodes.txt shadowrocket-subscription.txt shadowrocket-native-nodes.txt shadowrocket-native-subscription.txt sing-box-client.json clash-verge.yaml outbounds.json mihomo-proxies.yaml subscription-notes.txt hy2-client-ca.pem hy2-client-ca.cer hy2-client-ca.mobileconfig; do rm -f -- "$BASE/$file"; done
+ for file in state.json language.conf hop.nft hop-iptables.sh core-version.json warp-rules.json warp-rules.previous.json nodes.txt subscription-base64.txt v2rayn-nodes.txt v2rayn-subscription.txt shadowrocket-nodes.txt shadowrocket-subscription.txt shadowrocket-native-nodes.txt shadowrocket-native-subscription.txt sing-box-client.json sing-box-client-ipv6.json clash-verge.yaml outbounds.json mihomo-proxies.yaml subscription-notes.txt hy2-client-ca.pem hy2-client-ca.cer hy2-client-ca.mobileconfig; do rm -f -- "$BASE/$file"; done
  # Remove executable copies only when they are identifiable manager scripts.
  manager_shortcut_remove || return 1
  for file in "$MANAGER_BIN" "$MANAGER_LIB"; do
@@ -1268,6 +1268,7 @@ PY
 # @include rescue.sh
 
 # @include configuration.sh
+# @include ipv6.sh
 
 # @include acme.sh
 

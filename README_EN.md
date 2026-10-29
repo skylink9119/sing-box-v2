@@ -20,7 +20,7 @@
 
 ---
 
-# SKYBYTE Manager V2.8.15 uses yellow report output and bordered, aligned media tables, with terminal-width wrapping for long names and error notes.
+# SKYBYTE Manager V2.8.16: IPv6 backup entry
 
 **SKYBYTE Manager** is a Bash-based Ubuntu/Debian VPS manager with Simplified Chinese and English interfaces. It installs sing-box with **VLESS + Reality + Vision, Hysteria2 (HY2), or both protocols**, manages Cloudflare Argo tunnels and WARP routing, and provides per-user traffic quotas and expiry. Client exports support Shadowrocket, v2rayN, Clash Verge/Mihomo/OpenClash and sing-box JSON.
 
@@ -30,7 +30,7 @@ If you find this script helpful, please subscribe to my YouTube channel and supp
 
 The main menu includes the SKYBYTE ASCII logo. Menus are bold green, credential links bold red, warnings bold yellow and errors bold red on ANSI terminals. Set `NO_COLOR=1` to disable colors. Every action uses `[y/N]`: type `y` or `Y` to confirm; Enter or `n/N` cancels.
 
-V2.8.15 improves menu response: batch startup service/interface queries, bound local probes and certificate commands, read the atomic account snapshot without waiting for the quota worker lock, skip unchanged shortcut writes, and fix remaining TCP TIME_WAIT false positives when adding protocols or editing ports. No additional background service. Forwarding resource use depends on cores, traffic and enabled components; inspect processes, memory and load in **d → 7**. See the [audit record](docs/AUDIT-2026-10-28.md).
+V2.8.16 improves menu response: batch startup service/interface queries, bound local probes and certificate commands, read the atomic account snapshot without waiting for the quota worker lock, skip unchanged shortcut writes, and fix remaining TCP TIME_WAIT false positives when adding protocols or editing ports. No additional background service. Forwarding resource use depends on cores, traffic and enabled components; inspect processes, memory and load in **d → 7**. See the [audit record](docs/AUDIT-2026-10-28.md).
 
 V2.8.11 adds **installation preflight (a → 7)**, automatic checks for new installs/Reality additions, and a short HTTPS install entry.
 
@@ -45,6 +45,14 @@ V2.8.6 fixes literal `\n` text in WARP menus. One option per line, grouped as pr
 V2.8.3 fixes first installation on minimal VPS images without `curl`: the new bootstrap checks for curl and installs it with CA certificates when missing, then starts the installer. APT or download failure stops the operation while preserving input for the language prompt and menus. Copy the complete updated installation command below.
 
 V2.8.1 whole-source audit fixes: the installer checks ownership and atomically publishes the manager, rejecting symlinks and concurrent operations. Restore journals original files privately, rolls back files/service states on failure, and preserves unrelated configuration files. User allocation reserves inactive managed ports and inherits the actual listener family. Node-edit rollback reloads the original admin config; offline selection survives menu actions; standalone Argo certificate issuance no longer prompts to configure absent HY2. Initial generation passes UUIDs, passwords and private keys through a file descriptor instead of process arguments. Media results show region sources/conflicts without claiming account eligibility or playback.
+
+## IPv6 backup entry
+
+Open **d → 13**: `1` status, `2` detect and enable, `3` remove backup. Install Reality / HY2 first. Administrator and quota-managed nodes gain dual-stack listeners and additional IPv6 backup links plus JSON/YAML entries (`sing-box-client-ipv6.json` selects the backup by default). Original IPv4 addresses, credentials, ports, SNI and quotas are preserved. Changes are backed up, checked and applied to running services; listener/export failures roll back. Stopped services stay stopped; Argo loopback origins are preserved.
+
+Requires native public IPv6 and a usable route on the VPS, plus IPv6 on the client network. No tunnel, default-route change or firewall disable. Active UFW must manage IPv6; allow actual IPv6 ports in the provider firewall too. Backups use actual node ports, without IPv4 NAT port mappings or hopping. HY2 keeps the original SNI and certificate verification. Local checks do not prove public reachability or guarantee continued IPv6 availability.
+
+Credentials and exports stay on the VPS. Install a firewall, allow SSH and actual node TCP/UDP ports first, and keep links, parameters and screenshots private.
 
 ## Quick navigation
 
@@ -349,7 +357,7 @@ Restore retains current account policy/usage and current subscription tokens. HT
 
 ```bash
 python3 scripts/build.py --check
-python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.15
+python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.16
 ```
 
 Packaging includes only bootstrap.sh, install.sh, the full bundle, public rule catalog and SHA256SUMS, never runtime state or credentials.
