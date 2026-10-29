@@ -8,7 +8,7 @@
 set -Eeuo pipefail
 umask 077
 SCRIPT_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
-MANAGER_VERSION=2.8.12
+MANAGER_VERSION=2.8.13
 CORE_RECOMMENDED=1.14.3
 BASE=/etc/singbox-v2
 CONF=/etc/sing-box/config.json
@@ -109,7 +109,7 @@ startup_info(){
  services=$(startup_probe systemctl show --no-pager --property=Id,LoadState,ActiveState sing-box.service skybyte-argo-tunnel.service nginx.service skybyte-haproxy.service skybyte-users.service) || services=''
  printf '%s\n----------------------------------------------\n' "$GREEN"
  say "脚本版本：SKYBYTE Manager v$MANAGER_VERSION" "Script version: SKYBYTE Manager v$MANAGER_VERSION"
- say '功能更新：受限网络部署（1 → 6）、独立 Argo、IPv6/NAT、WARP 双栈与流媒体地区线索识别' 'Features: restricted-network deployment (1 → 6), standalone Argo, IPv6/NAT, WARP dual-stack and media region clues'
+ say '功能更新：受限网络部署（a → 6）、独立 Argo、IPv6/NAT、WARP 双栈与流媒体地区线索识别' 'Features: restricted-network deployment (a → 6), standalone Argo, IPv6/NAT, WARP dual-stack and media region clues'
  say '系统信息：' 'System information:'
  printf '  %s: %s\n' "$(L '操作系统' 'OS')" "$os" "$(L '内核' 'Kernel')" "$kernel" "$(L '处理器架构' 'Architecture')" "$arch" "$(L '虚拟化' 'Virtualization')" "$virtual"
  printf '  IPv4: %s\n  IPv6: %s\n' "${ipv4:-$(L '未检测到' 'Not detected')}" "${ipv6:-$(L '未检测到' 'Not detected')}"
@@ -236,8 +236,8 @@ download_binary(){
  if [[ -n ${SKYBYTE_ASSET_DIR:-} ]];then rescue_engine asset "$SKYBYTE_ASSET_DIR" sing-box "$version" "$(uname -m)" "$target";return $?;fi
  tmp=$(mktemp -d) || return 1
  asset="sing-box-$version-linux-$arch.tar.gz"
- if ! curl -fsSL --retry 2 --max-time 180 "https://github.com/SagerNet/sing-box/releases/download/v$version/$asset" -o "$tmp/$asset" ||
-    ! curl -fsSL --retry 2 --max-time 30 "https://api.github.com/repos/SagerNet/sing-box/releases/tags/v$version" -o "$tmp/release.json"; then rm -rf "$tmp"; return 1; fi
+ if ! curl -q -fsSL --connect-timeout 10 --proto '=https' --proto-redir '=https' --retry 2 --max-time 180 "https://github.com/SagerNet/sing-box/releases/download/v$version/$asset" -o "$tmp/$asset" ||
+    ! curl -q -fsSL --connect-timeout 10 --proto '=https' --proto-redir '=https' --retry 2 --max-time 30 "https://api.github.com/repos/SagerNet/sing-box/releases/tags/v$version" -o "$tmp/release.json"; then rm -rf "$tmp"; return 1; fi
  sum=$(python3 - "$tmp/release.json" "$asset" <<'PY'
 import json,sys
 r=json.load(open(sys.argv[1])); assert not r['draft'] and not r['prerelease']
@@ -326,7 +326,13 @@ install_protocol() (
  trap installation_cleanup EXIT
  need_root
  local mode="${1:-}" cert_mode="" vp=443 hp=443 supplied_ip='' listen_addr=''
- if [[ -z "$mode" ]]; then prompt_options '1 Reality 单协议 | 2 HY2 单协议 | 3 双协议 | 0 返回' '1 Reality only | 2 HY2 only | 3 Dual | 0 Back'
+ if [[ -z "$mode" ]]; then prompt_options '1. Reality 单协议
+2. HY2 单协议
+3. 双协议
+0. 返回' '1. Reality only
+2. HY2 only
+3. Dual
+0. Back'
  prompt_read '> ' mode || return; fi
  [[ "$mode" == 0 ]] && return 0
  [[ "$mode" =~ ^[123]$ ]] || { err "Invalid selection"; return 1; }
@@ -342,7 +348,13 @@ install_protocol() (
   local native_family
   native_family=$(rescue_engine family) || return 1
   case $native_family in 4) listen_addr=0.0.0.0;; 6) listen_addr=::;; *) [[ $supplied_ip == *:* ]] && listen_addr=:: || listen_addr=0.0.0.0;; esac
-  prompt_options '本机监听地址族：1 自动  2 IPv4  3 IPv6（NAT 请按 VPS 网卡选择）' 'Local bind family: 1 Auto  2 IPv4  3 IPv6 (for NAT, choose the VPS interface family)'
+  prompt_options '本机监听地址族：
+1. 自动
+2. IPv4
+3. IPv6（NAT 请按 VPS 网卡选择）' 'Local bind family:
+1. Auto
+2. IPv4
+3. IPv6 (for NAT, choose the VPS interface family)'
   prompt_read '> ' native_family || return 1
   case ${native_family:-1} in 1);; 2)listen_addr=0.0.0.0;; 3)listen_addr=::;; *)return 1;; esac
  fi
@@ -352,7 +364,13 @@ install_protocol() (
  local domain="" cert="" key="" sni="" node_name
  node_name=$(choose_node_name) || { err "$(L '节点名称无效' 'Invalid node name')"; return 1; }
  if [[ $mode != 1 ]]; then
-  prompt_options 'HY2证书: 1 无域名(自动自签名)  2 已有证书  3 托管 ACME' 'HY2 certificate: 1 No domain (self-signed)  2 Existing certificate  3 Managed ACME'
+  prompt_options 'HY2证书:
+1. 无域名(自动自签名)
+2. 已有证书
+3. 托管 ACME' 'HY2 certificate:
+1. No domain (self-signed)
+2. Existing certificate
+3. Managed ACME'
   prompt_read '> ' cert_mode
   case "$cert_mode" in
    1) say '需要客户端安全地导入证书并启用验证。' 'Client must securely import and verify the certificate.';;
@@ -441,7 +459,7 @@ PY_INSTALL_SAN
 
 # @include hopping.sh
 
-latest(){ curl -fsSL --max-time 25 https://api.github.com/repos/SagerNet/sing-box/releases/latest | python3 -c 'import json,sys; d=json.load(sys.stdin); assert not d.get("prerelease") and not d.get("draft"); print(d["tag_name"].lstrip("v"))'; }
+latest(){ curl -q -fsSL --connect-timeout 10 --proto '=https' --proto-redir '=https' --max-time 25 https://api.github.com/repos/SagerNet/sing-box/releases/latest | python3 -c 'import json,sys; d=json.load(sys.stdin); assert not d.get("prerelease") and not d.get("draft"); print(d["tag_name"].lstrip("v"))'; }
 update(){
  check_owned || return 1
  local new current
@@ -521,7 +539,7 @@ hy2_diagnostics(){
  port=$(protocol_port hysteria2) || { err "$(L '未找到 HY2 入站' 'No HY2 inbound found')"; return 1; }
  say '---------------- HY2 连接诊断 ----------------' '---------------- HY2 connection checks ----------------'
  if "$BIN" check -c "$CONF"; then ok "$(L '服务端配置检查通过' 'Server configuration check passed')"; else err "$(L '服务端配置无效' 'Server configuration invalid')"; fi
- if systemctl is-active --quiet sing-box; then ok "$(L 'sing-box 服务正在运行' 'sing-box service is active')"; else err "$(L 'sing-box 服务未运行；请查看服务与日志 → 日志（3 → 2） 日志' 'sing-box is not active; inspect Services and logs > Logs (3 > 2) logs')"; fi
+ if systemctl is-active --quiet sing-box; then ok "$(L 'sing-box 服务正在运行' 'sing-box service is active')"; else err "$(L 'sing-box 服务未运行；请查看服务与日志 → 日志（c → 2） 日志' 'sing-box is not active; inspect Services and logs > Logs (c > 2) logs')"; fi
  listener=$(ss -H -lun "( sport = :$port )") || return 1
  if [[ -n $listener ]]; then ok "$(L "本机 UDP $port 有监听" "Local UDP $port has a listener")"; else err "$(L "本机 UDP $port 未监听" "No local UDP $port listener")"; fi
  details=$(python3 - "$CONF" <<'PY'
@@ -725,7 +743,7 @@ firewall(){
    warn "$(L '如果 SSH 端口判断错误，开启 UFW 可能导致远程连接断开！请保留 VPS 控制台访问。' 'Wrong SSH port may lock you out. Keep VPS console access.')"
    say '将放行 SSH 与实际节点、订阅和 HTTP证书验证端口。' 'Will allow SSH and actual node, subscription and HTTP certificate-validation ports.'
    confirm "$(L '确认开启 UFW 防火墙？' 'Enable UFW now?')" || return 0
-   ufw allow "$port/tcp" || return 0
+   ufw allow "$port/tcp" || return 1
    local detected
    while read -r detected; do [[ -z $detected ]] || ufw allow "$detected/tcp" || return 1; done <<<"$SSH_PORTS"
    firewall_allow_protocols || return 1
@@ -749,7 +767,19 @@ service_manager(){
  local x
  # --menu renders only; a numeric argument executes one selected operation.
  if [[ $# == 0 || $1 == --menu ]]; then
- prompt_options '1 状态  2 启动  3 重启  4 停止  5 开机自启  6 配置检查  0 返回' '1 Status  2 Start  3 Restart  4 Stop  5 Enable at boot  6 Config check  0 Back'
+ prompt_options '1. 状态
+2. 启动
+3. 重启
+4. 停止
+5. 开机自启
+6. 配置检查
+0. 返回' '1. Status
+2. Start
+3. Restart
+4. Stop
+5. Enable at boot
+6. Config check
+0. Back'
  [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' x || return
  else
@@ -768,7 +798,17 @@ traffic(){
  say 'vnStat 统计 VPS 网卡流量，不能区分 Reality/HY2；历史数据从安装后开始。' 'vnStat tracks VPS interface traffic, NOT Reality/HY2 separately. History starts when installed.'
  # --menu renders only; a numeric argument executes one selected operation.
  if [[ $# == 0 || $1 == --menu ]]; then
- prompt_options '1 安装 vnStat  2 今日  3 本月  4 实时网速  5 历史汇总  0 返回' '1 Install vnStat  2 Today  3 Monthly  4 Live  5 History  0 Back'
+ prompt_options '1. 安装 vnStat
+2. 今日
+3. 本月
+4. 实时网速
+5. 历史汇总
+0. 返回' '1. Install vnStat
+2. Today
+3. Monthly
+4. Live
+5. History
+0. Back'
  [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' x || return
  else
@@ -836,7 +876,7 @@ download_cloudflared(){
  arch=$(rescue_engine arch "$(uname -m)" cloudflared) || return 1
  if [[ -n ${SKYBYTE_ASSET_DIR:-} ]];then rescue_engine asset "$SKYBYTE_ASSET_DIR" cloudflared '' "$(uname -m)" "$target";return $?;fi
  tmp=$(mktemp -d) || return 1
- curl -fsSL --retry 2 --max-time 30 https://api.github.com/repos/cloudflare/cloudflared/releases/latest -o "$tmp/release.json" || { rm -rf "$tmp"; return 1; }
+ curl -q -fsSL --connect-timeout 10 --proto '=https' --proto-redir '=https' --retry 2 --max-time 30 https://api.github.com/repos/cloudflare/cloudflared/releases/latest -o "$tmp/release.json" || { rm -rf "$tmp"; return 1; }
  tag=$(python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); assert not r["prerelease"] and not r["draft"]; print(r["tag_name"])' "$tmp/release.json") || { rm -rf "$tmp"; return 1; }
  [[ $tag =~ ^[0-9]{4}\.[0-9]+\.[0-9]+$ ]] || { rm -rf "$tmp"; return 1; }
  asset="cloudflared-linux-$arch"
@@ -848,7 +888,7 @@ print(digest.split(':',1)[1])
 PY
  ) || { rm -rf "$tmp"; return 1; }
  if [[ ! $digest =~ ^[a-fA-F0-9]{64}$ ]] ||
-    ! curl -fsSL --retry 2 --max-time 180 "https://github.com/cloudflare/cloudflared/releases/download/$tag/$asset" -o "$tmp/binary" ||
+    ! curl -q -fsSL --connect-timeout 10 --proto '=https' --proto-redir '=https' --retry 2 --max-time 180 "https://github.com/cloudflare/cloudflared/releases/download/$tag/$asset" -o "$tmp/binary" ||
     ! printf '%s  %s\n' "$digest" "$tmp/binary" | sha256sum -c - >/dev/null; then rm -rf "$tmp"; return 1; fi
  command install -m 755 "$tmp/binary" "$target"
  local rc=$?; rm -rf "$tmp"; return "$rc"
@@ -1099,7 +1139,25 @@ argo_manager(){
  local choice
  # --menu renders only; a numeric argument executes one selected operation.
  if [[ $# == 0 || $1 == --menu ]]; then
- prompt_options '1 临时隧道  2 固定隧道  3 状态  4 启动  5 停止  6 重启  7 刷新节点  8 卸载 Argo  9 地址族与传输设置  0 返回' '1 Quick  2 Named  3 Status  4 Start  5 Stop  6 Restart  7 Refresh nodes  8 Remove Argo  9 Address family/transport  0 Back'
+ prompt_options '1. 临时隧道
+2. 固定隧道
+3. 状态
+4. 启动
+5. 停止
+6. 重启
+7. 刷新节点
+8. 卸载 Argo
+9. 地址族与传输设置
+0. 返回' '1. Quick
+2. Named
+3. Status
+4. Start
+5. Stop
+6. Restart
+7. Refresh nodes
+8. Remove Argo
+9. Address family/transport
+0. Back'
  [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
  else

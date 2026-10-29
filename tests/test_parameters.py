@@ -67,7 +67,7 @@ class ParameterTests(unittest.TestCase):
         self.assertEqual(before, self.snapshot())
         result = self.shell('sub_menu 2;echo "ACTION=$MAIN_ACTION"', input='7\n')
         self.assertIn('ACTION=node_parameters', result.stdout)
-        self.assertIn('UUID / public key / Short ID / SNI', result.stdout)
+        self.assertIn('View node parameters (keep private)', result.stdout)
 
     def test_symlinked_argo_and_malformed_json_do_not_disclose_contents(self):
         self.configure('1')

@@ -20,7 +20,7 @@
 
 ---
 
-# SKYBYTE Manager V2.8.12 — sing-box 一键脚本与 Ubuntu/Debian VPS 管理
+# SKYBYTE Manager V2.8.13 整理菜单分组，子菜单一项一行，保留原有按键；安装入口固定对应正式版本、校验 SHA256 并防止旧入口降级，空文件和异常下载不会执行；核心与脚本下载统一 HTTPS 与连接超时；SSH 放行失败会明确报错并停止开启防火墙。见[本次检查记录](docs/AUDIT-2026-10-29.md)。
 
 **SKYBYTE Manager** 是基于 Bash 的 Ubuntu/Debian VPS 管理工具，提供简体中文和 English 界面，支持 sing-box 的 **VLESS + Reality + Vision、Hysteria2（HY2）及双协议部署**。通过交互菜单管理 Cloudflare Argo 隧道、WARP 出站分流、用户流量配额与有效期，并导出 Shadowrocket（小火箭）、v2rayN、Clash Verge/Mihomo/OpenClash 和 sing-box JSON 客户端配置。
 
@@ -30,7 +30,7 @@ YouTube：[SKYBYTE9119](https://www.youtube.com/@SKYBYTE9119) · [English](READM
 
 主菜单包含 SKYBYTE ASCII logo；菜单绿色加粗、节点链接红色加粗、警告黄色加粗、错误红色加粗。支持 ANSI 的交互终端显示颜色，`NO_COLOR=1` 可关闭。所有操作确认统一为 `[y/N]`：输入 `y` 或 `Y` 确认，回车或输入 `n/N` 取消。
 
-V2.8.12 优化菜单响应：启动时批量查询服务和网卡，系统查询与证书命令限时；账户摘要读取原子快照，不等待配额工作锁；内容未变时不重写快捷入口；修复追加协议和编辑端口时的 TCP TIME_WAIT 误报。不增加后台服务。转发资源占用取决于核心、流量和启用的组件，可用 **d → 7** 查看进程、内存和负载。见[完整检查记录](docs/AUDIT-2026-10-28.md)。
+V2.8.13 优化菜单响应：启动时批量查询服务和网卡，系统查询与证书命令限时；账户摘要读取原子快照，不等待配额工作锁；内容未变时不重写快捷入口；修复追加协议和编辑端口时的 TCP TIME_WAIT 误报。不增加后台服务。转发资源占用取决于核心、流量和启用的组件，可用 **d → 7** 查看进程、内存和负载。见[完整检查记录](docs/AUDIT-2026-10-28.md)。
 
 V2.8.11 新增 **节点安装前检测（a → 7）**，新安装及追加 Reality 自动检测；同时提供 sky9119.cc 短安装入口。
 
@@ -343,7 +343,7 @@ HY2 支持上下行 Mbps、`ignore_client_bandwidth` 与 Salamander 混淆，服
 
 ```bash
 python3 scripts/build.py --check
-python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.12
+python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.13
 ```
 
 打包只包含 `bootstrap.sh` 启动命令、安装入口、完整脚本、公开规则列表及SHA256SUMS，不发布运行时配置或凭据。

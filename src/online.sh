@@ -86,7 +86,13 @@ online_user(){
  [[ -f $BASE/subscriptions.json ]] || { err "$(L '请先在节点与订阅菜单配置 HTTPS 服务' 'Configure HTTPS delivery in Nodes/subscriptions first')";return 1; }
  local id choice
  users_engine list;prompt_read "$(L '用户 ID：' 'Account ID: ')" id || return 0
- prompt_options '1 签发 / 重置独立 Token  2 查看个人订阅  3 撤销 Token  0 返回' '1 Issue / rotate independent token  2 View personal links  3 Revoke token  0 Back'
+ prompt_options '1. 签发 / 重置独立 Token
+2. 查看个人订阅
+3. 撤销 Token
+0. 返回' '1. Issue / rotate independent token
+2. View personal links
+3. Revoke token
+0. Back'
  prompt_read '> ' choice || return 0
  case $choice in
   1) confirm "$(L '签发新 Token？旧订阅地址将立即失效。' 'Issue new token? Previous subscription URL becomes invalid.')" && { printf '%s' "$RED";online_engine issue "$id";local rc=$?;printf '%s' "$RESET";return "$rc"; };;
@@ -100,7 +106,19 @@ online_menu(){
  local choice
  # --menu renders only; a numeric argument executes one selected operation.
  if [[ $# == 0 || $1 == --menu ]]; then
- prompt_options '1 配置 HTTPS 服务  2 服务状态  3 启动  4 停止  5 重载证书  6 用户订阅 Token  0 返回' '1 Configure HTTPS  2 Status  3 Start  4 Stop  5 Reload certificate  6 Account tokens  0 Back'
+ prompt_options '1. 配置 HTTPS 服务
+2. 服务状态
+3. 启动
+4. 停止
+5. 重载证书
+6. 用户订阅 Token
+0. 返回' '1. Configure HTTPS
+2. Status
+3. Start
+4. Stop
+5. Reload certificate
+6. Account tokens
+0. Back'
  [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
  else

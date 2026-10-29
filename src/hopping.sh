@@ -30,7 +30,11 @@ hop(){
  # --menu renders only; a numeric argument executes one selected operation.
  if [[ $# == 0 || $1 == --menu ]]; then
  say '端口跳跃仅支持 IPv4；规则随 systemd 开机恢复，需要放行云防火墙 UDP 范围。' 'Hopping is IPv4-only, persisted with systemd; allow the provider UDP range.'
- prompt_options '1 开启  2 关闭  0 返回' '1 Enable  2 Disable  0 Back'
+ prompt_options '1. 开启
+2. 关闭
+0. 返回' '1. Enable
+2. Disable
+0. Back'
  [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
  else
@@ -38,7 +42,9 @@ hop(){
  fi
  if [[ $choice == 2 ]]; then confirm "$(L '关闭跳跃？' 'Disable hopping?')" && hop_disable; return; fi
  [[ $choice == 1 ]] || return 0
- prompt_options '1 nftables（默认）  2 iptables' '1 nftables (default)  2 iptables'
+ prompt_options '1. nftables（默认）
+2. iptables' '1. nftables (default)
+2. iptables'
  prompt_read '> ' backend || return 0; backend=${backend:-1}
  case $backend in 1) backend=nftables;; 2) backend=iptables;; *) return 1;; esac
  prompt_read "$(L '起始端口 [20000]：' 'Start port [20000]: ')" start || return 0; start=${start:-20000}

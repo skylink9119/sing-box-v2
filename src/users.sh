@@ -105,10 +105,39 @@ PY_USERS_PROTOCOLS
  local choice max name quota days id action port snap
  if [[ $# == 0 || $1 == --menu ]]; then
   printf '%s' "$GREEN"
-  prompt_options '1 初始化用户管理  2 添加用户  3 查看用量  4 修改流量额度' '1 Initialize  2 Add account  3 Usage  4 Change quota'
-  prompt_options '5 启用/禁用用户  6 删除用户  7 重置流量  8 设置人数上限' '5 Enable/disable  6 Delete  7 Reset usage  8 Set account limit'
-  prompt_options '9 用户节点与二维码  10 服务状态  11 启动用户服务  12 停止用户服务' '9 User exports/QR  10 Status  11 Start supervisor  12 Stop supervisor'
-  prompt_options '13 修改有效期  14 用户故障诊断  15 资源占用  16 个人在线订阅  0 返回' '13 Change validity  14 User diagnostics  15 Resources  16 Personal subscriptions  0 Back'
+  say '【账户与配额】' '[Accounts and quotas]'
+  prompt_options '1. 初始化用户管理
+2. 添加用户
+3. 查看用量
+4. 修改流量额度' '1. Initialize
+2. Add account
+3. Usage
+4. Change quota'
+  prompt_options '5. 启用/禁用用户
+6. 删除用户
+7. 重置流量
+8. 设置人数上限' '5. Enable/disable
+6. Delete
+7. Reset usage
+8. Set account limit'
+  say '【节点与服务】' '[Nodes and services]'
+  prompt_options '9. 用户节点与二维码
+10. 服务状态
+11. 启动用户服务
+12. 停止用户服务' '9. User exports/QR
+10. Status
+11. Start supervisor
+12. Stop supervisor'
+  say '【有效期与诊断】' '[Validity and diagnostics]'
+  prompt_options '13. 修改有效期
+14. 用户故障诊断
+15. 资源占用
+16. 个人在线订阅
+0. 返回' '13. Change validity
+14. User diagnostics
+15. Resources
+16. Personal subscriptions
+0. Back'
   printf '%s' "$RESET"
   [[ ${1:-} != --menu ]] || return 0
   prompt_read '> ' choice || return 0

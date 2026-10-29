@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import shlex
 import subprocess
+import shutil
 import tempfile
 import unittest
 
@@ -57,13 +58,19 @@ curl(){
   printf '%s\n' 'IFS= read -r answer || exit 1' 'printf "stdin:%s\n" "$answer" >> "$TEST_ROOT/events"'
   [[ $TEST_FAILURE != download ]];return
  fi
- printf 'downloaded fixture\n' > "$output"
+ case $TEST_FAILURE in
+  empty) : > "$output";;
+  syntax) printf '#!/usr/bin/env bash\nif ((\n' > "$output";;
+  html) printf '<html>upstream error</html>\n' > "$output";;
+  *) printf '#!/usr/bin/env bash\n# downloaded fixture\n' > "$output";;
+ esac
  [[ $TEST_FAILURE != download ]]
 }
 bash(){
+ if [[ $1 == -n ]];then "$TEST_BASH" "$@" || return $?;return 0;fi
  if [[ $1 == -c ]];then
   printf 'launch\n' >> "$TEST_ROOT/events"
-  builtin command "$TEST_BASH" "$@";return
+  "$TEST_BASH" "$@";return
  fi
  [[ -f $1 ]] || return 1
  printf 'launch\n' >> "$TEST_ROOT/events"
@@ -81,10 +88,18 @@ bash(){
         result = subprocess.run([BASH, '-c', source+definitions+'\n'+action],
             input='menu input preserved\n', capture_output=True, text=True, timeout=10, cwd=self.root,
             env={**os.environ, 'TEST_ROOT':str(self.root), 'TEST_FAILURE':failure, 'TEST_UID':uid,
-                 'OS_RELEASE':str(release), 'TMPDIR':str(self.staging), 'NO_COLOR':'1', 'TEST_BASH':BASH})
+                 'OS_RELEASE':str(release), 'TMPDIR':str(self.staging), 'NO_COLOR':'1', 'TEST_BASH':shutil.which(BASH)})
         events = self.log.read_text().splitlines() if self.log.exists() else []
         self.assertEqual(list(self.staging.iterdir()), [], 'Temporary installer must be cleaned up')
         return result, events
+
+    def test_empty_html_and_malformed_installers_are_never_launched(self):
+        for failure in ('empty', 'html', 'syntax'):
+            with self.subTest(failure=failure):
+                result, events = self.run_case(present=True, failure=failure)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('Invalid installer download', result.stderr)
+                self.assertFalse(any(event == 'launch' for event in events))
 
     def test_existing_curl_skips_apt_and_preserves_interactive_input(self):
         result, events = self.run_case(present=True)
@@ -93,7 +108,7 @@ bash(){
         self.assertEqual(events[-2:], ['launch', 'stdin:menu input preserved'])
         download = events[0]
         self.assertIn("--proto =https --proto-redir =https", download)
-        self.assertIn('https://raw.githubusercontent.com/skylink9119/sing-box-v2/main/install.sh', download)
+        self.assertIn('https://github.com/skylink9119/sing-box-v2/releases/download/v2.8.13/install.sh', download)
         self.assertNotIn(' -k ', download)
 
     def test_missing_curl_is_installed_before_download_on_supported_systems(self):
@@ -194,6 +209,80 @@ bash(){
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(len(events), 1)
         self.assertTrue(events[0].startswith('download:'))
+
+
+
+class PinnedInstallerTest(unittest.TestCase):
+    def run_install(self, failure='', installed=''):
+        import hashlib
+        import re
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder).resolve()
+            version=re.search(r'^MANAGER_VERSION=(.+)$',(ROOT/'src/manager.sh').read_text(),re.M)[1]
+            marker='# SKYBYTE Manager V2.1 community manager; fixture\n'
+            payload='#!/usr/bin/env bash\n'+marker+'MANAGER_VERSION='+version+'\necho SELF_CHECK >> "$TEST_ROOT/events"\nprintf "%s\\n" "$MANAGER_VERSION"\n'
+            if failure=='version':payload=payload.replace('MANAGER_VERSION='+version,'MANAGER_VERSION=0.0.1')
+            if failure=='syntax':payload+='if ((\n'
+            source=root/'payload';source.write_text(payload)
+            digest=hashlib.sha256(source.read_bytes()).hexdigest()
+            manifest=digest+'  singbox-v2.sh\n'
+            if failure=='checksum':manifest='0'*64+'  singbox-v2.sh\n'
+            if failure=='duplicate':manifest+=manifest
+            (root/'manifest').write_text(manifest)
+            target=root/'lib/singbox-v2.sh';target.parent.mkdir()
+            previous=''
+            if installed:
+                previous='#!/usr/bin/env bash\n'+marker+'MANAGER_VERSION='+installed+'\n'
+                target.write_text(previous)
+            code=r'''source "$1"
+MANAGER_DIR=$TEST_ROOT/lib
+MANAGER_TARGET=$MANAGER_DIR/singbox-v2.sh
+MANAGER_LOCK=$TEST_ROOT/lock
+installer_root(){ :; }
+installer_dependencies(){ :; }
+flock(){ :; }
+installer_launch(){ echo LAUNCH >> "$TEST_ROOT/events"; }
+curl(){
+ local output='' url=''
+ while (($#));do
+  case $1 in -o) output=$2;shift 2;; https://*) url=$1;shift;; *) shift;; esac
+ done
+ printf '%s\n' "$url" >> "$TEST_ROOT/urls"
+ case $url in */SHA256SUMS) cp "$TEST_ROOT/manifest" "$output";; *) cp "$TEST_ROOT/payload" "$output";; esac
+}
+install_manager
+'''
+            result=subprocess.run([BASH,'-c',code,'test',str(ROOT/'install.sh')],capture_output=True,text=True,
+                                  env={**os.environ,'TEST_ROOT':str(root)},timeout=10)
+            events=(root/'events').read_text() if (root/'events').exists() else ''
+            contents=target.read_text() if target.exists() else ''
+            self.assertFalse(list(target.parent.glob('.install.*')))
+            urls=(root/'urls').read_text().splitlines()
+            self.assertTrue(all('/releases/download/v'+version+'/' in u for u in urls))
+            return result,events,contents,previous
+
+    def test_verified_pinned_install_and_same_version_reinstall(self):
+        import re
+        version=re.search(r'^MANAGER_VERSION=(.+)$',(ROOT/'src/manager.sh').read_text(),re.M)[1]
+        for installed in ('', '2.0.0', version):
+            result,events,contents,_=self.run_install(installed=installed)
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertIn('LAUNCH',events)
+            self.assertIn('MANAGER_VERSION='+version,contents)
+
+    def test_corrupt_ambiguous_wrong_version_or_invalid_payload_keeps_old_manager(self):
+        for failure in ('checksum','duplicate','version','syntax'):
+            result,events,contents,previous=self.run_install(failure,installed='2.0.0')
+            self.assertNotEqual(result.returncode,0)
+            self.assertEqual(events,'')
+            self.assertEqual(contents,previous)
+
+    def test_old_installer_cannot_downgrade_newer_or_unidentified_manager(self):
+        for installed in ('99.0.0','unknown'):
+            result,events,contents,previous=self.run_install(installed=installed)
+            self.assertNotEqual(result.returncode,0)
+            self.assertEqual(events,'')
+            self.assertEqual(contents,previous)
 
 
 if __name__ == '__main__':

@@ -1,5 +1,6 @@
 """Whole-source audit regressions, using private files and mocked OS operations."""
 import json
+import hashlib
 import os
 from pathlib import Path
 import runpy
@@ -24,11 +25,13 @@ class AuditTest(unittest.TestCase):
     def installer(self, extra='', candidate=None):
         directory = self.root/'installer'
         candidate = candidate or manager.ROOT/'singbox-v2.sh'
+        manifest=self.root/'installer-manifest'
+        manifest.write_text(hashlib.sha256(candidate.read_bytes()).hexdigest()+'  singbox-v2.sh\n')
         return ('source '+shlex.quote(str(manager.ROOT/'install.sh'))+'\n'
                 'MANAGER_DIR='+shlex.quote(str(directory))+'\nMANAGER_TARGET="$MANAGER_DIR/singbox-v2.sh"\n'
                 'MANAGER_LOCK='+shlex.quote(str(self.root/'installer.lock'))+'\n'
                 'installer_root(){ :; };flock(){ :; };installer_launch(){ bash "$MANAGER_TARGET" --self-check; };\n'
-                'curl(){ cp '+shlex.quote(str(candidate))+' "${@: -1}"; };\n'+extra+'\ninstall_manager')
+                'curl(){ if [[ $* == *SHA256SUMS* ]];then cp '+shlex.quote(str(manifest))+' "${@: -1}";else cp '+shlex.quote(str(candidate))+' "${@: -1}";fi; };\n'+extra+'\ninstall_manager')
 
     def test_installer_atomic_publication_and_invalid_download_cleanup(self):
         self.shell(self.installer())

@@ -168,7 +168,7 @@ class RelayTest(unittest.TestCase):
         for lang in ('zh_CN','en_US'):
             r=self.shell('LANGUAGE_CHOICE='+lang+';sub_menu 4;printf "action=%s" "$MAIN_ACTION"',input='10\n');self.assertIn('action=relay',r.stdout)
             guide=self.shell('LANGUAGE_CHOICE='+lang+';relay_menu',input='6\n')
-            self.assertIn('6 使用说明' if lang=='zh_CN' else '6 Usage guide',guide.stdout)
+            self.assertIn('6. 使用说明' if lang=='zh_CN' else '6. Usage guide',guide.stdout)
             self.assertIn('/root/landing-hy2-ca.pem',guide.stdout);self.assertIn('fingerprint -sha256',guide.stdout)
             self.assertEqual(before,{str(p.relative_to(self.root)):p.read_bytes() for p in self.root.rglob('*') if p.is_file()})
             self.assertFalse(list(self.base.glob('relay-action.*')))

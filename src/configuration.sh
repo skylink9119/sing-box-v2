@@ -103,7 +103,21 @@ node_settings(){
  local choice vp hp value protocol cert key domain up down ignore obfs bootstrap=false public='' listen='' family
  # --menu renders only; a numeric argument executes one selected operation.
  if [[ $# == 0 || $1 == --menu ]]; then
- prompt_options '1 修改主节点端口  2 服务器地址 / DDNS  3 Reality 握手域名  4 添加协议  5 移除协议  6 HY2 参数  7 使用已有 TLS 证书  0 返回' '1 Admin ports  2 Server address / DDNS  3 Reality handshake  4 Add protocol  5 Remove protocol  6 HY2 options  7 Existing TLS certificate  0 Back'
+ prompt_options '1. 修改主节点端口
+2. 服务器地址 / DDNS
+3. Reality 握手域名
+4. 添加协议
+5. 移除协议
+6. HY2 参数
+7. 使用已有 TLS 证书
+0. 返回' '1. Admin ports
+2. Server address / DDNS
+3. Reality handshake
+4. Add protocol
+5. Remove protocol
+6. HY2 options
+7. Existing TLS certificate
+0. Back'
  [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
  else
@@ -116,7 +130,9 @@ node_settings(){
    confirm "$(L '更新所有节点的服务器地址？' 'Update server address for all nodes?')" && configuration_apply address "$value";;
   3) reality_replace;;
   4|5)
-   prompt_options '1 Reality + Vision  2 Hysteria2' '1 Reality + Vision  2 Hysteria2';prompt_read '> ' protocol || return 0
+   prompt_options '1. Reality + Vision
+2. Hysteria2' '1. Reality + Vision
+2. Hysteria2';prompt_read '> ' protocol || return 0
    case $protocol in 1) protocol=vless;;2) protocol=hysteria2;;*) return 1;;esac
    if [[ $choice == 5 ]];then confirm "$(L '移除所选协议，保留另一协议与用户额度？' 'Remove selected protocol, retaining the other and account quotas?')" && configuration_apply remove "$protocol";return;fi
    if [[ $(python3 - "$CONF" "$META" <<'PY_INITIAL_NODE'
@@ -129,7 +145,13 @@ PY_INITIAL_NODE
     public=$(rescue_engine address "$public") || { err "$(L '公网地址无效' 'Invalid public address')";return 1; }
     family=$(rescue_engine family) || return 1
     case $family in 4)listen=0.0.0.0;;6)listen=::;;*)listen=::;;esac
-    prompt_options '本机监听地址族：1 自动  2 IPv4  3 IPv6' 'Local bind family: 1 Auto  2 IPv4  3 IPv6'
+    prompt_options '本机监听地址族：
+1. 自动
+2. IPv4
+3. IPv6' 'Local bind family:
+1. Auto
+2. IPv4
+3. IPv6'
     prompt_read '> ' family || return 0
     case ${family:-1} in 1);;2)listen=0.0.0.0;;3)listen=::;;*)return 1;;esac
    fi
@@ -138,7 +160,9 @@ PY_INITIAL_NODE
     if [[ $bootstrap == true ]];then confirm "$(L '添加直连 Reality 节点并保留独立 Argo 隧道？' 'Add a direct Reality node and retain the separate Argo tunnel?')" && configuration_apply add vless "$value" "${domain:-addons.mozilla.org}" "$public" "$listen"
     else confirm "$(L '追加 Reality，保留现有凭据？' 'Add Reality, retaining existing credentials?')" && configuration_apply add vless "$value" "${domain:-addons.mozilla.org}";fi
    else
-    prompt_options '1 自动自签名（无域名）  2 已有证书 / 托管 ACME' '1 Automatic self-signed (no domain)  2 Existing certificate / managed ACME'
+    prompt_options '1. 自动自签名（无域名）
+2. 已有证书 / 托管 ACME' '1. Automatic self-signed (no domain)
+2. Existing certificate / managed ACME'
     prompt_read '> ' protocol || return 0
     if [[ $protocol == 1 ]];then
      if [[ $bootstrap == true ]];then domain=$public;else domain=$(state ip) || return 1;fi
@@ -154,9 +178,13 @@ PY_INITIAL_NODE
     else confirm "$(L '追加 HY2，沿用证书并保留用户用量？' 'Add HY2 with this certificate, retaining account usage?')" && configuration_apply add hysteria2 "$value" "$domain" "$cert" "$key";fi
    fi;;
   6) prompt_read "$(L '上行 Mbps [0=自动]：' 'Upload Mbps [0=auto]: ')" up || return 0;prompt_read "$(L '下行 Mbps [0=自动]：' 'Download Mbps [0=auto]: ')" down || return 0
-   prompt_options '1 按带宽设置  2 忽略客户端带宽（须上下行均为0）' '1 Use bandwidth settings  2 Ignore client bandwidth (both must be 0)';prompt_read '> ' ignore || return 0
+   prompt_options '1. 按带宽设置
+2. 忽略客户端带宽（须上下行均为0）' '1. Use bandwidth settings
+2. Ignore client bandwidth (both must be 0)';prompt_read '> ' ignore || return 0
    case ${ignore:-1} in 1) ignore=false;;2) ignore=true;;*) return 1;;esac
-   prompt_options '1 无混淆  2 Salamander' '1 No obfuscation  2 Salamander';prompt_read '> ' obfs || return 0
+   prompt_options '1. 无混淆
+2. Salamander' '1. No obfuscation
+2. Salamander';prompt_read '> ' obfs || return 0
    case ${obfs:-1} in 1) obfs=none;;2) obfs=salamander;;*) return 1;;esac
    warn "$(L '混淆改动需重新导入客户端；此处不是每人跨协议硬限速。' 'Obfuscation changes require re-import; these are not cross-protocol per-account hard rate caps.')"
    confirm "$(L '应用 HY2 参数？' 'Apply HY2 options?')" && configuration_apply hy2 "${up:-0}" "${down:-0}" "$ignore" "$obfs";;

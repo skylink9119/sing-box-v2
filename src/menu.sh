@@ -15,6 +15,14 @@ sub_menu(){
  MENU_BACK=0
  printf '%s\n----------------------------------------------\n' "$GREEN"
  case $group in
+  1) say '【节点安装】' '[Install nodes]';;
+  2) say '【节点与订阅】' '[Nodes and subscriptions]';;
+  3) say '【服务与日志】' '[Services and logs]';;
+  4) say '【服务器与网络】' '[Server and network]';;
+  5) say '【更新与备份】' '[Updates and backups]';;
+  6) say '【设置与卸载】' '[Settings and uninstall]';;
+ esac
+ case $group in
   1)
    say ' 1. 安装 Reality + Vision' ' 1. Install Reality + Vision'
    say ' 2. 安装 Hysteria2' ' 2. Install Hysteria2'
@@ -31,7 +39,7 @@ sub_menu(){
    say ' 4. 小火箭节点二维码' ' 4. Shadowrocket node QR codes'
    say ' 5. 用户数量、流量与有效期管理' ' 5. Account limits, traffic quotas and expiry'
    say ' 6. HTTPS 个人在线订阅' ' 6. Personal HTTPS subscriptions'
-   say ' 7. 查看节点参数（UUID / 公钥 / Short ID / SNI，注意保密）' ' 7. View node parameters (UUID / public key / Short ID / SNI; private)'
+   say ' 7. 查看节点参数（注意保密）' ' 7. View node parameters (keep private)'
    ;;
   3)
    say ' 1. sing-box 状态与启停' ' 1. sing-box status and controls'

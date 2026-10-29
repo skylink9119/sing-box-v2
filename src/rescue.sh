@@ -60,10 +60,22 @@ argo_network_settings(){
  argo_guard || return 1
  [[ -f $BASE/argo-state.json ]] || return 1
  local edge transport snap active=false
- prompt_options 'Cloudflare 连接地址族：1 自动  2 IPv4  3 IPv6' 'Cloudflare address family: 1 Auto  2 IPv4  3 IPv6'
+ prompt_options 'Cloudflare 连接地址族：
+1. 自动
+2. IPv4
+3. IPv6' 'Cloudflare address family:
+1. Auto
+2. IPv4
+3. IPv6'
  prompt_read '> ' edge || return 0
  case ${edge:-1} in 1) edge=auto;;2) edge=4;;3) edge=6;;*) return 1;;esac
- prompt_options '隧道传输：1 自动  2 QUIC/UDP 7844  3 HTTP2/TCP 7844' 'Tunnel transport: 1 Auto  2 QUIC/UDP 7844  3 HTTP2/TCP 7844'
+ prompt_options '隧道传输：
+1. 自动
+2. QUIC/UDP 7844
+3. HTTP2/TCP 7844' 'Tunnel transport:
+1. Auto
+2. QUIC/UDP 7844
+3. HTTP2/TCP 7844'
  prompt_read '> ' transport || return 0
  case ${transport:-1} in 1) transport=auto;;2) transport=quic;;3) transport=http2;;*) return 1;;esac
  warn "$(L '重启临时隧道会更换域名，需要重新导入节点。HTTP2 仍需出站 TCP 7844，不能通过 TCP 443 代替。' 'Restarting a Quick Tunnel changes its hostname; re-import the node. HTTP2 still requires outbound TCP 7844, not TCP 443.')"
@@ -98,7 +110,11 @@ rescue_menu(){
  fi
  case $choice in
   1) argo_install quick;;2) argo_install named;;
-  3) prompt_options '1 Reality  2 HY2  3 双协议' '1 Reality  2 HY2  3 Dual';prompt_read '> ' mode || return 0;install_protocol "$mode" custom;;
+  3) prompt_options '1. Reality
+2. HY2
+3. 双协议' '1. Reality
+2. HY2
+3. Dual';prompt_read '> ' mode || return 0;install_protocol "$mode" custom;;
   4) check_owned || return 1
    prompt_read "$(L 'NAT 公网 IP / 域名：' 'NAT public IP/hostname: ')" host || return 0
    host=$(rescue_engine address "$host") || return 1
@@ -110,7 +126,9 @@ rescue_menu(){
   6) check_owned || return 1;edge=$(rescue_engine family) || return 1
    say '使用你已有的合法 WARP WireGuard 双栈配置；原生 IPv6 必须使用 IPv6 Peer Endpoint。默认 MTU 1280，无需 /dev/net/tun。' 'Use your own valid dual-stack WARP WireGuard profile. Native IPv6 needs an IPv6 Peer Endpoint. Default MTU 1280; no /dev/net/tun is required.'
    warn "$(L '补全仅作用于托管节点；全局 WARP 会改变这些节点的出口，不修改系统默认路由。' 'Completion applies only to managed nodes. Global WARP changes their egress, without changing the system default route.')"
-   prompt_options '1 全部节点流量走 WARP  2 仅流媒体与 AI 域名' '1 All node traffic via WARP  2 Media/AI domains only';prompt_read '> ' mode || return 0
+   prompt_options '1. 全部节点流量走 WARP
+2. 仅流媒体与 AI 域名' '1. All node traffic via WARP
+2. Media/AI domains only';prompt_read '> ' mode || return 0
    case $mode in 1) mode=global;;2) mode=restricted;;*) return 1;;esac
    warp_import_gateway "$edge" "$mode" && warp_dualstack;;
   7) edge=$(rescue_engine family);say "原生路由选择：$edge" "Native route selection: $edge"

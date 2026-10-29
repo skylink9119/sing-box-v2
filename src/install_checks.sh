@@ -50,7 +50,11 @@ installation_check_menu(){
  if [[ $choice != 2 ]];then prompt_read 'Reality TCP [443]: ' tcp || return 0;tcp=${tcp:-443};fi
  if [[ $choice != 1 ]];then prompt_read 'HY2 UDP [443]: ' udp || return 0;udp=${udp:-443};fi
  valid_port "$tcp" && valid_port "$udp" || return 1
- prompt_options '监听地址族：1 IPv4（默认）  2 IPv6' 'Listen family: 1 IPv4 (default)  2 IPv6'
+ prompt_options '监听地址族：
+1. IPv4（默认）
+2. IPv6' 'Listen family:
+1. IPv4 (default)
+2. IPv6'
  prompt_read '> ' family || return 0
  case ${family:-1} in 1);;2)listen=::;;*)return 1;;esac
  if [[ $choice != 2 ]];then

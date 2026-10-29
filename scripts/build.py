@@ -29,8 +29,9 @@ def main():
     values={node.targets[0].id:ast.literal_eval(node.value) for node in tree.body if isinstance(node,ast.Assign) and isinstance(node.targets[0],ast.Name) and node.targets[0].id in ('MEDIA','AI','RULE_VERSION')}
     if catalog['media']!=values['MEDIA'] or catalog['ai']!=values['AI'] or catalog['version']!=values['RULE_VERSION']:parser.exit(1,'WARP catalog and source defaults differ\n')
     quickstart=assemble('quickstart.sh').removeprefix('#!/usr/bin/env bash\n')
+    version=re.search(r'^MANAGER_VERSION=([0-9]+\.[0-9]+\.[0-9]+)$',assemble('manager.sh'),re.M)[1]
     for source,filename in [('manager.sh','singbox-v2.sh'),('installer.sh','install.sh'),('bootstrap.sh','bootstrap.sh')]:
-        result = assemble(source)
+        result = assemble(source).replace('@MANAGER_VERSION@',version)
         target = ROOT / filename
         if args.check:
             if target.read_text() != result:

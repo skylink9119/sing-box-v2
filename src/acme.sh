@@ -27,7 +27,9 @@ acme_issue(){
  [[ $domain =~ ^[a-zA-Z0-9.-]+$ && $domain == *.* && $domain != .* && $domain != *..* ]] || return 1
  prompt_read "$(L 'ACME 联系邮箱：' 'ACME contact email: ')" email || return 0
  [[ $email =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]] || return 1
- prompt_options '1 HTTP-01（域名指向本机，TCP80可达）  2 Cloudflare DNS-01' '1 HTTP-01 (domain points here; TCP80 reachable)  2 Cloudflare DNS-01'
+ prompt_options '1. HTTP-01（域名指向本机，TCP80可达）
+2. Cloudflare DNS-01' '1. HTTP-01 (domain points here; TCP80 reachable)
+2. Cloudflare DNS-01'
  prompt_read '> ' method || return 0
  case $method in
   1) method=http; if ss -H -ltn '( sport = :80 )' | grep -q .;then err "$(L 'TCP80 已占用，保留现有服务；请选择 DNS 验证' 'TCP80 occupied; existing service preserved. Use DNS validation.')";return 1;fi;;
@@ -116,7 +118,19 @@ acme_menu(){
  local choice
  # --menu renders only; a numeric argument executes one selected operation.
  if [[ $# == 0 || $1 == --menu ]]; then
- prompt_options '1 申请域名证书  2 使用证书用于 HY2  3 手动续签  4 开启自动续签  5 关闭自动续签  6 清理未完成的申请  0 返回' '1 Issue domain certificate  2 Use for HY2  3 Renew  4 Enable auto-renew  5 Disable auto-renew  6 Clean failed issuance  0 Back'
+ prompt_options '1. 申请域名证书
+2. 使用证书用于 HY2
+3. 手动续签
+4. 开启自动续签
+5. 关闭自动续签
+6. 清理未完成的申请
+0. 返回' '1. Issue domain certificate
+2. Use for HY2
+3. Renew
+4. Enable auto-renew
+5. Disable auto-renew
+6. Clean failed issuance
+0. Back'
  [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
  else

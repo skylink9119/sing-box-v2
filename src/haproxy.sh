@@ -70,7 +70,7 @@ Path: phone → A HAProxy TCP forwarder → B node → website.
 
 1. On B, prepare a working TCP node, such as VLESS + Reality + Vision or Trojan.
    Keep B's egress direct to retain its residential IP. Allow B's actual TCP node port from A.
-2. On A, open 4 → 11 HAProxy TCP passthrough, then 1 Add TCP rule.
+2. On A, open d → 11 HAProxy TCP passthrough, then 1 Add TCP rule.
    A does not need a sing-box node for this mode.
 3. Enter a rule name, A's listen IP and TCP port, then B's IP/hostname and node TCP port.
    Defaults: A listens on 0.0.0.0:8443, B uses port 443. IPv6 listen :: is IPv6-only.
@@ -102,7 +102,7 @@ A：线路较好的中转服务器。B：住宅 IP 落地服务器。
 
 1. 打开 B 的终端，准备可用的 TCP 节点，例如 VLESS + Reality + Vision 或 Trojan。
    B 出站保持直连以保留住宅 IP，放行 A 到 B 的实际 TCP 节点端口。
-2. 切换到 A 的终端，进入 4 → 11「HAProxy TCP 透传」，选择 1「添加 TCP 规则」。
+2. 切换到 A 的终端，进入 d → 11「HAProxy TCP 透传」，选择 1「添加 TCP 规则」。
    这种模式下，A 可以不安装 sing-box 节点。
 3. 填写规则名称、A 监听地址与转发端口，再填写 B 的 IP / 域名和节点 TCP 端口。
    默认 A 监听 0.0.0.0:8443，B 端口为 443；IPv6 监听可填 ::，仅接收 IPv6。

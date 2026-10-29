@@ -46,7 +46,13 @@ core_versions(){
  # --menu renders only; a numeric argument executes one selected operation.
  if [[ $# == 0 || $1 == --menu ]]; then
  say "当前内核：${current}；本版测试内核：$CORE_RECOMMENDED" "Current core: $current; tested core for this release: $CORE_RECOMMENDED"
- prompt_options '1 安装本版测试内核  2 最新稳定版  3 指定版本 / 降级  0 返回' '1 Tested core  2 Latest stable  3 Specific version / downgrade  0 Back'
+ prompt_options '1. 安装本版测试内核
+2. 最新稳定版
+3. 指定版本 / 降级
+0. 返回' '1. Tested core
+2. Latest stable
+3. Specific version / downgrade
+0. Back'
  [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
  else
@@ -68,7 +74,19 @@ backup_tools(){
  local choice path output keep pass tmp
  # --menu renders only; a numeric argument executes one selected operation.
  if [[ $# == 0 || $1 == --menu ]]; then
- prompt_options '1 备份列表  2 新建备份  3 恢复预检  4 加密导出  5 导入加密备份  6 保留数量 / 清理  0 返回' '1 List  2 Create  3 Restore preflight  4 Encrypted export  5 Import encrypted backup  6 Retention cleanup  0 Back'
+ prompt_options '1. 备份列表
+2. 新建备份
+3. 恢复预检
+4. 加密导出
+5. 导入加密备份
+6. 保留数量 / 清理
+0. 返回' '1. List
+2. Create
+3. Restore preflight
+4. Encrypted export
+5. Import encrypted backup
+6. Retention cleanup
+0. Back'
  [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
  else

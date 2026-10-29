@@ -270,7 +270,7 @@ class HAProxyTest(unittest.TestCase):
             result = self.shell('LANGUAGE_CHOICE='+lang+';sub_menu 4;printf "action=%s" "$MAIN_ACTION"', input='11\n')
             self.assertIn('action=haproxy', result.stdout)
             result = self.shell('LANGUAGE_CHOICE='+lang+';haproxy_menu', input='12\n')
-            self.assertIn('4 → 11', result.stdout); self.assertIn('HY2', result.stdout)
+            self.assertIn('d → 11', result.stdout); self.assertIn('HY2', result.stdout)
             self.assertIn('B', result.stdout); self.assertFalse(self.proxy.root.exists())
         result = self.shell('haproxy_menu', input='2\n\n', ok=False)
         self.assertNotEqual(result.returncode, 0); self.assertFalse(self.proxy.root.exists())

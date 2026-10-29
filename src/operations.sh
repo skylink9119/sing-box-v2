@@ -1,7 +1,7 @@
 # Manager updates affect script copies, never node credentials or configurations.
 manager_latest(){
  local target=$1
- curl -fsSL --retry 2 --connect-timeout 10 --max-time 30 https://api.github.com/repos/skylink9119/sing-box-v2/releases/latest -o "$target" || return 1
+ curl -q -fsSL --proto '=https' --proto-redir '=https' --retry 2 --connect-timeout 10 --max-time 30 https://api.github.com/repos/skylink9119/sing-box-v2/releases/latest -o "$target" || return 1
  python3 - "$target" <<'PY'
 import json,re,sys
 r=json.load(open(sys.argv[1]));tag=r['tag_name']
@@ -72,7 +72,7 @@ import json,sys
 print(next(a['digest'][7:] for a in json.load(open(sys.argv[1]))['assets'] if a['name']=='singbox-v2.sh'))
 PY
  ) || { rm -rf "$tmp"; return 1; }
- if ! curl -fsSL --retry 2 --max-time 120 "https://github.com/skylink9119/sing-box-v2/releases/download/v$version/singbox-v2.sh" -o "$tmp/candidate" ||
+ if ! curl -q -fsSL --connect-timeout 10 --proto '=https' --proto-redir '=https' --retry 2 --max-time 120 "https://github.com/skylink9119/sing-box-v2/releases/download/v$version/singbox-v2.sh" -o "$tmp/candidate" ||
     ! python3 - "$tmp/candidate" "$digest" <<'PY'
 import hashlib,sys
 sys.exit(0 if hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest()==sys.argv[2].lower() else 1)
@@ -221,7 +221,15 @@ certificate_menu(){
  local choice
  # --menu renders only; a numeric argument executes one selected operation.
  if [[ $# == 0 || $1 == --menu ]]; then
- prompt_options '1 查看证书有效期  2 续签后同步并重载  3 开启每日检查  4 关闭每日检查  0 返回' '1 Expiry  2 Reload renewed certificate  3 Enable daily checks  4 Disable daily checks  0 Back'
+ prompt_options '1. 查看证书有效期
+2. 续签后同步并重载
+3. 开启每日检查
+4. 关闭每日检查
+0. 返回' '1. Expiry
+2. Reload renewed certificate
+3. Enable daily checks
+4. Disable daily checks
+0. Back'
  [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
  else

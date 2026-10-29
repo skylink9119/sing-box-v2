@@ -55,6 +55,15 @@ main''', input='d\n7\n3\n7\n0\nq\n')
         self.assertIn('AUDIT_PARENT', result.stdout)
         self.assertEqual(result.stdout.count('SKYBYTE Manager v'), 2)
 
+    def test_failed_ssh_allow_rule_aborts_activation_and_reports_failure(self):
+        code=self.mocks()+'''ufw(){ echo "UFW $*";[[ $1 != allow ]]; }
+run_menu_action firewall 2
+echo ACTION_STATUS=$MENU_ACTION_STATUS'''
+        result=self.shell(code,input='22\ny\n')
+        self.assertIn('ACTION_STATUS=1',result.stdout)
+        self.assertNotIn('UFW --force enable',result.stdout)
+        self.assertNotIn('UFW default',result.stdout)
+
     def test_nested_warp_rules_return_to_warp_without_idle_lock(self):
         code = self.mocks()+'''check_owned(){ :; };warp_guard(){ :; }
 warp_engine(){ echo "ENGINE $*"; }

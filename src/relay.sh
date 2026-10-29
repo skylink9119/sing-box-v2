@@ -26,7 +26,11 @@ relay_import_menu() (
  local choice source link trust stage mode domains rc=0
  stage=$(mktemp -d "$BASE/relay-import.XXXXXX") || return 1
  trap 'rm -rf -- "$stage"' EXIT
- prompt_options '1 粘贴节点链接（隐藏输入）  2 导入本地节点 / sing-box JSON 文件  0 返回' '1 Paste node URI (hidden input)  2 Local node / sing-box JSON file  0 Back'
+ prompt_options '1. 粘贴节点链接（隐藏输入）
+2. 导入本地节点 / sing-box JSON 文件
+0. 返回' '1. Paste node URI (hidden input)
+2. Local node / sing-box JSON file
+0. Back'
  prompt_read '> ' choice || { rm -rf "$stage";return 0; }
  case $choice in
   1)
@@ -38,7 +42,11 @@ relay_import_menu() (
  say 'HY2 自签名：从落地 VPS 经可信 SSH/SFTP 获取公开证书并核对指纹，不要提供私钥。受信任 CA 证书可回车跳过。' 'Self-signed HY2: retrieve the public certificate over trusted SSH/SFTP and verify its fingerprint. Never supply a private key. Press Enter for a trusted CA certificate.'
  prompt_read "$(L 'HY2 公开信任证书路径（可选）：' 'HY2 public trust certificate path (optional): ')" trust || { rm -rf "$stage";return 0; }
  if ! warp_engine relay_prepare "$source" "$stage/profile.json" "$trust";then rm -rf "$stage";return 1;fi
- prompt_options '1 全部节点流量走落地（默认）  2 仅指定域名走落地，其余直连  0 取消' '1 All node traffic through landing (default)  2 Selected domains; others direct  0 Cancel'
+ prompt_options '1. 全部节点流量走落地（默认）
+2. 仅指定域名走落地，其余直连
+0. 取消' '1. All node traffic through landing (default)
+2. Selected domains; others direct
+0. Cancel'
  prompt_read '> ' choice || { rm -rf "$stage";return 0; };choice=${choice:-1};domains=example.com
  case $choice in
   1) mode=global;;
@@ -63,10 +71,10 @@ Both servers need working nodes. Open a separate SSH terminal for each server.
 
 1. Open B's terminal.
    Install Reality + Vision or HY2 if needed; an existing working node is fine.
-   In SKYBYTE Manager, select 2 → 1 View nodes.
+   In SKYBYTE Manager, select b → 1 View nodes.
    Copy one complete red URI beginning with vless:// or hysteria2://.
 2. Switch to A's terminal.
-   Open 4 → 10 Residential landing / VPS relay.
+   Open d → 10 Residential landing / VPS relay.
    Select 1 Import / replace landing, then 1 Paste node URI.
 3. Paste B's URI and press Enter.
    Hidden input displays no characters while pasting; this is expected.
@@ -119,10 +127,10 @@ RELAY_HELP_EN
 
 1. 打开 B 的终端。
    未安装节点时先安装 Reality + Vision 或 HY2；已有可用节点就直接使用。
-   运行 SKYBYTE Manager，选择 2 → 1「查看节点」。
+   运行 SKYBYTE Manager，选择 b → 1「查看节点」。
    复制红色的完整链接，例如以 vless:// 或 hysteria2:// 开头的一整条。
 2. 切换到 A 的终端。
-   进入 4 → 10「住宅落地 / VPS 中转」。
+   进入 d → 10「住宅落地 / VPS 中转」。
    选择 1「导入 / 更换落地节点」，再选择 1「粘贴节点链接」。
 3. 把刚才 B 的链接粘贴进去，按回车。
    粘贴时屏幕不会显示字符，这是隐藏输入，正常。
@@ -171,7 +179,19 @@ relay_menu() (
  if [[ $# == 0 || $1 == --menu ]]; then
  printf '%s' "$YELLOW";warp_engine relay_status "${LANGUAGE_CHOICE:-zh_CN}";printf '%s' "$RESET"
  say '路径：客户端 → 本 VPS → 落地 VPS → 网站。落地失败不自动改用本机出口。' 'Path: client → this VPS → landing VPS → destination. Landing failure does not automatically use this VPS as the exit.'
- prompt_options '1 导入 / 更换落地节点  2 测试落地连接  3 全局中转  4 恢复直连  5 删除已保存的落地凭据  6 使用说明  0 返回' '1 Import / replace landing  2 Test landing  3 Global relay  4 Restore direct  5 Remove saved landing credentials  6 Usage guide  0 Back'
+ prompt_options '1. 导入 / 更换落地节点
+2. 测试落地连接
+3. 全局中转
+4. 恢复直连
+5. 删除已保存的落地凭据
+6. 使用说明
+0. 返回' '1. Import / replace landing
+2. Test landing
+3. Global relay
+4. Restore direct
+5. Remove saved landing credentials
+6. Usage guide
+0. Back'
  [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
  else

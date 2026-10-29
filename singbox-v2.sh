@@ -8,7 +8,7 @@
 set -Eeuo pipefail
 umask 077
 SCRIPT_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
-MANAGER_VERSION=2.8.12
+MANAGER_VERSION=2.8.13
 CORE_RECOMMENDED=1.14.3
 BASE=/etc/singbox-v2
 CONF=/etc/sing-box/config.json
@@ -263,7 +263,7 @@ startup_info(){
  services=$(startup_probe systemctl show --no-pager --property=Id,LoadState,ActiveState sing-box.service skybyte-argo-tunnel.service nginx.service skybyte-haproxy.service skybyte-users.service) || services=''
  printf '%s\n----------------------------------------------\n' "$GREEN"
  say "脚本版本：SKYBYTE Manager v$MANAGER_VERSION" "Script version: SKYBYTE Manager v$MANAGER_VERSION"
- say '功能更新：受限网络部署（1 → 6）、独立 Argo、IPv6/NAT、WARP 双栈与流媒体地区线索识别' 'Features: restricted-network deployment (1 → 6), standalone Argo, IPv6/NAT, WARP dual-stack and media region clues'
+ say '功能更新：受限网络部署（a → 6）、独立 Argo、IPv6/NAT、WARP 双栈与流媒体地区线索识别' 'Features: restricted-network deployment (a → 6), standalone Argo, IPv6/NAT, WARP dual-stack and media region clues'
  say '系统信息：' 'System information:'
  printf '  %s: %s\n' "$(L '操作系统' 'OS')" "$os" "$(L '内核' 'Kernel')" "$kernel" "$(L '处理器架构' 'Architecture')" "$arch" "$(L '虚拟化' 'Virtualization')" "$virtual"
  printf '  IPv4: %s\n  IPv6: %s\n' "${ipv4:-$(L '未检测到' 'Not detected')}" "${ipv6:-$(L '未检测到' 'Not detected')}"
@@ -390,8 +390,8 @@ download_binary(){
  if [[ -n ${SKYBYTE_ASSET_DIR:-} ]];then rescue_engine asset "$SKYBYTE_ASSET_DIR" sing-box "$version" "$(uname -m)" "$target";return $?;fi
  tmp=$(mktemp -d) || return 1
  asset="sing-box-$version-linux-$arch.tar.gz"
- if ! curl -fsSL --retry 2 --max-time 180 "https://github.com/SagerNet/sing-box/releases/download/v$version/$asset" -o "$tmp/$asset" ||
-    ! curl -fsSL --retry 2 --max-time 30 "https://api.github.com/repos/SagerNet/sing-box/releases/tags/v$version" -o "$tmp/release.json"; then rm -rf "$tmp"; return 1; fi
+ if ! curl -q -fsSL --connect-timeout 10 --proto '=https' --proto-redir '=https' --retry 2 --max-time 180 "https://github.com/SagerNet/sing-box/releases/download/v$version/$asset" -o "$tmp/$asset" ||
+    ! curl -q -fsSL --connect-timeout 10 --proto '=https' --proto-redir '=https' --retry 2 --max-time 30 "https://api.github.com/repos/SagerNet/sing-box/releases/tags/v$version" -o "$tmp/release.json"; then rm -rf "$tmp"; return 1; fi
  sum=$(python3 - "$tmp/release.json" "$asset" <<'PY'
 import json,sys
 r=json.load(open(sys.argv[1])); assert not r['draft'] and not r['prerelease']
@@ -480,7 +480,13 @@ install_protocol() (
  trap installation_cleanup EXIT
  need_root
  local mode="${1:-}" cert_mode="" vp=443 hp=443 supplied_ip='' listen_addr=''
- if [[ -z "$mode" ]]; then prompt_options '1 Reality 单协议 | 2 HY2 单协议 | 3 双协议 | 0 返回' '1 Reality only | 2 HY2 only | 3 Dual | 0 Back'
+ if [[ -z "$mode" ]]; then prompt_options '1. Reality 单协议
+2. HY2 单协议
+3. 双协议
+0. 返回' '1. Reality only
+2. HY2 only
+3. Dual
+0. Back'
  prompt_read '> ' mode || return; fi
  [[ "$mode" == 0 ]] && return 0
  [[ "$mode" =~ ^[123]$ ]] || { err "Invalid selection"; return 1; }
@@ -496,7 +502,13 @@ install_protocol() (
   local native_family
   native_family=$(rescue_engine family) || return 1
   case $native_family in 4) listen_addr=0.0.0.0;; 6) listen_addr=::;; *) [[ $supplied_ip == *:* ]] && listen_addr=:: || listen_addr=0.0.0.0;; esac
-  prompt_options '本机监听地址族：1 自动  2 IPv4  3 IPv6（NAT 请按 VPS 网卡选择）' 'Local bind family: 1 Auto  2 IPv4  3 IPv6 (for NAT, choose the VPS interface family)'
+  prompt_options '本机监听地址族：
+1. 自动
+2. IPv4
+3. IPv6（NAT 请按 VPS 网卡选择）' 'Local bind family:
+1. Auto
+2. IPv4
+3. IPv6 (for NAT, choose the VPS interface family)'
   prompt_read '> ' native_family || return 1
   case ${native_family:-1} in 1);; 2)listen_addr=0.0.0.0;; 3)listen_addr=::;; *)return 1;; esac
  fi
@@ -506,7 +518,13 @@ install_protocol() (
  local domain="" cert="" key="" sni="" node_name
  node_name=$(choose_node_name) || { err "$(L '节点名称无效' 'Invalid node name')"; return 1; }
  if [[ $mode != 1 ]]; then
-  prompt_options 'HY2证书: 1 无域名(自动自签名)  2 已有证书  3 托管 ACME' 'HY2 certificate: 1 No domain (self-signed)  2 Existing certificate  3 Managed ACME'
+  prompt_options 'HY2证书:
+1. 无域名(自动自签名)
+2. 已有证书
+3. 托管 ACME' 'HY2 certificate:
+1. No domain (self-signed)
+2. Existing certificate
+3. Managed ACME'
   prompt_read '> ' cert_mode
   case "$cert_mode" in
    1) say '需要客户端安全地导入证书并启用验证。' 'Client must securely import and verify the certificate.';;
@@ -942,7 +960,11 @@ hop(){
  # --menu renders only; a numeric argument executes one selected operation.
  if [[ $# == 0 || $1 == --menu ]]; then
  say '端口跳跃仅支持 IPv4；规则随 systemd 开机恢复，需要放行云防火墙 UDP 范围。' 'Hopping is IPv4-only, persisted with systemd; allow the provider UDP range.'
- prompt_options '1 开启  2 关闭  0 返回' '1 Enable  2 Disable  0 Back'
+ prompt_options '1. 开启
+2. 关闭
+0. 返回' '1. Enable
+2. Disable
+0. Back'
  [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
  else
@@ -950,7 +972,9 @@ hop(){
  fi
  if [[ $choice == 2 ]]; then confirm "$(L '关闭跳跃？' 'Disable hopping?')" && hop_disable; return; fi
  [[ $choice == 1 ]] || return 0
- prompt_options '1 nftables（默认）  2 iptables' '1 nftables (default)  2 iptables'
+ prompt_options '1. nftables（默认）
+2. iptables' '1. nftables (default)
+2. iptables'
  prompt_read '> ' backend || return 0; backend=${backend:-1}
  case $backend in 1) backend=nftables;; 2) backend=iptables;; *) return 1;; esac
  prompt_read "$(L '起始端口 [20000]：' 'Start port [20000]: ')" start || return 0; start=${start:-20000}
@@ -1025,7 +1049,7 @@ PY_HOP_ON
  say '客户端 JSON/YAML 已加入跳跃范围；小火箭请在客户端配置跳跃范围。云安全组也必须放行此范围。' 'JSON/YAML includes hopping ranges; configure hopping manually in Shadowrocket. Allow the provider UDP range too.'
 }
 
-latest(){ curl -fsSL --max-time 25 https://api.github.com/repos/SagerNet/sing-box/releases/latest | python3 -c 'import json,sys; d=json.load(sys.stdin); assert not d.get("prerelease") and not d.get("draft"); print(d["tag_name"].lstrip("v"))'; }
+latest(){ curl -q -fsSL --connect-timeout 10 --proto '=https' --proto-redir '=https' --max-time 25 https://api.github.com/repos/SagerNet/sing-box/releases/latest | python3 -c 'import json,sys; d=json.load(sys.stdin); assert not d.get("prerelease") and not d.get("draft"); print(d["tag_name"].lstrip("v"))'; }
 update(){
  check_owned || return 1
  local new current
@@ -1105,7 +1129,7 @@ hy2_diagnostics(){
  port=$(protocol_port hysteria2) || { err "$(L '未找到 HY2 入站' 'No HY2 inbound found')"; return 1; }
  say '---------------- HY2 连接诊断 ----------------' '---------------- HY2 connection checks ----------------'
  if "$BIN" check -c "$CONF"; then ok "$(L '服务端配置检查通过' 'Server configuration check passed')"; else err "$(L '服务端配置无效' 'Server configuration invalid')"; fi
- if systemctl is-active --quiet sing-box; then ok "$(L 'sing-box 服务正在运行' 'sing-box service is active')"; else err "$(L 'sing-box 服务未运行；请查看服务与日志 → 日志（3 → 2） 日志' 'sing-box is not active; inspect Services and logs > Logs (3 > 2) logs')"; fi
+ if systemctl is-active --quiet sing-box; then ok "$(L 'sing-box 服务正在运行' 'sing-box service is active')"; else err "$(L 'sing-box 服务未运行；请查看服务与日志 → 日志（c → 2） 日志' 'sing-box is not active; inspect Services and logs > Logs (c > 2) logs')"; fi
  listener=$(ss -H -lun "( sport = :$port )") || return 1
  if [[ -n $listener ]]; then ok "$(L "本机 UDP $port 有监听" "Local UDP $port has a listener")"; else err "$(L "本机 UDP $port 未监听" "No local UDP $port listener")"; fi
  details=$(python3 - "$CONF" <<'PY'
@@ -1309,7 +1333,7 @@ firewall(){
    warn "$(L '如果 SSH 端口判断错误，开启 UFW 可能导致远程连接断开！请保留 VPS 控制台访问。' 'Wrong SSH port may lock you out. Keep VPS console access.')"
    say '将放行 SSH 与实际节点、订阅和 HTTP证书验证端口。' 'Will allow SSH and actual node, subscription and HTTP certificate-validation ports.'
    confirm "$(L '确认开启 UFW 防火墙？' 'Enable UFW now?')" || return 0
-   ufw allow "$port/tcp" || return 0
+   ufw allow "$port/tcp" || return 1
    local detected
    while read -r detected; do [[ -z $detected ]] || ufw allow "$detected/tcp" || return 1; done <<<"$SSH_PORTS"
    firewall_allow_protocols || return 1
@@ -1333,7 +1357,19 @@ service_manager(){
  local x
  # --menu renders only; a numeric argument executes one selected operation.
  if [[ $# == 0 || $1 == --menu ]]; then
- prompt_options '1 状态  2 启动  3 重启  4 停止  5 开机自启  6 配置检查  0 返回' '1 Status  2 Start  3 Restart  4 Stop  5 Enable at boot  6 Config check  0 Back'
+ prompt_options '1. 状态
+2. 启动
+3. 重启
+4. 停止
+5. 开机自启
+6. 配置检查
+0. 返回' '1. Status
+2. Start
+3. Restart
+4. Stop
+5. Enable at boot
+6. Config check
+0. Back'
  [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' x || return
  else
@@ -1352,7 +1388,17 @@ traffic(){
  say 'vnStat 统计 VPS 网卡流量，不能区分 Reality/HY2；历史数据从安装后开始。' 'vnStat tracks VPS interface traffic, NOT Reality/HY2 separately. History starts when installed.'
  # --menu renders only; a numeric argument executes one selected operation.
  if [[ $# == 0 || $1 == --menu ]]; then
- prompt_options '1 安装 vnStat  2 今日  3 本月  4 实时网速  5 历史汇总  0 返回' '1 Install vnStat  2 Today  3 Monthly  4 Live  5 History  0 Back'
+ prompt_options '1. 安装 vnStat
+2. 今日
+3. 本月
+4. 实时网速
+5. 历史汇总
+0. 返回' '1. Install vnStat
+2. Today
+3. Monthly
+4. Live
+5. History
+0. Back'
  [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' x || return
  else
@@ -1929,10 +1975,39 @@ PY_USERS_PROTOCOLS
  local choice max name quota days id action port snap
  if [[ $# == 0 || $1 == --menu ]]; then
   printf '%s' "$GREEN"
-  prompt_options '1 初始化用户管理  2 添加用户  3 查看用量  4 修改流量额度' '1 Initialize  2 Add account  3 Usage  4 Change quota'
-  prompt_options '5 启用/禁用用户  6 删除用户  7 重置流量  8 设置人数上限' '5 Enable/disable  6 Delete  7 Reset usage  8 Set account limit'
-  prompt_options '9 用户节点与二维码  10 服务状态  11 启动用户服务  12 停止用户服务' '9 User exports/QR  10 Status  11 Start supervisor  12 Stop supervisor'
-  prompt_options '13 修改有效期  14 用户故障诊断  15 资源占用  16 个人在线订阅  0 返回' '13 Change validity  14 User diagnostics  15 Resources  16 Personal subscriptions  0 Back'
+  say '【账户与配额】' '[Accounts and quotas]'
+  prompt_options '1. 初始化用户管理
+2. 添加用户
+3. 查看用量
+4. 修改流量额度' '1. Initialize
+2. Add account
+3. Usage
+4. Change quota'
+  prompt_options '5. 启用/禁用用户
+6. 删除用户
+7. 重置流量
+8. 设置人数上限' '5. Enable/disable
+6. Delete
+7. Reset usage
+8. Set account limit'
+  say '【节点与服务】' '[Nodes and services]'
+  prompt_options '9. 用户节点与二维码
+10. 服务状态
+11. 启动用户服务
+12. 停止用户服务' '9. User exports/QR
+10. Status
+11. Start supervisor
+12. Stop supervisor'
+  say '【有效期与诊断】' '[Validity and diagnostics]'
+  prompt_options '13. 修改有效期
+14. 用户故障诊断
+15. 资源占用
+16. 个人在线订阅
+0. 返回' '13. Change validity
+14. User diagnostics
+15. Resources
+16. Personal subscriptions
+0. Back'
   printf '%s' "$RESET"
   [[ ${1:-} != --menu ]] || return 0
   prompt_read '> ' choice || return 0
@@ -2034,7 +2109,7 @@ download_cloudflared(){
  arch=$(rescue_engine arch "$(uname -m)" cloudflared) || return 1
  if [[ -n ${SKYBYTE_ASSET_DIR:-} ]];then rescue_engine asset "$SKYBYTE_ASSET_DIR" cloudflared '' "$(uname -m)" "$target";return $?;fi
  tmp=$(mktemp -d) || return 1
- curl -fsSL --retry 2 --max-time 30 https://api.github.com/repos/cloudflare/cloudflared/releases/latest -o "$tmp/release.json" || { rm -rf "$tmp"; return 1; }
+ curl -q -fsSL --connect-timeout 10 --proto '=https' --proto-redir '=https' --retry 2 --max-time 30 https://api.github.com/repos/cloudflare/cloudflared/releases/latest -o "$tmp/release.json" || { rm -rf "$tmp"; return 1; }
  tag=$(python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); assert not r["prerelease"] and not r["draft"]; print(r["tag_name"])' "$tmp/release.json") || { rm -rf "$tmp"; return 1; }
  [[ $tag =~ ^[0-9]{4}\.[0-9]+\.[0-9]+$ ]] || { rm -rf "$tmp"; return 1; }
  asset="cloudflared-linux-$arch"
@@ -2046,7 +2121,7 @@ print(digest.split(':',1)[1])
 PY
  ) || { rm -rf "$tmp"; return 1; }
  if [[ ! $digest =~ ^[a-fA-F0-9]{64}$ ]] ||
-    ! curl -fsSL --retry 2 --max-time 180 "https://github.com/cloudflare/cloudflared/releases/download/$tag/$asset" -o "$tmp/binary" ||
+    ! curl -q -fsSL --connect-timeout 10 --proto '=https' --proto-redir '=https' --retry 2 --max-time 180 "https://github.com/cloudflare/cloudflared/releases/download/$tag/$asset" -o "$tmp/binary" ||
     ! printf '%s  %s\n' "$digest" "$tmp/binary" | sha256sum -c - >/dev/null; then rm -rf "$tmp"; return 1; fi
  command install -m 755 "$tmp/binary" "$target"
  local rc=$?; rm -rf "$tmp"; return "$rc"
@@ -2297,7 +2372,25 @@ argo_manager(){
  local choice
  # --menu renders only; a numeric argument executes one selected operation.
  if [[ $# == 0 || $1 == --menu ]]; then
- prompt_options '1 临时隧道  2 固定隧道  3 状态  4 启动  5 停止  6 重启  7 刷新节点  8 卸载 Argo  9 地址族与传输设置  0 返回' '1 Quick  2 Named  3 Status  4 Start  5 Stop  6 Restart  7 Refresh nodes  8 Remove Argo  9 Address family/transport  0 Back'
+ prompt_options '1. 临时隧道
+2. 固定隧道
+3. 状态
+4. 启动
+5. 停止
+6. 重启
+7. 刷新节点
+8. 卸载 Argo
+9. 地址族与传输设置
+0. 返回' '1. Quick
+2. Named
+3. Status
+4. Start
+5. Stop
+6. Restart
+7. Refresh nodes
+8. Remove Argo
+9. Address family/transport
+0. Back'
  [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
  else
@@ -2384,7 +2477,7 @@ PY
 # Manager updates affect script copies, never node credentials or configurations.
 manager_latest(){
  local target=$1
- curl -fsSL --retry 2 --connect-timeout 10 --max-time 30 https://api.github.com/repos/skylink9119/sing-box-v2/releases/latest -o "$target" || return 1
+ curl -q -fsSL --proto '=https' --proto-redir '=https' --retry 2 --connect-timeout 10 --max-time 30 https://api.github.com/repos/skylink9119/sing-box-v2/releases/latest -o "$target" || return 1
  python3 - "$target" <<'PY'
 import json,re,sys
 r=json.load(open(sys.argv[1]));tag=r['tag_name']
@@ -2455,7 +2548,7 @@ import json,sys
 print(next(a['digest'][7:] for a in json.load(open(sys.argv[1]))['assets'] if a['name']=='singbox-v2.sh'))
 PY
  ) || { rm -rf "$tmp"; return 1; }
- if ! curl -fsSL --retry 2 --max-time 120 "https://github.com/skylink9119/sing-box-v2/releases/download/v$version/singbox-v2.sh" -o "$tmp/candidate" ||
+ if ! curl -q -fsSL --connect-timeout 10 --proto '=https' --proto-redir '=https' --retry 2 --max-time 120 "https://github.com/skylink9119/sing-box-v2/releases/download/v$version/singbox-v2.sh" -o "$tmp/candidate" ||
     ! python3 - "$tmp/candidate" "$digest" <<'PY'
 import hashlib,sys
 sys.exit(0 if hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest()==sys.argv[2].lower() else 1)
@@ -2604,7 +2697,15 @@ certificate_menu(){
  local choice
  # --menu renders only; a numeric argument executes one selected operation.
  if [[ $# == 0 || $1 == --menu ]]; then
- prompt_options '1 查看证书有效期  2 续签后同步并重载  3 开启每日检查  4 关闭每日检查  0 返回' '1 Expiry  2 Reload renewed certificate  3 Enable daily checks  4 Disable daily checks  0 Back'
+ prompt_options '1. 查看证书有效期
+2. 续签后同步并重载
+3. 开启每日检查
+4. 关闭每日检查
+0. 返回' '1. Expiry
+2. Reload renewed certificate
+3. Enable daily checks
+4. Disable daily checks
+0. Back'
  [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
  else
@@ -2647,7 +2748,17 @@ media_check(){
  require_cmd curl && require_cmd python3 || return 1
  local selection paths port=''
  say '识别匿名页面中的地区字段、页面区域提示和明确地区限制；不登录账号、不验证订阅资格或实际播放。HTTP 200 仅表示页面有响应。' 'Reads region fields, page locale hints and explicit location restrictions from anonymous pages. No account login, subscription check or playback test; HTTP 200 only means the page responded.'
- prompt_options '1 直连 IPv4  2 直连 IPv6  3 两者  4 WARP  5 IPv4 与 WARP 对比  0 返回' '1 Direct IPv4  2 Direct IPv6  3 Both  4 WARP  5 IPv4/WARP comparison  0 Back'
+ prompt_options '1. 直连 IPv4
+2. 直连 IPv6
+3. 两者
+4. WARP
+5. IPv4 与 WARP 对比
+0. 返回' '1. Direct IPv4
+2. Direct IPv6
+3. Both
+4. WARP
+5. IPv4/WARP comparison
+0. Back'
  prompt_read '> ' selection || return 0
  case $selection in 1) paths=4;; 2) paths=6;; 3) paths=4,6;; 4) paths=warp;; 5) paths=4,warp;; 0) return 0;; *) return 1;; esac
  if [[ $paths == *warp* ]]; then port=$(warp_engine port) && warp_verify "$port" || return 1; fi
@@ -3525,7 +3636,11 @@ installation_check_menu(){
  if [[ $choice != 2 ]];then prompt_read 'Reality TCP [443]: ' tcp || return 0;tcp=${tcp:-443};fi
  if [[ $choice != 1 ]];then prompt_read 'HY2 UDP [443]: ' udp || return 0;udp=${udp:-443};fi
  valid_port "$tcp" && valid_port "$udp" || return 1
- prompt_options '监听地址族：1 IPv4（默认）  2 IPv6' 'Listen family: 1 IPv4 (default)  2 IPv6'
+ prompt_options '监听地址族：
+1. IPv4（默认）
+2. IPv6' 'Listen family:
+1. IPv4 (default)
+2. IPv6'
  prompt_read '> ' family || return 0
  case ${family:-1} in 1);;2)listen=::;;*)return 1;;esac
  if [[ $choice != 2 ]];then
@@ -4411,7 +4526,11 @@ relay_import_menu() (
  local choice source link trust stage mode domains rc=0
  stage=$(mktemp -d "$BASE/relay-import.XXXXXX") || return 1
  trap 'rm -rf -- "$stage"' EXIT
- prompt_options '1 粘贴节点链接（隐藏输入）  2 导入本地节点 / sing-box JSON 文件  0 返回' '1 Paste node URI (hidden input)  2 Local node / sing-box JSON file  0 Back'
+ prompt_options '1. 粘贴节点链接（隐藏输入）
+2. 导入本地节点 / sing-box JSON 文件
+0. 返回' '1. Paste node URI (hidden input)
+2. Local node / sing-box JSON file
+0. Back'
  prompt_read '> ' choice || { rm -rf "$stage";return 0; }
  case $choice in
   1)
@@ -4423,7 +4542,11 @@ relay_import_menu() (
  say 'HY2 自签名：从落地 VPS 经可信 SSH/SFTP 获取公开证书并核对指纹，不要提供私钥。受信任 CA 证书可回车跳过。' 'Self-signed HY2: retrieve the public certificate over trusted SSH/SFTP and verify its fingerprint. Never supply a private key. Press Enter for a trusted CA certificate.'
  prompt_read "$(L 'HY2 公开信任证书路径（可选）：' 'HY2 public trust certificate path (optional): ')" trust || { rm -rf "$stage";return 0; }
  if ! warp_engine relay_prepare "$source" "$stage/profile.json" "$trust";then rm -rf "$stage";return 1;fi
- prompt_options '1 全部节点流量走落地（默认）  2 仅指定域名走落地，其余直连  0 取消' '1 All node traffic through landing (default)  2 Selected domains; others direct  0 Cancel'
+ prompt_options '1. 全部节点流量走落地（默认）
+2. 仅指定域名走落地，其余直连
+0. 取消' '1. All node traffic through landing (default)
+2. Selected domains; others direct
+0. Cancel'
  prompt_read '> ' choice || { rm -rf "$stage";return 0; };choice=${choice:-1};domains=example.com
  case $choice in
   1) mode=global;;
@@ -4448,10 +4571,10 @@ Both servers need working nodes. Open a separate SSH terminal for each server.
 
 1. Open B's terminal.
    Install Reality + Vision or HY2 if needed; an existing working node is fine.
-   In SKYBYTE Manager, select 2 → 1 View nodes.
+   In SKYBYTE Manager, select b → 1 View nodes.
    Copy one complete red URI beginning with vless:// or hysteria2://.
 2. Switch to A's terminal.
-   Open 4 → 10 Residential landing / VPS relay.
+   Open d → 10 Residential landing / VPS relay.
    Select 1 Import / replace landing, then 1 Paste node URI.
 3. Paste B's URI and press Enter.
    Hidden input displays no characters while pasting; this is expected.
@@ -4504,10 +4627,10 @@ RELAY_HELP_EN
 
 1. 打开 B 的终端。
    未安装节点时先安装 Reality + Vision 或 HY2；已有可用节点就直接使用。
-   运行 SKYBYTE Manager，选择 2 → 1「查看节点」。
+   运行 SKYBYTE Manager，选择 b → 1「查看节点」。
    复制红色的完整链接，例如以 vless:// 或 hysteria2:// 开头的一整条。
 2. 切换到 A 的终端。
-   进入 4 → 10「住宅落地 / VPS 中转」。
+   进入 d → 10「住宅落地 / VPS 中转」。
    选择 1「导入 / 更换落地节点」，再选择 1「粘贴节点链接」。
 3. 把刚才 B 的链接粘贴进去，按回车。
    粘贴时屏幕不会显示字符，这是隐藏输入，正常。
@@ -4556,7 +4679,19 @@ relay_menu() (
  if [[ $# == 0 || $1 == --menu ]]; then
  printf '%s' "$YELLOW";warp_engine relay_status "${LANGUAGE_CHOICE:-zh_CN}";printf '%s' "$RESET"
  say '路径：客户端 → 本 VPS → 落地 VPS → 网站。落地失败不自动改用本机出口。' 'Path: client → this VPS → landing VPS → destination. Landing failure does not automatically use this VPS as the exit.'
- prompt_options '1 导入 / 更换落地节点  2 测试落地连接  3 全局中转  4 恢复直连  5 删除已保存的落地凭据  6 使用说明  0 返回' '1 Import / replace landing  2 Test landing  3 Global relay  4 Restore direct  5 Remove saved landing credentials  6 Usage guide  0 Back'
+ prompt_options '1. 导入 / 更换落地节点
+2. 测试落地连接
+3. 全局中转
+4. 恢复直连
+5. 删除已保存的落地凭据
+6. 使用说明
+0. 返回' '1. Import / replace landing
+2. Test landing
+3. Global relay
+4. Restore direct
+5. Remove saved landing credentials
+6. Usage guide
+0. Back'
  [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
  else
@@ -5032,7 +5167,7 @@ Path: phone → A HAProxy TCP forwarder → B node → website.
 
 1. On B, prepare a working TCP node, such as VLESS + Reality + Vision or Trojan.
    Keep B's egress direct to retain its residential IP. Allow B's actual TCP node port from A.
-2. On A, open 4 → 11 HAProxy TCP passthrough, then 1 Add TCP rule.
+2. On A, open d → 11 HAProxy TCP passthrough, then 1 Add TCP rule.
    A does not need a sing-box node for this mode.
 3. Enter a rule name, A's listen IP and TCP port, then B's IP/hostname and node TCP port.
    Defaults: A listens on 0.0.0.0:8443, B uses port 443. IPv6 listen :: is IPv6-only.
@@ -5064,7 +5199,7 @@ A：线路较好的中转服务器。B：住宅 IP 落地服务器。
 
 1. 打开 B 的终端，准备可用的 TCP 节点，例如 VLESS + Reality + Vision 或 Trojan。
    B 出站保持直连以保留住宅 IP，放行 A 到 B 的实际 TCP 节点端口。
-2. 切换到 A 的终端，进入 4 → 11「HAProxy TCP 透传」，选择 1「添加 TCP 规则」。
+2. 切换到 A 的终端，进入 d → 11「HAProxy TCP 透传」，选择 1「添加 TCP 规则」。
    这种模式下，A 可以不安装 sing-box 节点。
 3. 填写规则名称、A 监听地址与转发端口，再填写 B 的 IP / 域名和节点 TCP 端口。
    默认 A 监听 0.0.0.0:8443，B 端口为 443；IPv6 监听可填 ::，仅接收 IPv6。
@@ -5169,7 +5304,13 @@ core_versions(){
  # --menu renders only; a numeric argument executes one selected operation.
  if [[ $# == 0 || $1 == --menu ]]; then
  say "当前内核：${current}；本版测试内核：$CORE_RECOMMENDED" "Current core: $current; tested core for this release: $CORE_RECOMMENDED"
- prompt_options '1 安装本版测试内核  2 最新稳定版  3 指定版本 / 降级  0 返回' '1 Tested core  2 Latest stable  3 Specific version / downgrade  0 Back'
+ prompt_options '1. 安装本版测试内核
+2. 最新稳定版
+3. 指定版本 / 降级
+0. 返回' '1. Tested core
+2. Latest stable
+3. Specific version / downgrade
+0. Back'
  [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
  else
@@ -5348,7 +5489,19 @@ backup_tools(){
  local choice path output keep pass tmp
  # --menu renders only; a numeric argument executes one selected operation.
  if [[ $# == 0 || $1 == --menu ]]; then
- prompt_options '1 备份列表  2 新建备份  3 恢复预检  4 加密导出  5 导入加密备份  6 保留数量 / 清理  0 返回' '1 List  2 Create  3 Restore preflight  4 Encrypted export  5 Import encrypted backup  6 Retention cleanup  0 Back'
+ prompt_options '1. 备份列表
+2. 新建备份
+3. 恢复预检
+4. 加密导出
+5. 导入加密备份
+6. 保留数量 / 清理
+0. 返回' '1. List
+2. Create
+3. Restore preflight
+4. Encrypted export
+5. Import encrypted backup
+6. Retention cleanup
+0. Back'
  [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
  else
@@ -5571,10 +5724,22 @@ argo_network_settings(){
  argo_guard || return 1
  [[ -f $BASE/argo-state.json ]] || return 1
  local edge transport snap active=false
- prompt_options 'Cloudflare 连接地址族：1 自动  2 IPv4  3 IPv6' 'Cloudflare address family: 1 Auto  2 IPv4  3 IPv6'
+ prompt_options 'Cloudflare 连接地址族：
+1. 自动
+2. IPv4
+3. IPv6' 'Cloudflare address family:
+1. Auto
+2. IPv4
+3. IPv6'
  prompt_read '> ' edge || return 0
  case ${edge:-1} in 1) edge=auto;;2) edge=4;;3) edge=6;;*) return 1;;esac
- prompt_options '隧道传输：1 自动  2 QUIC/UDP 7844  3 HTTP2/TCP 7844' 'Tunnel transport: 1 Auto  2 QUIC/UDP 7844  3 HTTP2/TCP 7844'
+ prompt_options '隧道传输：
+1. 自动
+2. QUIC/UDP 7844
+3. HTTP2/TCP 7844' 'Tunnel transport:
+1. Auto
+2. QUIC/UDP 7844
+3. HTTP2/TCP 7844'
  prompt_read '> ' transport || return 0
  case ${transport:-1} in 1) transport=auto;;2) transport=quic;;3) transport=http2;;*) return 1;;esac
  warn "$(L '重启临时隧道会更换域名，需要重新导入节点。HTTP2 仍需出站 TCP 7844，不能通过 TCP 443 代替。' 'Restarting a Quick Tunnel changes its hostname; re-import the node. HTTP2 still requires outbound TCP 7844, not TCP 443.')"
@@ -5609,7 +5774,11 @@ rescue_menu(){
  fi
  case $choice in
   1) argo_install quick;;2) argo_install named;;
-  3) prompt_options '1 Reality  2 HY2  3 双协议' '1 Reality  2 HY2  3 Dual';prompt_read '> ' mode || return 0;install_protocol "$mode" custom;;
+  3) prompt_options '1. Reality
+2. HY2
+3. 双协议' '1. Reality
+2. HY2
+3. Dual';prompt_read '> ' mode || return 0;install_protocol "$mode" custom;;
   4) check_owned || return 1
    prompt_read "$(L 'NAT 公网 IP / 域名：' 'NAT public IP/hostname: ')" host || return 0
    host=$(rescue_engine address "$host") || return 1
@@ -5621,7 +5790,9 @@ rescue_menu(){
   6) check_owned || return 1;edge=$(rescue_engine family) || return 1
    say '使用你已有的合法 WARP WireGuard 双栈配置；原生 IPv6 必须使用 IPv6 Peer Endpoint。默认 MTU 1280，无需 /dev/net/tun。' 'Use your own valid dual-stack WARP WireGuard profile. Native IPv6 needs an IPv6 Peer Endpoint. Default MTU 1280; no /dev/net/tun is required.'
    warn "$(L '补全仅作用于托管节点；全局 WARP 会改变这些节点的出口，不修改系统默认路由。' 'Completion applies only to managed nodes. Global WARP changes their egress, without changing the system default route.')"
-   prompt_options '1 全部节点流量走 WARP  2 仅流媒体与 AI 域名' '1 All node traffic via WARP  2 Media/AI domains only';prompt_read '> ' mode || return 0
+   prompt_options '1. 全部节点流量走 WARP
+2. 仅流媒体与 AI 域名' '1. All node traffic via WARP
+2. Media/AI domains only';prompt_read '> ' mode || return 0
    case $mode in 1) mode=global;;2) mode=restricted;;*) return 1;;esac
    warp_import_gateway "$edge" "$mode" && warp_dualstack;;
   7) edge=$(rescue_engine family);say "原生路由选择：$edge" "Native route selection: $edge"
@@ -5943,7 +6114,21 @@ node_settings(){
  local choice vp hp value protocol cert key domain up down ignore obfs bootstrap=false public='' listen='' family
  # --menu renders only; a numeric argument executes one selected operation.
  if [[ $# == 0 || $1 == --menu ]]; then
- prompt_options '1 修改主节点端口  2 服务器地址 / DDNS  3 Reality 握手域名  4 添加协议  5 移除协议  6 HY2 参数  7 使用已有 TLS 证书  0 返回' '1 Admin ports  2 Server address / DDNS  3 Reality handshake  4 Add protocol  5 Remove protocol  6 HY2 options  7 Existing TLS certificate  0 Back'
+ prompt_options '1. 修改主节点端口
+2. 服务器地址 / DDNS
+3. Reality 握手域名
+4. 添加协议
+5. 移除协议
+6. HY2 参数
+7. 使用已有 TLS 证书
+0. 返回' '1. Admin ports
+2. Server address / DDNS
+3. Reality handshake
+4. Add protocol
+5. Remove protocol
+6. HY2 options
+7. Existing TLS certificate
+0. Back'
  [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
  else
@@ -5956,7 +6141,9 @@ node_settings(){
    confirm "$(L '更新所有节点的服务器地址？' 'Update server address for all nodes?')" && configuration_apply address "$value";;
   3) reality_replace;;
   4|5)
-   prompt_options '1 Reality + Vision  2 Hysteria2' '1 Reality + Vision  2 Hysteria2';prompt_read '> ' protocol || return 0
+   prompt_options '1. Reality + Vision
+2. Hysteria2' '1. Reality + Vision
+2. Hysteria2';prompt_read '> ' protocol || return 0
    case $protocol in 1) protocol=vless;;2) protocol=hysteria2;;*) return 1;;esac
    if [[ $choice == 5 ]];then confirm "$(L '移除所选协议，保留另一协议与用户额度？' 'Remove selected protocol, retaining the other and account quotas?')" && configuration_apply remove "$protocol";return;fi
    if [[ $(python3 - "$CONF" "$META" <<'PY_INITIAL_NODE'
@@ -5969,7 +6156,13 @@ PY_INITIAL_NODE
     public=$(rescue_engine address "$public") || { err "$(L '公网地址无效' 'Invalid public address')";return 1; }
     family=$(rescue_engine family) || return 1
     case $family in 4)listen=0.0.0.0;;6)listen=::;;*)listen=::;;esac
-    prompt_options '本机监听地址族：1 自动  2 IPv4  3 IPv6' 'Local bind family: 1 Auto  2 IPv4  3 IPv6'
+    prompt_options '本机监听地址族：
+1. 自动
+2. IPv4
+3. IPv6' 'Local bind family:
+1. Auto
+2. IPv4
+3. IPv6'
     prompt_read '> ' family || return 0
     case ${family:-1} in 1);;2)listen=0.0.0.0;;3)listen=::;;*)return 1;;esac
    fi
@@ -5978,7 +6171,9 @@ PY_INITIAL_NODE
     if [[ $bootstrap == true ]];then confirm "$(L '添加直连 Reality 节点并保留独立 Argo 隧道？' 'Add a direct Reality node and retain the separate Argo tunnel?')" && configuration_apply add vless "$value" "${domain:-addons.mozilla.org}" "$public" "$listen"
     else confirm "$(L '追加 Reality，保留现有凭据？' 'Add Reality, retaining existing credentials?')" && configuration_apply add vless "$value" "${domain:-addons.mozilla.org}";fi
    else
-    prompt_options '1 自动自签名（无域名）  2 已有证书 / 托管 ACME' '1 Automatic self-signed (no domain)  2 Existing certificate / managed ACME'
+    prompt_options '1. 自动自签名（无域名）
+2. 已有证书 / 托管 ACME' '1. Automatic self-signed (no domain)
+2. Existing certificate / managed ACME'
     prompt_read '> ' protocol || return 0
     if [[ $protocol == 1 ]];then
      if [[ $bootstrap == true ]];then domain=$public;else domain=$(state ip) || return 1;fi
@@ -5994,9 +6189,13 @@ PY_INITIAL_NODE
     else confirm "$(L '追加 HY2，沿用证书并保留用户用量？' 'Add HY2 with this certificate, retaining account usage?')" && configuration_apply add hysteria2 "$value" "$domain" "$cert" "$key";fi
    fi;;
   6) prompt_read "$(L '上行 Mbps [0=自动]：' 'Upload Mbps [0=auto]: ')" up || return 0;prompt_read "$(L '下行 Mbps [0=自动]：' 'Download Mbps [0=auto]: ')" down || return 0
-   prompt_options '1 按带宽设置  2 忽略客户端带宽（须上下行均为0）' '1 Use bandwidth settings  2 Ignore client bandwidth (both must be 0)';prompt_read '> ' ignore || return 0
+   prompt_options '1. 按带宽设置
+2. 忽略客户端带宽（须上下行均为0）' '1. Use bandwidth settings
+2. Ignore client bandwidth (both must be 0)';prompt_read '> ' ignore || return 0
    case ${ignore:-1} in 1) ignore=false;;2) ignore=true;;*) return 1;;esac
-   prompt_options '1 无混淆  2 Salamander' '1 No obfuscation  2 Salamander';prompt_read '> ' obfs || return 0
+   prompt_options '1. 无混淆
+2. Salamander' '1. No obfuscation
+2. Salamander';prompt_read '> ' obfs || return 0
    case ${obfs:-1} in 1) obfs=none;;2) obfs=salamander;;*) return 1;;esac
    warn "$(L '混淆改动需重新导入客户端；此处不是每人跨协议硬限速。' 'Obfuscation changes require re-import; these are not cross-protocol per-account hard rate caps.')"
    confirm "$(L '应用 HY2 参数？' 'Apply HY2 options?')" && configuration_apply hy2 "${up:-0}" "${down:-0}" "$ignore" "$obfs";;
@@ -6058,7 +6257,9 @@ acme_issue(){
  [[ $domain =~ ^[a-zA-Z0-9.-]+$ && $domain == *.* && $domain != .* && $domain != *..* ]] || return 1
  prompt_read "$(L 'ACME 联系邮箱：' 'ACME contact email: ')" email || return 0
  [[ $email =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]] || return 1
- prompt_options '1 HTTP-01（域名指向本机，TCP80可达）  2 Cloudflare DNS-01' '1 HTTP-01 (domain points here; TCP80 reachable)  2 Cloudflare DNS-01'
+ prompt_options '1. HTTP-01（域名指向本机，TCP80可达）
+2. Cloudflare DNS-01' '1. HTTP-01 (domain points here; TCP80 reachable)
+2. Cloudflare DNS-01'
  prompt_read '> ' method || return 0
  case $method in
   1) method=http; if ss -H -ltn '( sport = :80 )' | grep -q .;then err "$(L 'TCP80 已占用，保留现有服务；请选择 DNS 验证' 'TCP80 occupied; existing service preserved. Use DNS validation.')";return 1;fi;;
@@ -6147,7 +6348,19 @@ acme_menu(){
  local choice
  # --menu renders only; a numeric argument executes one selected operation.
  if [[ $# == 0 || $1 == --menu ]]; then
- prompt_options '1 申请域名证书  2 使用证书用于 HY2  3 手动续签  4 开启自动续签  5 关闭自动续签  6 清理未完成的申请  0 返回' '1 Issue domain certificate  2 Use for HY2  3 Renew  4 Enable auto-renew  5 Disable auto-renew  6 Clean failed issuance  0 Back'
+ prompt_options '1. 申请域名证书
+2. 使用证书用于 HY2
+3. 手动续签
+4. 开启自动续签
+5. 关闭自动续签
+6. 清理未完成的申请
+0. 返回' '1. Issue domain certificate
+2. Use for HY2
+3. Renew
+4. Enable auto-renew
+5. Disable auto-renew
+6. Clean failed issuance
+0. Back'
  [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
  else
@@ -6396,7 +6609,13 @@ online_user(){
  [[ -f $BASE/subscriptions.json ]] || { err "$(L '请先在节点与订阅菜单配置 HTTPS 服务' 'Configure HTTPS delivery in Nodes/subscriptions first')";return 1; }
  local id choice
  users_engine list;prompt_read "$(L '用户 ID：' 'Account ID: ')" id || return 0
- prompt_options '1 签发 / 重置独立 Token  2 查看个人订阅  3 撤销 Token  0 返回' '1 Issue / rotate independent token  2 View personal links  3 Revoke token  0 Back'
+ prompt_options '1. 签发 / 重置独立 Token
+2. 查看个人订阅
+3. 撤销 Token
+0. 返回' '1. Issue / rotate independent token
+2. View personal links
+3. Revoke token
+0. Back'
  prompt_read '> ' choice || return 0
  case $choice in
   1) confirm "$(L '签发新 Token？旧订阅地址将立即失效。' 'Issue new token? Previous subscription URL becomes invalid.')" && { printf '%s' "$RED";online_engine issue "$id";local rc=$?;printf '%s' "$RESET";return "$rc"; };;
@@ -6410,7 +6629,19 @@ online_menu(){
  local choice
  # --menu renders only; a numeric argument executes one selected operation.
  if [[ $# == 0 || $1 == --menu ]]; then
- prompt_options '1 配置 HTTPS 服务  2 服务状态  3 启动  4 停止  5 重载证书  6 用户订阅 Token  0 返回' '1 Configure HTTPS  2 Status  3 Start  4 Stop  5 Reload certificate  6 Account tokens  0 Back'
+ prompt_options '1. 配置 HTTPS 服务
+2. 服务状态
+3. 启动
+4. 停止
+5. 重载证书
+6. 用户订阅 Token
+0. 返回' '1. Configure HTTPS
+2. Status
+3. Start
+4. Stop
+5. Reload certificate
+6. Account tokens
+0. Back'
  [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
  else
@@ -6529,6 +6760,14 @@ sub_menu(){
  MENU_BACK=0
  printf '%s\n----------------------------------------------\n' "$GREEN"
  case $group in
+  1) say '【节点安装】' '[Install nodes]';;
+  2) say '【节点与订阅】' '[Nodes and subscriptions]';;
+  3) say '【服务与日志】' '[Services and logs]';;
+  4) say '【服务器与网络】' '[Server and network]';;
+  5) say '【更新与备份】' '[Updates and backups]';;
+  6) say '【设置与卸载】' '[Settings and uninstall]';;
+ esac
+ case $group in
   1)
    say ' 1. 安装 Reality + Vision' ' 1. Install Reality + Vision'
    say ' 2. 安装 Hysteria2' ' 2. Install Hysteria2'
@@ -6545,7 +6784,7 @@ sub_menu(){
    say ' 4. 小火箭节点二维码' ' 4. Shadowrocket node QR codes'
    say ' 5. 用户数量、流量与有效期管理' ' 5. Account limits, traffic quotas and expiry'
    say ' 6. HTTPS 个人在线订阅' ' 6. Personal HTTPS subscriptions'
-   say ' 7. 查看节点参数（UUID / 公钥 / Short ID / SNI，注意保密）' ' 7. View node parameters (UUID / public key / Short ID / SNI; private)'
+   say ' 7. 查看节点参数（注意保密）' ' 7. View node parameters (keep private)'
    ;;
   3)
    say ' 1. sing-box 状态与启停' ' 1. sing-box status and controls'
