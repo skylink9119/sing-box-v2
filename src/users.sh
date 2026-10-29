@@ -174,20 +174,20 @@ PY
     ok "$(L '已创建用户 ID：' 'Created account ID: ')$id"
     warn "$(L "请在云防火墙放行节点端口 ${port}；控制 API 仅监听本机，不应公开。" "Allow node port $port in provider firewall; the controller API stays loopback-only.")"
     users_export "$id";;
-   3) users_engine list;;
+   3) report_output users_engine list;;
    4)
-    users_engine list
+    report_output users_engine list
     prompt_read "$(L '用户 ID：' 'Account ID: ')" id || return 0
     prompt_read "$(L '总流量 GiB：' 'Total quota GiB: ')" quota || return 0
     confirm "$(L '只修改流量额度，保留到期时间和累计用量？' 'Change quota only, retaining expiry and usage?')" || return 0
     users_engine quota "$id" "$quota";;
    5)
-    users_engine list
+    report_output users_engine list
     prompt_read "$(L '用户 ID：' 'Account ID: ')" id || return 0
     prompt_read "$(L '1 启用  2 禁用：' '1 Enable  2 Disable: ')" action || return 0
     case $action in 1) users_engine enable "$id" || return 1; if command -v ufw >/dev/null && LC_ALL=C ufw status | grep -q '^Status: active'; then users_firewall_allow "$id"; fi;; 2) users_engine disable "$id";; *) return 1;; esac;;
    6|7)
-    users_engine list
+    report_output users_engine list
     prompt_read "$(L '用户 ID：' 'Account ID: ')" id || return 0
     confirm "$(L '确认删除用户或重置其累计流量？' 'Confirm deleting the account or resetting its cumulative usage?')" || return 0
     if [[ $choice == 6 ]]; then users_engine delete "$id"; else users_engine reset "$id"; fi;;
@@ -195,19 +195,19 @@ PY
     prompt_read "$(L '最多用户数（1-100）：' 'Maximum accounts (1-100): ')" max || return 0
     users_engine limit "$max";;
    9)
-    users_engine list
+    report_output users_engine list
     prompt_read "$(L '用户 ID：' 'Account ID: ')" id || return 0
     users_export "$id" && users_qr "$id";;
-   10) systemctl --no-pager status skybyte-users.service || :; users_engine list;;
+   10) systemctl --no-pager status skybyte-users.service || :; report_output users_engine list;;
    11) users_engine service on && users_start;;
    13)
-    users_engine list
+    report_output users_engine list
     prompt_read "$(L '用户 ID：' 'Account ID: ')" id || return 0
     prompt_read "$(L '从现在起有效天数：' 'Validity days from now: ')" days || return 0
     confirm "$(L '从现在重新设置有效期，保留额度和累计用量？' 'Set validity from now, retaining quota and usage?')" || return 0
     users_engine validity "$id" "$days";;
    14) users_diagnostics;;
-   15) resource_info;;
+   15) report_output resource_info;;
    16) online_user;;
    12) if confirm "$(L '停止全部受限用户节点？' 'Stop all quota-managed user nodes?')"; then users_engine service off && users_stop; fi;;
    *) err "$(L '无效选项' 'Invalid selection')";;

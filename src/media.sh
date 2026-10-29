@@ -49,5 +49,5 @@ media_check(){
   warp|compare)port=$(warp_engine port) && warp_loopback "$port" && warp_verify "$port" || return 1;;
   speed|full)confirm "$(L '测速可能消耗大量流量并临时占用带宽，继续？' 'Tests may use substantial traffic and bandwidth. Continue?')" || return 0;;
  esac
- media_engine "$action" "$REPORT" "${LANGUAGE_CHOICE:-zh_CN}" "$port"
+ report_output media_engine "$action" "$REPORT" "${LANGUAGE_CHOICE:-zh_CN}" "$port"
 }

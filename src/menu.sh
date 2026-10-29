@@ -127,14 +127,14 @@ dispatch_action(){
  local action=$1;shift
  case $action in
  install_reality) install_protocol 1;; install_hy2) install_protocol 2;; install_dual) install_protocol 3;;
- argo) argo_manager "$@";; nodes) exports;; node_parameters) node_parameters;; subscription) subscription;; rename) rename_node;; qr) shadowrocket_qr;; users) users_manager;;
- service) service_manager "$@";; logs) journalctl -u sing-box -n 80 --no-pager;; argo_status) argo_status;;
- initialize) initialize_server;; firewall) firewall "$@";; audit) firewall_audit;; bbr) bbr;; hop) hop "$@";; traffic) traffic "$@";;
+ argo) argo_manager "$@";; nodes) exports;; node_parameters) report_output node_parameters;; subscription) subscription;; rename) rename_node;; qr) shadowrocket_qr;; users) users_manager;;
+ service) service_manager "$@";; logs) report_output journalctl -u sing-box -n 80 --no-pager;; argo_status) report_output argo_status;;
+ initialize) initialize_server;; firewall) firewall "$@";; audit) report_output firewall_audit;; bbr) bbr;; hop) hop "$@";; traffic) traffic "$@";;
  media) media_check "$@";; warp) warp_menu "$@";; relay) relay_menu "$@";; haproxy) haproxy_menu "$@";;
  reality) reality_menu "$@";;
  install_checks) installation_check_menu "$@";;
  rescue) rescue_menu "$@";;
- manager_update) manager_update;; certificate) certificate_menu "$@";; resources) resource_info;;
+ manager_update) manager_update;; certificate) certificate_menu "$@";; resources) report_output resource_info;;
  update) core_versions "$@";; settings) node_settings "$@";; online) online_menu "$@";; acme) acme_menu "$@";; backup_tools) backup_tools "$@";; help) usage_help;; backup) backup;; restore) restore;;
  language) select_language && startup_info;; notice) notice;; uninstall) uninstall_manager;;
  esac
@@ -214,7 +214,8 @@ LOGO
   say ' e. 更新与备份' ' e. Updates and backups'
   say ' f. 设置与卸载' ' f. Settings and uninstall'
   say ' g. 用户与配额管理' ' g. Users and quotas'
-  users_summary
+  report_output users_summary
+  printf '%s' "$GREEN"
   say ' q. 退出' ' q. Exit'
   printf '%s' "$RESET"
   printf '%sYouTube: %s%s\n' "$CYAN" "$YOUTUBE" "$RESET"

@@ -36,7 +36,7 @@ reality_replace(){
  target=${target:-$sni:443}
  normalized=$(reality_engine --project sing-box --target "$target" --sni "$sni" --normalize) || return 1
  IFS=$'\t' read -r host number sni <<< "$normalized"
- if ! reality_engine --project sing-box --language "${LANGUAGE_CHOICE:-zh_CN}" --target "$target" --sni "$sni";then
+ if ! report_output reality_engine --project sing-box --language "${LANGUAGE_CHOICE:-zh_CN}" --target "$target" --sni "$sni";then
   err "$(L '新目标检测未通过，保留原配置。' 'New target failed checks; original configuration retained.')";return 1
  fi
  warn "$(L '更换会短暂重启正在运行的服务；保留 UUID、密钥及端口。所有 Reality 客户端需重新导入更新后的节点。' 'Running services will briefly restart; UUIDs, keys and ports are retained. Re-import updated nodes on all Reality clients.')"
@@ -60,12 +60,12 @@ reality_menu(){
   prompt_read '> ' choice || return 0
  else choice=$1;fi
  case $choice in
-  1) reality_engine --project sing-box --language "${LANGUAGE_CHOICE:-zh_CN}" --config "$CONF";;
+  1) report_output reality_engine --project sing-box --language "${LANGUAGE_CHOICE:-zh_CN}" --config "$CONF";;
   2) prompt_read "$(L '握手目标（域名或 域名:端口，0 返回）：' 'Target (hostname or host:port, 0 to return): ')" target || return 0
      [[ $target != 0 ]] || return 0
      [[ -n $target ]] || { err "$(L '请填写握手目标' 'Enter a target')";return 1; }
      prompt_read "$(L '握手域名 / SNI（回车使用目标域名）：' 'Handshake SNI (Enter uses target hostname): ')" sni || return 0
-     reality_engine --project sing-box --language "${LANGUAGE_CHOICE:-zh_CN}" --target "$target" --sni "$sni";;
+     report_output reality_engine --project sing-box --language "${LANGUAGE_CHOICE:-zh_CN}" --target "$target" --sni "$sni";;
   3) reality_replace;;
   0) return 0;; *) return 1;;
  esac

@@ -151,4 +151,53 @@ class DiagnosticTests(unittest.TestCase):
         self.assertNotIn('HTTP_PROXY',options['env']);self.assertLess(options['timeout'],70)
         with self.assertRaises(ValueError):media.fetch('http://untrusted',100)
 
+
+class ReportTableTests(unittest.TestCase):
+    def test_cjk_long_names_and_error_notes_fit_terminal_cells_without_losing_results(self):
+        rows=[{'name':'Instagram Licensed Audio / 中文平台','status':'RateLimited','region':'oversea','unlock_type':'Via DNS','error':'HTTP 429 请求受限'},
+              {'name':'Gemini','status':'No','region':'us','info':'unknown; playback unverified'}]
+        for columns in (50,80,100,140):
+            table=media.report_table(rows,columns=columns,color=False)
+            self.assertTrue(all(media.display_width(line)==columns for line in table.splitlines()))
+            self.assertIn('HTTP',table)
+            self.assertTrue(table.startswith('┌') and table.endswith('┘'))
+            self.assertIn('Gemini',table)
+
+    def test_report_color_is_yellow_and_resets_and_plain_output_has_no_ansi(self):
+        yellow=media.report_table([],columns=80,color=True)
+        self.assertTrue(yellow.startswith('\033[1;33m'))
+        self.assertTrue(yellow.endswith('\033[0m'))
+        with patch.dict(os.environ,{'NO_COLOR':'1'}):
+            self.assertNotIn('\033',media.report_table([],columns=80))
+
+    def test_external_report_resets_are_removed_in_streaming_output(self):
+        with tempfile.TemporaryDirectory() as folder,contextlib.redirect_stdout(io.StringIO()) as output:
+            process=media.execute([sys.executable,'-c','print("\\033[31mREPORT\\033[0m")'],folder,5,strip_colors=True)
+        self.assertEqual(process.returncode,0)
+        self.assertEqual(output.getvalue(),'REPORT\n')
+
+
+    @unittest.skipUnless(os.name=='posix','TTY colors require POSIX')
+    def test_yellow_shell_reports_keep_tty_exit_code_and_reset(self):
+        import errno
+        master,slave=os.openpty()
+        script=ROOT/('singbox-v2.sh' if (ROOT/'singbox-v2.sh').exists() else 'xray-manager.sh')
+        env={k:v for k,v in os.environ.items() if k!='NO_COLOR'}
+        code='source "$1";set +e;report_output bash -c \'test -t 1 || exit 90;printf "REPORT\\n";exit 7\';rc=$?;printf "STATUS=%s" "$rc"'
+        process=subprocess.Popen(['bash','-c',code,'test',str(script)],stdout=slave,stderr=slave,env=env)
+        os.close(slave);data=b''
+        try:
+            while True:
+                try:chunk=os.read(master,65536)
+                except OSError as error:
+                    if error.errno==errno.EIO:break
+                    raise
+                if not chunk:break
+                data+=chunk
+        finally:os.close(master)
+        self.assertEqual(process.wait(timeout=5),0)
+        self.assertIn(b'\x1b[1;33m',data)
+        self.assertIn(b'\x1b[0mSTATUS=7',data)
+        self.assertIn(b'REPORT',data)
+
 if __name__=='__main__':unittest.main()

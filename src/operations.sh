@@ -91,7 +91,7 @@ users_summary(){
 }
 users_diagnostics(){
  users_guard || return 1
- users_engine diagnose
+ report_output users_engine diagnose
  say '恢复步骤：修复配置/端口冲突后，选择启用用户；服务未启动时选择启动用户服务。' 'Recovery: fix config/port conflicts, then enable the account; start the supervisor if inactive.'
  say '日志可能含节点地址，请在本机检查，不要公开完整日志。' 'Logs may contain node addresses; inspect locally and avoid publishing full logs.'
  systemctl --no-pager status skybyte-users.service || :
@@ -236,7 +236,7 @@ certificate_menu(){
   choice=$1
  fi
  case $choice in
-  1) certificate_info;;
+  1) report_output certificate_info;;
   2) confirm "$(L '同步证书并重启正在运行的 HY2 服务？' 'Sync certificates and restart active HY2 services?')" && certificate_reload;;
   3)
    users_guard setup || return 1

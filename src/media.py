@@ -7,9 +7,13 @@ import os
 from pathlib import Path
 import platform
 import re
+import shutil
+import sys
+import unicodedata
 import signal
 import subprocess
 import tempfile
+import threading
 import zipfile
 
 TOOLS = {'unlock': ('oneclickvirt/UnlockTests', 'Apache-2.0'), 'ecs': ('oneclickvirt/ecs', 'GPL-3.0')}
@@ -109,19 +113,30 @@ def ensure_tool(report_dir, tool):
     return data, {'repository': repo, 'release': tag, 'asset': name, 'sha256': digest[7:]}
 
 
-def execute(args, home, timeout, stdout=None, stderr=None):
-    process = subprocess.Popen(args, cwd=home, env=clean_env(home), stdout=stdout, stderr=stderr, start_new_session=True)
+def execute(args, home, timeout, stdout=None, stderr=None, strip_colors=False):
+    process = subprocess.Popen(args, cwd=home, env=clean_env(home), stdout=subprocess.PIPE if strip_colors else stdout, stderr=stderr, start_new_session=True)
+    reader = None
+    if strip_colors:
+        def forward():
+            for line in iter(process.stdout.readline, b''):
+                text = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', line.decode('utf-8', 'replace'))
+                sys.stdout.write(text); sys.stdout.flush()
+        reader = threading.Thread(target=forward, daemon=True); reader.start()
     try:
-        process.communicate(timeout=timeout)
+        process.wait(timeout=timeout)
     except BaseException:
         try: os.killpg(process.pid, signal.SIGTERM)
         except ProcessLookupError: pass
-        try: process.communicate(timeout=2)
+        try: process.wait(timeout=2)
         except subprocess.TimeoutExpired:
             try: os.killpg(process.pid, signal.SIGKILL)
             except ProcessLookupError: pass
-            process.communicate()
+            process.wait()
         raise
+    finally:
+        if reader is not None:
+            reader.join()
+            process.stdout.close()
     return process
 
 
@@ -148,10 +163,63 @@ def ecs_arguments(mode, language='zh_CN'):
             '-cpu=false', '-memory=false', '-disk=false', '-email=false', '-ping=false', '-web=false', '-tgdc=false']
 
 
-def safe_text(value):
+def safe_text(value, limit=250):
     # Provider strings must not inject terminal control sequences or extra rows.
     value = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', str(value))
-    return ''.join(c for c in value if c.isprintable()).strip()[:250]
+    return ''.join(c for c in value if c.isprintable()).strip()[:limit]
+
+
+def display_width(text):
+    return sum(0 if unicodedata.combining(c) else 2 if unicodedata.east_asian_width(c) in ('W', 'F') else 1 for c in text)
+
+
+def wrap_cell(value, width):
+    value = safe_text(value, 1000) or '-'
+    lines, line, used = [], '', 0
+    for index, char in enumerate(value):
+        if char.isspace() and line:
+            following = value[index + 1:].split(' ', 1)[0]
+            if display_width(following) <= width and used + 1 + display_width(following) > width:
+                lines.append(line.rstrip()); line, used = '', 0
+                continue
+        size = display_width(char)
+        if line and used + size > width:
+            lines.append(line); line, used = '', 0
+        line += char; used += size
+    return lines + [line]
+
+
+def report_table(rows, language='zh_CN', columns=None, color=None):
+    """Terminal-cell-aware wrapping keeps Chinese and long provider names aligned."""
+    columns = max(50, min(140, columns or shutil.get_terminal_size((100, 24)).columns))
+    widths = [10, 7, 4, 6, 7]
+    extra = columns - 16 - sum(widths)
+    weights = [0.31, 0.19, 0.09, 0.13, 0.28]
+    for index, weight in enumerate(weights): widths[index] += int(extra * weight)
+    widths[4] += columns - 16 - sum(widths)
+    headers = ['平台', '状态', '地区', '类型', '说明'] if language not in ('en', 'en_US') else ['Platform', 'Status', 'Region', 'Type', 'Notes']
+    output = []
+    def border(left, middle, right):
+        return left + middle.join('─' * (width + 2) for width in widths) + right
+    def cells(values):
+        wrapped = [wrap_cell(value, width) for value, width in zip(values, widths)]
+        for i in range(max(map(len, wrapped))):
+            parts = []
+            for lines, width in zip(wrapped, widths):
+                text = lines[i] if i < len(lines) else ''
+                parts.append(' ' + text + ' ' * (width - display_width(text) + 1))
+            output.append('│' + '│'.join(parts) + '│')
+    output.append(border('┌', '┬', '┐')); cells(headers)
+    output.append(border('├', '┼', '┤'))
+    if not rows:
+        rows = [{'name': '无结果 / No results', 'status': 'Unknown'}]
+    for index, row in enumerate(rows):
+        notes = ' / '.join(dict.fromkeys(x for x in (row.get('error', ''), row.get('info', '')) if x))
+        cells([row.get(k, '') for k in ('name', 'status', 'region', 'unlock_type')] + [notes])
+        if index < len(rows) - 1: output.append(border('├', '┼', '┤'))
+    output.append(border('└', '┴', '┘'))
+    if color is None: color = sys.stdout.isatty() and not os.environ.get('NO_COLOR')
+    return ('\033[1;33m' if color else '') + '\n'.join(output) + ('\033[0m' if color else '')
 
 
 def save_report(directory, report):
@@ -194,10 +262,7 @@ def run(paths, report_dir, port=None, language='zh_CN', all_platforms=False):
                 except (subprocess.TimeoutExpired, ValueError) as exc:
                     rows = []; error = safe_text(type(exc).__name__ + ': diagnostic incomplete / 检测未完成'); failed = True
             report['runs'].append({'path': path, 'results': rows, 'error': error})
-            print('平台 / Platform | 状态 / Status | 地区 / Region | 类型 / Type')
-            for row in rows:
-                print(' | '.join(row[k] or '-' for k in ('name', 'status', 'region', 'unlock_type')))
-                if row['info'] or row['error']: print('  ' + ' / '.join(x for x in (row['info'], row['error']) if x))
+            print(report_table(rows, language))
             if error: print('检测未完成 / Incomplete: ' + error)
     output = save_report(report_dir, report)
     print('本机报告 / Local report: ' + str(output))
@@ -214,7 +279,7 @@ def benchmark(mode, report_dir, language='zh_CN'):
     print('Engine: ' + source['repository'] + ' ' + source['release'], flush=True)
     with tempfile.TemporaryDirectory(prefix='.ecs-', dir=report_dir.parent) as home:
         binary = Path(home) / 'goecs'; binary.write_bytes(payload); binary.chmod(0o700)
-        result = execute([str(binary), *args], home, 1200)
+        result = execute([str(binary), *args], home, 1200, strip_colors=True)
     if result.returncode: raise ValueError('Benchmark incomplete / 综合检测未完成')
 
 

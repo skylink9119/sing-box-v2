@@ -8,7 +8,7 @@
 set -Eeuo pipefail
 umask 077
 SCRIPT_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
-MANAGER_VERSION=2.8.14
+MANAGER_VERSION=2.8.15
 CORE_RECOMMENDED=1.14.3
 BASE=/etc/singbox-v2
 CONF=/etc/sing-box/config.json
@@ -67,6 +67,19 @@ err(){ printf '%s✖ %s%s\n' "$RED" "$*" "$RESET" >&2; }
 # @include shortcut.sh
 need_root(){ [[ $EUID == 0 ]] || { err "$(L '需要 root 权限' 'Root privileges required')"; exit 1; }; }
 confirm(){ local answer; prompt_read "$1 [y/N]: " answer || return 1; [[ $answer =~ ^[[:space:]]*[Yy][[:space:]]*$ ]]; }
+# Keep report commands attached to the terminal (vnStat live mode needs a TTY).
+report_output(){
+ local report_status=0 report_reset=$RESET
+ if [[ ! -t 1 || -n ${NO_COLOR:-} ]];then "$@";return $?;fi
+ printf '%s' "$YELLOW"
+ local GREEN=$YELLOW RED=$YELLOW CYAN=$YELLOW RESET=$YELLOW
+ (
+  export NO_COLOR=1 SYSTEMD_COLORS=0 CLICOLOR=0
+  "$@"
+ ) || report_status=$?
+ printf '%s' "$report_reset"
+ return "$report_status"
+}
 startup_probe(){
  # coreutils timeout is standard on supported Ubuntu/Debian systems. If absent,
  # omit optional information rather than launch an unbounded startup query.
@@ -107,7 +120,7 @@ startup_info(){
  if [[ -x $BASE/cloudflared ]] || command -v cloudflared >/dev/null; then argo=true; fi
  if command -v nginx >/dev/null; then nginx=true; fi
  services=$(startup_probe systemctl show --no-pager --property=Id,LoadState,ActiveState sing-box.service skybyte-argo-tunnel.service nginx.service skybyte-haproxy.service skybyte-users.service) || services=''
- printf '%s\n----------------------------------------------\n' "$GREEN"
+ printf '%s\n----------------------------------------------\n' "$YELLOW"
  say "脚本版本：SKYBYTE Manager v$MANAGER_VERSION" "Script version: SKYBYTE Manager v$MANAGER_VERSION"
  say '功能更新：受限网络部署（a → 6）、独立 Argo、IPv6/NAT、WARP 双栈、专业流媒体/回程/测速' 'Features: restricted-network deployment (a → 6), standalone Argo, IPv6/NAT, WARP dual-stack and professional media/route/speed tests'
  say '系统信息：' 'System information:'
@@ -751,7 +764,7 @@ firewall(){
    ufw default deny incoming; ufw default allow outgoing; ufw --force enable
    warn "$(L '如有 HY2 跳跃或云防火墙，需另外确认规则。' 'Check HY2 hopping and provider firewall rules separately.')" ;;
  3) require_cmd ufw && confirm "$(L '关闭 UFW 会降低保护，确定？' 'Disable UFW and reduce protection?')" && ufw --force disable ;;
- 4) require_cmd ufw && ufw status verbose ;;
+ 4) require_cmd ufw && report_output ufw status verbose ;;
  5) require_cmd ufw || return
     prompt_read "$(L '端口：' 'Port: ')" port; valid_port "$port" || return 1
     prompt_read "$(L '协议 (tcp/udp)：' 'Protocol (tcp/udp): ')" proto; [[ $proto == tcp || $proto == udp ]] || return 1
@@ -786,7 +799,7 @@ service_manager(){
   x=$1
  fi
  case "$x" in
- 1) status;; 2) check_owned && confirm "$(L '启动 sing-box？' 'Start sing-box?')" && systemctl start sing-box;;
+ 1) report_output status;; 2) check_owned && confirm "$(L '启动 sing-box？' 'Start sing-box?')" && systemctl start sing-box;;
  3) check_owned && confirm "$(L '重启 sing-box？' 'Restart sing-box?')" && "$BIN" check -c "$CONF" && systemctl restart sing-box;;
  4) check_owned && warn "$(L '管理员直连节点将断开连接；Argo 和受限用户请单独管理' 'Admin direct nodes will disconnect; manage Argo and quota users separately')" && confirm "$(L '停止 sing-box？' 'Stop sing-box?')" && systemctl stop sing-box;;
  5) check_owned && confirm "$(L '设置开机自启？' 'Enable sing-box at boot?')" && systemctl enable sing-box;;
@@ -795,7 +808,7 @@ service_manager(){
 }
 traffic(){
  local x
- say 'vnStat 统计 VPS 网卡流量，不能区分 Reality/HY2；历史数据从安装后开始。' 'vnStat tracks VPS interface traffic, NOT Reality/HY2 separately. History starts when installed.'
+ report_output say 'vnStat 统计 VPS 网卡流量，不能区分 Reality/HY2；历史数据从安装后开始。' 'vnStat tracks VPS interface traffic, NOT Reality/HY2 separately. History starts when installed.'
  # --menu renders only; a numeric argument executes one selected operation.
  if [[ $# == 0 || $1 == --menu ]]; then
  prompt_options '1. 安装 vnStat
@@ -816,8 +829,8 @@ traffic(){
  fi
  case "$x" in
  1) confirm "$(L '安装 vnStat？' 'Install vnStat?')" && apt_install vnstat && systemctl enable --now vnstat;;
- 2) require_cmd vnstat && vnstat -d;; 3) require_cmd vnstat && vnstat -m;;
- 4) require_cmd vnstat && vnstat -l;; 5) require_cmd vnstat && vnstat;; 0) return;; *) err "$(L '无效选择' 'Invalid choice')";; esac
+ 2) require_cmd vnstat && report_output vnstat -d;; 3) require_cmd vnstat && report_output vnstat -m;;
+ 4) require_cmd vnstat && report_output vnstat -l;; 5) require_cmd vnstat && report_output vnstat;; 0) return;; *) err "$(L '无效选择' 'Invalid choice')";; esac
  return 0
 }
 shadowrocket_qr(){
@@ -1164,7 +1177,7 @@ argo_manager(){
   choice=$1
  fi
  case $choice in
-  1) argo_install quick;; 2) argo_install named;; 3) argo_status;; 4) argo_start;;
+  1) argo_install quick;; 2) argo_install named;; 3) report_output argo_status;; 4) argo_start;;
   5) argo_stop && exports;; 6) argo_stop && argo_start;; 7) exports;; 8) argo_remove;;9) argo_network_settings;; 0) return 0;; *) err "$(L '无效选项' 'Invalid choice')"; return 1;;
  esac
 }

@@ -20,7 +20,7 @@
 
 ---
 
-# SKYBYTE Manager V2.8.14 replaces media page probes with verified UnlockTests and adds optional goecs return-route/speed tests. See the professional diagnostics section.
+# SKYBYTE Manager V2.8.15 uses yellow report output and bordered, aligned media tables, with terminal-width wrapping for long names and error notes.
 
 **SKYBYTE Manager** is a Bash-based Ubuntu/Debian VPS manager with Simplified Chinese and English interfaces. It installs sing-box with **VLESS + Reality + Vision, Hysteria2 (HY2), or both protocols**, manages Cloudflare Argo tunnels and WARP routing, and provides per-user traffic quotas and expiry. Client exports support Shadowrocket, v2rayN, Clash Verge/Mihomo/OpenClash and sing-box JSON.
 
@@ -30,7 +30,7 @@ If you find this script helpful, please subscribe to my YouTube channel and supp
 
 The main menu includes the SKYBYTE ASCII logo. Menus are bold green, credential links bold red, warnings bold yellow and errors bold red on ANSI terminals. Set `NO_COLOR=1` to disable colors. Every action uses `[y/N]`: type `y` or `Y` to confirm; Enter or `n/N` cancels.
 
-V2.8.14 improves menu response: batch startup service/interface queries, bound local probes and certificate commands, read the atomic account snapshot without waiting for the quota worker lock, skip unchanged shortcut writes, and fix remaining TCP TIME_WAIT false positives when adding protocols or editing ports. No additional background service. Forwarding resource use depends on cores, traffic and enabled components; inspect processes, memory and load in **d → 7**. See the [audit record](docs/AUDIT-2026-10-28.md).
+V2.8.15 improves menu response: batch startup service/interface queries, bound local probes and certificate commands, read the atomic account snapshot without waiting for the quota worker lock, skip unchanged shortcut writes, and fix remaining TCP TIME_WAIT false positives when adding protocols or editing ports. No additional background service. Forwarding resource use depends on cores, traffic and enabled components; inspect processes, memory and load in **d → 7**. See the [audit record](docs/AUDIT-2026-10-28.md).
 
 V2.8.11 adds **installation preflight (a → 7)**, automatic checks for new installs/Reality additions, and a short HTTPS install entry.
 
@@ -289,6 +289,8 @@ Backups include routing, private gateway configuration and owned units. Restore 
 
 ## Professional media, routes and speed tests
 
+Reports use yellow terminal output; media results appear in bordered, terminal-width-aware tables with wrapped provider names and notes. Menus keep their green labels. NO_COLOR and redirected output remain plain text.
+
 Open **d → 8**. [UnlockTests](https://github.com/oneclickvirt/UnlockTests) (Apache-2.0), the specialized media engine used by goecs, replaces the old page parser. Default coverage is global platforms plus AI, including Netflix, Disney+, YouTube Premium, TikTok, Spotify, ChatGPT and Gemini; all-region tests are available. Choose VPS direct IPv4/IPv6/both, WARP, or direct/WARP comparison. Preserve upstream status, region, unlock type and errors rather than interpreting HTTP 200 as unlocking.
 
 [goecs](https://github.com/oneclickvirt/ecs) (GPL-3.0) provides optional return-route, speed and combined network tests. Route-only tests disable speed; bandwidth-consuming tests require `y`. CPU, memory and disk stress tests, automatic result uploads and tool logging are disabled. Upstream China return-route modules require Chinese mode, including from the English menu.
@@ -347,7 +349,7 @@ Restore retains current account policy/usage and current subscription tokens. HT
 
 ```bash
 python3 scripts/build.py --check
-python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.14
+python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.15
 ```
 
 Packaging includes only bootstrap.sh, install.sh, the full bundle, public rule catalog and SHA256SUMS, never runtime state or credentials.

@@ -250,7 +250,7 @@ warp_menu(){
  # --menu renders only; a numeric argument executes one selected operation.
  if [[ $# == 0 || $1 == --menu ]]; then
  printf '\n%s%s%s\n' "$CYAN" "$(L '========== WARP 管理 ==========' '========== WARP Manager ==========')" "$RESET"
- warp_engine status "${LANGUAGE_CHOICE:-zh_CN}" || return 1
+ report_output warp_engine status "${LANGUAGE_CHOICE:-zh_CN}" || return 1
  prompt_options '
 【代理设置】
 1. 安装官方 WARP 本机代理
@@ -290,7 +290,7 @@ warp_menu(){
   choice=$1
  fi
  case $choice in
-  1) warp_install_client;; 3) warp_import_gateway;; 7) warp_dualstack;; 8) media_check --interactive;; 6) run_submenu warp_rules_menu;;
+  1) warp_install_client;; 3) warp_import_gateway;; 7) report_output warp_dualstack;; 8) media_check --interactive;; 6) run_submenu warp_rules_menu;;
   4)
    domains=$(warp_profile_domains) || return 0
    prompt_read "$(L '本机 WARP SOCKS5 端口 [40000]：' 'Local WARP SOCKS5 port [40000]: ')" port || return 0; port=${port:-40000}

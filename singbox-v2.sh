@@ -8,7 +8,7 @@
 set -Eeuo pipefail
 umask 077
 SCRIPT_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
-MANAGER_VERSION=2.8.14
+MANAGER_VERSION=2.8.15
 CORE_RECOMMENDED=1.14.3
 BASE=/etc/singbox-v2
 CONF=/etc/sing-box/config.json
@@ -221,6 +221,19 @@ manager_shortcut_remove(){
 }
 need_root(){ [[ $EUID == 0 ]] || { err "$(L '需要 root 权限' 'Root privileges required')"; exit 1; }; }
 confirm(){ local answer; prompt_read "$1 [y/N]: " answer || return 1; [[ $answer =~ ^[[:space:]]*[Yy][[:space:]]*$ ]]; }
+# Keep report commands attached to the terminal (vnStat live mode needs a TTY).
+report_output(){
+ local report_status=0 report_reset=$RESET
+ if [[ ! -t 1 || -n ${NO_COLOR:-} ]];then "$@";return $?;fi
+ printf '%s' "$YELLOW"
+ local GREEN=$YELLOW RED=$YELLOW CYAN=$YELLOW RESET=$YELLOW
+ (
+  export NO_COLOR=1 SYSTEMD_COLORS=0 CLICOLOR=0
+  "$@"
+ ) || report_status=$?
+ printf '%s' "$report_reset"
+ return "$report_status"
+}
 startup_probe(){
  # coreutils timeout is standard on supported Ubuntu/Debian systems. If absent,
  # omit optional information rather than launch an unbounded startup query.
@@ -261,7 +274,7 @@ startup_info(){
  if [[ -x $BASE/cloudflared ]] || command -v cloudflared >/dev/null; then argo=true; fi
  if command -v nginx >/dev/null; then nginx=true; fi
  services=$(startup_probe systemctl show --no-pager --property=Id,LoadState,ActiveState sing-box.service skybyte-argo-tunnel.service nginx.service skybyte-haproxy.service skybyte-users.service) || services=''
- printf '%s\n----------------------------------------------\n' "$GREEN"
+ printf '%s\n----------------------------------------------\n' "$YELLOW"
  say "脚本版本：SKYBYTE Manager v$MANAGER_VERSION" "Script version: SKYBYTE Manager v$MANAGER_VERSION"
  say '功能更新：受限网络部署（a → 6）、独立 Argo、IPv6/NAT、WARP 双栈、专业流媒体/回程/测速' 'Features: restricted-network deployment (a → 6), standalone Argo, IPv6/NAT, WARP dual-stack and professional media/route/speed tests'
  say '系统信息：' 'System information:'
@@ -1341,7 +1354,7 @@ firewall(){
    ufw default deny incoming; ufw default allow outgoing; ufw --force enable
    warn "$(L '如有 HY2 跳跃或云防火墙，需另外确认规则。' 'Check HY2 hopping and provider firewall rules separately.')" ;;
  3) require_cmd ufw && confirm "$(L '关闭 UFW 会降低保护，确定？' 'Disable UFW and reduce protection?')" && ufw --force disable ;;
- 4) require_cmd ufw && ufw status verbose ;;
+ 4) require_cmd ufw && report_output ufw status verbose ;;
  5) require_cmd ufw || return
     prompt_read "$(L '端口：' 'Port: ')" port; valid_port "$port" || return 1
     prompt_read "$(L '协议 (tcp/udp)：' 'Protocol (tcp/udp): ')" proto; [[ $proto == tcp || $proto == udp ]] || return 1
@@ -1376,7 +1389,7 @@ service_manager(){
   x=$1
  fi
  case "$x" in
- 1) status;; 2) check_owned && confirm "$(L '启动 sing-box？' 'Start sing-box?')" && systemctl start sing-box;;
+ 1) report_output status;; 2) check_owned && confirm "$(L '启动 sing-box？' 'Start sing-box?')" && systemctl start sing-box;;
  3) check_owned && confirm "$(L '重启 sing-box？' 'Restart sing-box?')" && "$BIN" check -c "$CONF" && systemctl restart sing-box;;
  4) check_owned && warn "$(L '管理员直连节点将断开连接；Argo 和受限用户请单独管理' 'Admin direct nodes will disconnect; manage Argo and quota users separately')" && confirm "$(L '停止 sing-box？' 'Stop sing-box?')" && systemctl stop sing-box;;
  5) check_owned && confirm "$(L '设置开机自启？' 'Enable sing-box at boot?')" && systemctl enable sing-box;;
@@ -1385,7 +1398,7 @@ service_manager(){
 }
 traffic(){
  local x
- say 'vnStat 统计 VPS 网卡流量，不能区分 Reality/HY2；历史数据从安装后开始。' 'vnStat tracks VPS interface traffic, NOT Reality/HY2 separately. History starts when installed.'
+ report_output say 'vnStat 统计 VPS 网卡流量，不能区分 Reality/HY2；历史数据从安装后开始。' 'vnStat tracks VPS interface traffic, NOT Reality/HY2 separately. History starts when installed.'
  # --menu renders only; a numeric argument executes one selected operation.
  if [[ $# == 0 || $1 == --menu ]]; then
  prompt_options '1. 安装 vnStat
@@ -1406,8 +1419,8 @@ traffic(){
  fi
  case "$x" in
  1) confirm "$(L '安装 vnStat？' 'Install vnStat?')" && apt_install vnstat && systemctl enable --now vnstat;;
- 2) require_cmd vnstat && vnstat -d;; 3) require_cmd vnstat && vnstat -m;;
- 4) require_cmd vnstat && vnstat -l;; 5) require_cmd vnstat && vnstat;; 0) return;; *) err "$(L '无效选择' 'Invalid choice')";; esac
+ 2) require_cmd vnstat && report_output vnstat -d;; 3) require_cmd vnstat && report_output vnstat -m;;
+ 4) require_cmd vnstat && report_output vnstat -l;; 5) require_cmd vnstat && report_output vnstat;; 0) return;; *) err "$(L '无效选择' 'Invalid choice')";; esac
  return 0
 }
 shadowrocket_qr(){
@@ -2044,20 +2057,20 @@ PY
     ok "$(L '已创建用户 ID：' 'Created account ID: ')$id"
     warn "$(L "请在云防火墙放行节点端口 ${port}；控制 API 仅监听本机，不应公开。" "Allow node port $port in provider firewall; the controller API stays loopback-only.")"
     users_export "$id";;
-   3) users_engine list;;
+   3) report_output users_engine list;;
    4)
-    users_engine list
+    report_output users_engine list
     prompt_read "$(L '用户 ID：' 'Account ID: ')" id || return 0
     prompt_read "$(L '总流量 GiB：' 'Total quota GiB: ')" quota || return 0
     confirm "$(L '只修改流量额度，保留到期时间和累计用量？' 'Change quota only, retaining expiry and usage?')" || return 0
     users_engine quota "$id" "$quota";;
    5)
-    users_engine list
+    report_output users_engine list
     prompt_read "$(L '用户 ID：' 'Account ID: ')" id || return 0
     prompt_read "$(L '1 启用  2 禁用：' '1 Enable  2 Disable: ')" action || return 0
     case $action in 1) users_engine enable "$id" || return 1; if command -v ufw >/dev/null && LC_ALL=C ufw status | grep -q '^Status: active'; then users_firewall_allow "$id"; fi;; 2) users_engine disable "$id";; *) return 1;; esac;;
    6|7)
-    users_engine list
+    report_output users_engine list
     prompt_read "$(L '用户 ID：' 'Account ID: ')" id || return 0
     confirm "$(L '确认删除用户或重置其累计流量？' 'Confirm deleting the account or resetting its cumulative usage?')" || return 0
     if [[ $choice == 6 ]]; then users_engine delete "$id"; else users_engine reset "$id"; fi;;
@@ -2065,19 +2078,19 @@ PY
     prompt_read "$(L '最多用户数（1-100）：' 'Maximum accounts (1-100): ')" max || return 0
     users_engine limit "$max";;
    9)
-    users_engine list
+    report_output users_engine list
     prompt_read "$(L '用户 ID：' 'Account ID: ')" id || return 0
     users_export "$id" && users_qr "$id";;
-   10) systemctl --no-pager status skybyte-users.service || :; users_engine list;;
+   10) systemctl --no-pager status skybyte-users.service || :; report_output users_engine list;;
    11) users_engine service on && users_start;;
    13)
-    users_engine list
+    report_output users_engine list
     prompt_read "$(L '用户 ID：' 'Account ID: ')" id || return 0
     prompt_read "$(L '从现在起有效天数：' 'Validity days from now: ')" days || return 0
     confirm "$(L '从现在重新设置有效期，保留额度和累计用量？' 'Set validity from now, retaining quota and usage?')" || return 0
     users_engine validity "$id" "$days";;
    14) users_diagnostics;;
-   15) resource_info;;
+   15) report_output resource_info;;
    16) online_user;;
    12) if confirm "$(L '停止全部受限用户节点？' 'Stop all quota-managed user nodes?')"; then users_engine service off && users_stop; fi;;
    *) err "$(L '无效选项' 'Invalid selection')";;
@@ -2397,7 +2410,7 @@ argo_manager(){
   choice=$1
  fi
  case $choice in
-  1) argo_install quick;; 2) argo_install named;; 3) argo_status;; 4) argo_start;;
+  1) argo_install quick;; 2) argo_install named;; 3) report_output argo_status;; 4) argo_start;;
   5) argo_stop && exports;; 6) argo_stop && argo_start;; 7) exports;; 8) argo_remove;;9) argo_network_settings;; 0) return 0;; *) err "$(L '无效选项' 'Invalid choice')"; return 1;;
  esac
 }
@@ -2567,7 +2580,7 @@ users_summary(){
 }
 users_diagnostics(){
  users_guard || return 1
- users_engine diagnose
+ report_output users_engine diagnose
  say '恢复步骤：修复配置/端口冲突后，选择启用用户；服务未启动时选择启动用户服务。' 'Recovery: fix config/port conflicts, then enable the account; start the supervisor if inactive.'
  say '日志可能含节点地址，请在本机检查，不要公开完整日志。' 'Logs may contain node addresses; inspect locally and avoid publishing full logs.'
  systemctl --no-pager status skybyte-users.service || :
@@ -2712,7 +2725,7 @@ certificate_menu(){
   choice=$1
  fi
  case $choice in
-  1) certificate_info;;
+  1) report_output certificate_info;;
   2) confirm "$(L '同步证书并重启正在运行的 HY2 服务？' 'Sync certificates and restart active HY2 services?')" && certificate_reload;;
   3)
    users_guard setup || return 1
@@ -2755,9 +2768,13 @@ import os
 from pathlib import Path
 import platform
 import re
+import shutil
+import sys
+import unicodedata
 import signal
 import subprocess
 import tempfile
+import threading
 import zipfile
 
 TOOLS = {'unlock': ('oneclickvirt/UnlockTests', 'Apache-2.0'), 'ecs': ('oneclickvirt/ecs', 'GPL-3.0')}
@@ -2857,19 +2874,30 @@ def ensure_tool(report_dir, tool):
     return data, {'repository': repo, 'release': tag, 'asset': name, 'sha256': digest[7:]}
 
 
-def execute(args, home, timeout, stdout=None, stderr=None):
-    process = subprocess.Popen(args, cwd=home, env=clean_env(home), stdout=stdout, stderr=stderr, start_new_session=True)
+def execute(args, home, timeout, stdout=None, stderr=None, strip_colors=False):
+    process = subprocess.Popen(args, cwd=home, env=clean_env(home), stdout=subprocess.PIPE if strip_colors else stdout, stderr=stderr, start_new_session=True)
+    reader = None
+    if strip_colors:
+        def forward():
+            for line in iter(process.stdout.readline, b''):
+                text = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', line.decode('utf-8', 'replace'))
+                sys.stdout.write(text); sys.stdout.flush()
+        reader = threading.Thread(target=forward, daemon=True); reader.start()
     try:
-        process.communicate(timeout=timeout)
+        process.wait(timeout=timeout)
     except BaseException:
         try: os.killpg(process.pid, signal.SIGTERM)
         except ProcessLookupError: pass
-        try: process.communicate(timeout=2)
+        try: process.wait(timeout=2)
         except subprocess.TimeoutExpired:
             try: os.killpg(process.pid, signal.SIGKILL)
             except ProcessLookupError: pass
-            process.communicate()
+            process.wait()
         raise
+    finally:
+        if reader is not None:
+            reader.join()
+            process.stdout.close()
     return process
 
 
@@ -2896,10 +2924,63 @@ def ecs_arguments(mode, language='zh_CN'):
             '-cpu=false', '-memory=false', '-disk=false', '-email=false', '-ping=false', '-web=false', '-tgdc=false']
 
 
-def safe_text(value):
+def safe_text(value, limit=250):
     # Provider strings must not inject terminal control sequences or extra rows.
     value = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', str(value))
-    return ''.join(c for c in value if c.isprintable()).strip()[:250]
+    return ''.join(c for c in value if c.isprintable()).strip()[:limit]
+
+
+def display_width(text):
+    return sum(0 if unicodedata.combining(c) else 2 if unicodedata.east_asian_width(c) in ('W', 'F') else 1 for c in text)
+
+
+def wrap_cell(value, width):
+    value = safe_text(value, 1000) or '-'
+    lines, line, used = [], '', 0
+    for index, char in enumerate(value):
+        if char.isspace() and line:
+            following = value[index + 1:].split(' ', 1)[0]
+            if display_width(following) <= width and used + 1 + display_width(following) > width:
+                lines.append(line.rstrip()); line, used = '', 0
+                continue
+        size = display_width(char)
+        if line and used + size > width:
+            lines.append(line); line, used = '', 0
+        line += char; used += size
+    return lines + [line]
+
+
+def report_table(rows, language='zh_CN', columns=None, color=None):
+    """Terminal-cell-aware wrapping keeps Chinese and long provider names aligned."""
+    columns = max(50, min(140, columns or shutil.get_terminal_size((100, 24)).columns))
+    widths = [10, 7, 4, 6, 7]
+    extra = columns - 16 - sum(widths)
+    weights = [0.31, 0.19, 0.09, 0.13, 0.28]
+    for index, weight in enumerate(weights): widths[index] += int(extra * weight)
+    widths[4] += columns - 16 - sum(widths)
+    headers = ['平台', '状态', '地区', '类型', '说明'] if language not in ('en', 'en_US') else ['Platform', 'Status', 'Region', 'Type', 'Notes']
+    output = []
+    def border(left, middle, right):
+        return left + middle.join('─' * (width + 2) for width in widths) + right
+    def cells(values):
+        wrapped = [wrap_cell(value, width) for value, width in zip(values, widths)]
+        for i in range(max(map(len, wrapped))):
+            parts = []
+            for lines, width in zip(wrapped, widths):
+                text = lines[i] if i < len(lines) else ''
+                parts.append(' ' + text + ' ' * (width - display_width(text) + 1))
+            output.append('│' + '│'.join(parts) + '│')
+    output.append(border('┌', '┬', '┐')); cells(headers)
+    output.append(border('├', '┼', '┤'))
+    if not rows:
+        rows = [{'name': '无结果 / No results', 'status': 'Unknown'}]
+    for index, row in enumerate(rows):
+        notes = ' / '.join(dict.fromkeys(x for x in (row.get('error', ''), row.get('info', '')) if x))
+        cells([row.get(k, '') for k in ('name', 'status', 'region', 'unlock_type')] + [notes])
+        if index < len(rows) - 1: output.append(border('├', '┼', '┤'))
+    output.append(border('└', '┴', '┘'))
+    if color is None: color = sys.stdout.isatty() and not os.environ.get('NO_COLOR')
+    return ('\033[1;33m' if color else '') + '\n'.join(output) + ('\033[0m' if color else '')
 
 
 def save_report(directory, report):
@@ -2942,10 +3023,7 @@ def run(paths, report_dir, port=None, language='zh_CN', all_platforms=False):
                 except (subprocess.TimeoutExpired, ValueError) as exc:
                     rows = []; error = safe_text(type(exc).__name__ + ': diagnostic incomplete / 检测未完成'); failed = True
             report['runs'].append({'path': path, 'results': rows, 'error': error})
-            print('平台 / Platform | 状态 / Status | 地区 / Region | 类型 / Type')
-            for row in rows:
-                print(' | '.join(row[k] or '-' for k in ('name', 'status', 'region', 'unlock_type')))
-                if row['info'] or row['error']: print('  ' + ' / '.join(x for x in (row['info'], row['error']) if x))
+            print(report_table(rows, language))
             if error: print('检测未完成 / Incomplete: ' + error)
     output = save_report(report_dir, report)
     print('本机报告 / Local report: ' + str(output))
@@ -2962,7 +3040,7 @@ def benchmark(mode, report_dir, language='zh_CN'):
     print('Engine: ' + source['repository'] + ' ' + source['release'], flush=True)
     with tempfile.TemporaryDirectory(prefix='.ecs-', dir=report_dir.parent) as home:
         binary = Path(home) / 'goecs'; binary.write_bytes(payload); binary.chmod(0o700)
-        result = execute([str(binary), *args], home, 1200)
+        result = execute([str(binary), *args], home, 1200, strip_colors=True)
     if result.returncode: raise ValueError('Benchmark incomplete / 综合检测未完成')
 
 
@@ -3024,7 +3102,7 @@ media_check(){
   warp|compare)port=$(warp_engine port) && warp_loopback "$port" && warp_verify "$port" || return 1;;
   speed|full)confirm "$(L '测速可能消耗大量流量并临时占用带宽，继续？' 'Tests may use substantial traffic and bandwidth. Continue?')" || return 0;;
  esac
- media_engine "$action" "$REPORT" "${LANGUAGE_CHOICE:-zh_CN}" "$port"
+ report_output media_engine "$action" "$REPORT" "${LANGUAGE_CHOICE:-zh_CN}" "$port"
 }
 reality_engine(){ python3 - "$@" <<'PY_REALITY'
 """Read-only REALITY target diagnostics; standard library, no core required."""
@@ -3333,7 +3411,7 @@ reality_replace(){
  target=${target:-$sni:443}
  normalized=$(reality_engine --project sing-box --target "$target" --sni "$sni" --normalize) || return 1
  IFS=$'\t' read -r host number sni <<< "$normalized"
- if ! reality_engine --project sing-box --language "${LANGUAGE_CHOICE:-zh_CN}" --target "$target" --sni "$sni";then
+ if ! report_output reality_engine --project sing-box --language "${LANGUAGE_CHOICE:-zh_CN}" --target "$target" --sni "$sni";then
   err "$(L '新目标检测未通过，保留原配置。' 'New target failed checks; original configuration retained.')";return 1
  fi
  warn "$(L '更换会短暂重启正在运行的服务；保留 UUID、密钥及端口。所有 Reality 客户端需重新导入更新后的节点。' 'Running services will briefly restart; UUIDs, keys and ports are retained. Re-import updated nodes on all Reality clients.')"
@@ -3357,12 +3435,12 @@ reality_menu(){
   prompt_read '> ' choice || return 0
  else choice=$1;fi
  case $choice in
-  1) reality_engine --project sing-box --language "${LANGUAGE_CHOICE:-zh_CN}" --config "$CONF";;
+  1) report_output reality_engine --project sing-box --language "${LANGUAGE_CHOICE:-zh_CN}" --config "$CONF";;
   2) prompt_read "$(L '握手目标（域名或 域名:端口，0 返回）：' 'Target (hostname or host:port, 0 to return): ')" target || return 0
      [[ $target != 0 ]] || return 0
      [[ -n $target ]] || { err "$(L '请填写握手目标' 'Enter a target')";return 1; }
      prompt_read "$(L '握手域名 / SNI（回车使用目标域名）：' 'Handshake SNI (Enter uses target hostname): ')" sni || return 0
-     reality_engine --project sing-box --language "${LANGUAGE_CHOICE:-zh_CN}" --target "$target" --sni "$sni";;
+     report_output reality_engine --project sing-box --language "${LANGUAGE_CHOICE:-zh_CN}" --target "$target" --sni "$sni";;
   3) reality_replace;;
   0) return 0;; *) return 1;;
  esac
@@ -3638,20 +3716,20 @@ PY_INSTALL_CHECKS
 install_environment_check(){
  local options=(--project sing-box --language "${LANGUAGE_CHOICE:-zh_CN}" --phase environment --os-release "$OS_RELEASE")
  [[ ${1:-1} == 2 ]] || options+=(--reality)
- install_check_engine "${options[@]}" --paths "$BASE" "$(dirname "$BIN")" "${TMPDIR:-/tmp}"
+ report_output install_check_engine "${options[@]}" --paths "$BASE" "$(dirname "$BIN")" "${TMPDIR:-/tmp}"
 }
 install_port_check(){
  local mode=$1 tcp=$2 udp=$3 listen=${4:-0.0.0.0} options=()
  [[ $mode == 2 ]] || options+=(--tcp-port "$tcp")
  [[ $mode == 1 ]] || options+=(--udp-port "$udp")
- if ! install_check_engine --project sing-box --language "${LANGUAGE_CHOICE:-zh_CN}" --phase ports --listen "$listen" "${options[@]}";then
+ if ! report_output report_output install_check_engine --project sing-box --language "${LANGUAGE_CHOICE:-zh_CN}" --phase ports --listen "$listen" "${options[@]}";then
   err "$(L '需要其他端口时，可用 a → 6 → 3 自定义监听端口安装；请保留现有服务并选择空闲端口。' 'For another port, use a → 6 → 3 to install with custom ports. Retain existing services and choose a free port.')"
   return 1
  fi
 }
 install_reality_target(){
  say '正在检查 Reality 目标的 DNS、TCP、TLS 与证书（总时限 12 秒）……' 'Checking Reality target DNS, TCP, TLS and certificate (12-second deadline)…'
- if ! reality_engine --project sing-box --language "${LANGUAGE_CHOICE:-zh_CN}" --target "$1:443" --sni "$1";then
+ if ! report_output reality_engine --project sing-box --language "${LANGUAGE_CHOICE:-zh_CN}" --target "$1:443" --sni "$1";then
   err "$(L 'Reality 握手目标检测未通过；请更换握手网站或修复 VPS 出站网络、DNS、时间与 CA 证书后重试。尚未写入新节点。' 'Reality target failed checks. Change the target or repair VPS egress, DNS, clock and CA roots before retrying. No new node was written.')"
   return 1
  fi
@@ -3662,7 +3740,7 @@ reality_install_check(){
 install_download_check(){
  local options=(--project sing-box --language "${LANGUAGE_CHOICE:-zh_CN}" --phase download)
  [[ -z ${SKYBYTE_ASSET_DIR:-} ]] || options+=(--offline)
- install_check_engine "${options[@]}"
+ report_output install_check_engine "${options[@]}"
 }
 installation_check_menu(){
  local choice tcp=443 udp=443 sni=addons.mozilla.org family listen=0.0.0.0
@@ -4424,7 +4502,7 @@ warp_menu(){
  # --menu renders only; a numeric argument executes one selected operation.
  if [[ $# == 0 || $1 == --menu ]]; then
  printf '\n%s%s%s\n' "$CYAN" "$(L '========== WARP 管理 ==========' '========== WARP Manager ==========')" "$RESET"
- warp_engine status "${LANGUAGE_CHOICE:-zh_CN}" || return 1
+ report_output warp_engine status "${LANGUAGE_CHOICE:-zh_CN}" || return 1
  prompt_options '
 【代理设置】
 1. 安装官方 WARP 本机代理
@@ -4464,7 +4542,7 @@ warp_menu(){
   choice=$1
  fi
  case $choice in
-  1) warp_install_client;; 3) warp_import_gateway;; 7) warp_dualstack;; 8) media_check --interactive;; 6) run_submenu warp_rules_menu;;
+  1) warp_install_client;; 3) warp_import_gateway;; 7) report_output warp_dualstack;; 8) media_check --interactive;; 6) run_submenu warp_rules_menu;;
   4)
    domains=$(warp_profile_domains) || return 0
    prompt_read "$(L '本机 WARP SOCKS5 端口 [40000]：' 'Local WARP SOCKS5 port [40000]: ')" port || return 0; port=${port:-40000}
@@ -6919,14 +6997,14 @@ dispatch_action(){
  local action=$1;shift
  case $action in
  install_reality) install_protocol 1;; install_hy2) install_protocol 2;; install_dual) install_protocol 3;;
- argo) argo_manager "$@";; nodes) exports;; node_parameters) node_parameters;; subscription) subscription;; rename) rename_node;; qr) shadowrocket_qr;; users) users_manager;;
- service) service_manager "$@";; logs) journalctl -u sing-box -n 80 --no-pager;; argo_status) argo_status;;
- initialize) initialize_server;; firewall) firewall "$@";; audit) firewall_audit;; bbr) bbr;; hop) hop "$@";; traffic) traffic "$@";;
+ argo) argo_manager "$@";; nodes) exports;; node_parameters) report_output node_parameters;; subscription) subscription;; rename) rename_node;; qr) shadowrocket_qr;; users) users_manager;;
+ service) service_manager "$@";; logs) report_output journalctl -u sing-box -n 80 --no-pager;; argo_status) report_output argo_status;;
+ initialize) initialize_server;; firewall) firewall "$@";; audit) report_output firewall_audit;; bbr) bbr;; hop) hop "$@";; traffic) traffic "$@";;
  media) media_check "$@";; warp) warp_menu "$@";; relay) relay_menu "$@";; haproxy) haproxy_menu "$@";;
  reality) reality_menu "$@";;
  install_checks) installation_check_menu "$@";;
  rescue) rescue_menu "$@";;
- manager_update) manager_update;; certificate) certificate_menu "$@";; resources) resource_info;;
+ manager_update) manager_update;; certificate) certificate_menu "$@";; resources) report_output resource_info;;
  update) core_versions "$@";; settings) node_settings "$@";; online) online_menu "$@";; acme) acme_menu "$@";; backup_tools) backup_tools "$@";; help) usage_help;; backup) backup;; restore) restore;;
  language) select_language && startup_info;; notice) notice;; uninstall) uninstall_manager;;
  esac
@@ -7006,7 +7084,8 @@ LOGO
   say ' e. 更新与备份' ' e. Updates and backups'
   say ' f. 设置与卸载' ' f. Settings and uninstall'
   say ' g. 用户与配额管理' ' g. Users and quotas'
-  users_summary
+  report_output users_summary
+  printf '%s' "$GREEN"
   say ' q. 退出' ' q. Exit'
   printf '%s' "$RESET"
   printf '%sYouTube: %s%s\n' "$CYAN" "$YOUTUBE" "$RESET"

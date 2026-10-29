@@ -20,7 +20,7 @@
 
 ---
 
-# SKYBYTE Manager V2.8.14 使用经过下载校验的 UnlockTests 替换旧流媒体检测，新增按需回程、测速与综合网络测评，支持直连和 WARP 对比；详见专业检测说明。
+# SKYBYTE Manager V2.8.15 统一报告结果为黄色，流媒体结果改为带边框的对齐表格，长平台名和错误说明按终端宽度换行；vnStat、资源和网络状态等报告同步调整。
 
 **SKYBYTE Manager** 是基于 Bash 的 Ubuntu/Debian VPS 管理工具，提供简体中文和 English 界面，支持 sing-box 的 **VLESS + Reality + Vision、Hysteria2（HY2）及双协议部署**。通过交互菜单管理 Cloudflare Argo 隧道、WARP 出站分流、用户流量配额与有效期，并导出 Shadowrocket（小火箭）、v2rayN、Clash Verge/Mihomo/OpenClash 和 sing-box JSON 客户端配置。
 
@@ -30,7 +30,7 @@ YouTube：[SKYBYTE9119](https://www.youtube.com/@SKYBYTE9119) · [English](READM
 
 主菜单包含 SKYBYTE ASCII logo；菜单绿色加粗、节点链接红色加粗、警告黄色加粗、错误红色加粗。支持 ANSI 的交互终端显示颜色，`NO_COLOR=1` 可关闭。所有操作确认统一为 `[y/N]`：输入 `y` 或 `Y` 确认，回车或输入 `n/N` 取消。
 
-V2.8.14 优化菜单响应：启动时批量查询服务和网卡，系统查询与证书命令限时；账户摘要读取原子快照，不等待配额工作锁；内容未变时不重写快捷入口；修复追加协议和编辑端口时的 TCP TIME_WAIT 误报。不增加后台服务。转发资源占用取决于核心、流量和启用的组件，可用 **d → 7** 查看进程、内存和负载。见[完整检查记录](docs/AUDIT-2026-10-28.md)。
+V2.8.15 优化菜单响应：启动时批量查询服务和网卡，系统查询与证书命令限时；账户摘要读取原子快照，不等待配额工作锁；内容未变时不重写快捷入口；修复追加协议和编辑端口时的 TCP TIME_WAIT 误报。不增加后台服务。转发资源占用取决于核心、流量和启用的组件，可用 **d → 7** 查看进程、内存和负载。见[完整检查记录](docs/AUDIT-2026-10-28.md)。
 
 V2.8.11 新增 **节点安装前检测（a → 7）**，新安装及追加 Reality 自动检测；同时提供 sky9119.cc 短安装入口。
 
@@ -289,6 +289,8 @@ IPv6 地址使用正确 URI 方括号和证书 IP SAN。纯 IPv6 VPS 仍需能�
 
 ## 专业流媒体、回程与测速
 
+报告结果统一使用黄色；流媒体报告显示带边框的对齐表格，长平台名和错误说明按终端宽度换行。菜单保持绿色；设置 NO_COLOR 或重定向时输出纯文本。
+
 进入 **d → 8**。流媒体/AI 采用 [oneclickvirt/UnlockTests](https://github.com/oneclickvirt/UnlockTests)（Apache-2.0），是融合怪 Go 版使用的专项模块。默认检测全球平台和 AI，包含 Netflix、Disney+、YouTube Premium、TikTok、Spotify、ChatGPT、Gemini 等；可选全地区平台。支持 VPS 直连 IPv4、IPv6、双栈、WARP 与直连/WARP 对比，显示上游状态、地区、原生/DNS/代理类型及错误信息；不把 HTTP 200 自行判为解锁，保留未知、超时和验证限制。
 
 三网回程、测速与综合网络测评采用 [融合怪 Go 版](https://github.com/oneclickvirt/ecs)（GPL-3.0），仅在选中时运行。回程不测速；测速与综合检测会先提示流量消耗并要求 `y`。综合检测关闭 CPU、内存和磁盘压力测试，避免不必要的负载。结果上传与工具日志默认关闭；回程上游模块仅中文启用，因此英文界面此项也使用中文结果。
@@ -347,7 +349,7 @@ HY2 支持上下行 Mbps、`ignore_client_bandwidth` 与 Salamander 混淆，服
 
 ```bash
 python3 scripts/build.py --check
-python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.14
+python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.15
 ```
 
 打包只包含 `bootstrap.sh` 启动命令、安装入口、完整脚本、公开规则列表及SHA256SUMS，不发布运行时配置或凭据。
