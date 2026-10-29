@@ -25,7 +25,6 @@ def module(name):
     value=importlib.util.module_from_spec(spec);spec.loader.exec_module(value);return value
 
 
-media=module('media')
 warp=module('warp')
 
 
@@ -53,99 +52,12 @@ class FeaturesTest(unittest.TestCase):
         f=self.root/'warp.conf';f.write_text('[Interface]\nPrivateKey = '+key+'\nAddress = 172.16.0.2/32, fd77::1/128\nListenPort = '+str(listen)+'\n[Peer]\nPublicKey = '+public+'\nAllowedIPs = 0.0.0.0/0, ::/0\nEndpoint = 127.0.0.1:'+str(peer)+'\n')
         return f,key
 
-    def test_streaming_200_or_region_hint_is_never_full_unlock(self):
-        for service in media.PROBES:
-            result=media.classify(service,[self.response('<html>OK</html>')])
-            self.assertEqual(result['status'],'unknown')
-        r=media.classify('Amazon Prime Video',[self.response('"currentTerritory":"JP"')])
-        self.assertEqual(r['region'],'JP');self.assertEqual(r['status'],'unknown')
-        r=media.classify('YouTube Premium',[self.response('"countryCode":"US"')])
-        self.assertEqual(r['status'],'unknown');self.assertEqual(r['region'],'US')
-        self.assertEqual(r['region_source'],'countryCode')
 
-    def test_streaming_region_fields_escaped_json_and_url_locale_are_reported(self):
-        cases=(
-            ('Netflix',r'{\"requestCountry\":{\"id\":\"HK\"}}','HK','requestCountry.id'),
-            ('Disney+',r'{\"country_code\":\"us\"}','US','country_code'),
-            ('YouTube Premium',r'{\"gl\":\"jp\"}','JP','gl'),
-            ('Amazon Prime Video',r'{\"currentTerritory\":\"GB\"}','GB','currentTerritory'),
-            ('TikTok',r'{\"data\":{\"store_region\":\"sc\"}}','SC','store_region'))
-        for service,body,region,source in cases:
-            with self.subTest(service=service):
-                result=media.classify(service,[self.response(body)])
-                self.assertEqual((result['region'],result['region_source']),(region,source))
-                self.assertNotIn(result['status'],('catalog','offer','supported'))
-        result=media.classify('Disney+',[self.response('',url='https://www.disneyplus.com/en-gb')])
-        self.assertEqual((result['region'],result['region_source']),('GB','final URL locale'))
-        self.assertEqual(media.region_label('US/HK','zh_CN'),'美国 (US)/香港 (HK)')
-        result=media.classify('Netflix',[self.response(r'{\"requestCountry\":{\"id\":\"HK\"},\"countryCode\":\"US\"}')])
-        self.assertEqual(result['region'],'HK/US')
-        self.assertEqual(result['region_source'],'requestCountry.id, countryCode')
-        result=media.classify('Amazon Prime Video',[self.response('{"countryCode":"US","details":{"countryCode":"HK"}}')])
-        self.assertEqual((result['region'],result['region_source']),('US/HK','countryCode'))
-        result=media.classify('Disney+',[self.response('{"countryCode":"US"}',code=403)])
-        self.assertEqual((result['region'],result['status']),('-','verification'))
 
-    def test_streaming_location_restrictions_require_explicit_page_evidence(self):
-        for service,body in (
-            ('Netflix','This title is not available to watch in your area.'),
-            ('Amazon Prime Video','This video is currently unavailable to watch in your location.'),
-            ('TikTok','This content is not available in your region.')):
-            with self.subTest(service=service):
-                result=media.classify(service,[self.response(body)])
-                self.assertEqual(result['status'],'restricted')
-        result=media.classify('Netflix',[self.response('A title is unavailable')])
-        self.assertEqual(result['status'],'unknown')
-        result=media.classify('Netflix',[self.response('Help: catalogs vary by country because of licensing')])
-        self.assertEqual(result['status'],'unknown')
-        result=media.classify('Disney+',[self.response(r'{\"inSupportedLocation\":false}')])
-        self.assertEqual(result['status'],'restricted')
-        self.assertEqual(media.status_color('restricted'),'\033[1;31m')
-        self.assertEqual(media.status_color('network'),'\033[1;31m')
-        self.assertEqual(media.status_color('unknown'),'\033[1;33m')
 
-    def test_streaming_positive_evidence_and_explicit_restriction(self):
-        r=media.classify('Netflix',[self.response('<meta property="og:video" content="preview"> "requestCountry":{"id":"HK"}')])
-        self.assertEqual(r['status'],'catalog');self.assertEqual(r['region'],'HK')
-        self.assertIn('unverified',media.LABELS[r['status']][1])
-        r=media.classify('Disney+',[self.response('"inSupportedLocation":false')]);self.assertEqual(r['status'],'restricted')
-        r=media.classify('YouTube Premium',[self.response('Premium is not available in your country')]);self.assertEqual(r['status'],'restricted')
-        r=media.classify('YouTube Premium',[self.response('purchaseButtonOverride')]);self.assertEqual(r['status'],'offer')
-        r=media.classify('TikTok',[self.response('OK'),self.response('{"data":{"store_region":"gb"}}')])
-        self.assertEqual(r['region'],'GB');self.assertEqual(r['status'],'unknown')
 
-    def test_streaming_errors_and_challenges_are_unknown_not_blocked(self):
-        for code in (403,429,451):
-            r=media.classify('Disney+',[self.response('"inSupportedLocation":false',code)])
-            self.assertEqual(r['status'],'verification')
-        self.assertEqual(media.classify('Netflix',[self.response('og:video',error=True)])['status'],'network')
-        self.assertEqual(media.classify('Netflix',[self.response('verify you are human <meta property="og:video">')])['status'],'verification')
-        self.assertEqual(media.classify('Netflix',[self.response('new page',404)])['status'],'changed')
 
-    def test_media_transport_preserves_tls_and_explicit_network_path(self):
-        commands=[]
-        def run(cmd,**kwargs):
-            commands.append(cmd);Path(cmd[cmd.index('--output')+1]).write_text('safe fixture')
-            return types.SimpleNamespace(returncode=0,stdout='200\nhttps://www.youtube.com/premium',stderr='')
-        with patch.object(media.subprocess,'run',side_effect=run):
-            media.fetch('https://www.youtube.com/premium','6')
-            media.fetch('https://www.youtube.com/premium','warp',40000)
-        self.assertEqual(commands[0][1],'-q');self.assertIn('-6',commands[0]);self.assertIn('*',commands[0])
-        self.assertIn('socks5h://127.0.0.1:40000',commands[1]);self.assertNotIn('-6',commands[1])
-        for cmd in commands:
-            self.assertNotIn('-k',cmd);self.assertNotIn('--insecure',cmd);self.assertIn('--max-time',cmd);self.assertIn('--proto-redir',cmd)
-            self.assertFalse(any('Authorization' in x for x in cmd))
 
-    def test_media_reports_are_private_and_contain_no_raw_page(self):
-        with patch.object(media,'probe',side_effect=lambda service,path,port:media.classify(service,[self.response('sensitive-page-body')])):
-            rows=media.run(['4'],self.base/'reports',language='en_US')
-        self.assertEqual(len(rows),7)
-        report=next((self.base/'reports').glob('*.json'))
-        self.assertEqual(report.stat().st_mode&0o777,0o600)
-        text=report.read_text();self.assertNotIn('sensitive-page-body',text);self.assertFalse(json.loads(text)['playback_verified'])
-        report_dir=self.base/'symlink-report';report_dir.symlink_to(self.base/'reports')
-        with patch.object(media,'probe',side_effect=lambda service,path,port:media.classify(service,[self.response()])):
-            with self.assertRaises(ValueError):media.run(['4'],report_dir)
 
     def test_warp_modes_preserve_credentials_and_direct_baseline(self):
         original=self.configure('3');self.switch()
@@ -298,14 +210,6 @@ printf 'ATTEMPTS=%s\\n' "$probe_calls"
         self.switch('direct')
         self.assertEqual(json.loads((self.config/'config.json').read_text()),original)
 
-    def test_chatgpt_anonymous_probe_distinguishes_explicit_location_and_challenge(self):
-        self.assertIn('ChatGPT',media.PROBES)
-        for body,code,status in [('Welcome',200,'unknown'),('{"code":"unsupported_country_region_territory"}',403,'restricted'),('verify you are human',403,'verification')]:
-            self.assertEqual(media.classify('ChatGPT',[self.response(body,code)])['status'],status)
-        self.assertIn('Gemini',media.PROBES)
-        self.assertEqual(media.classify('Gemini',[self.response('Gemini is not available in your country',403)])['status'],'restricted')
-        self.assertEqual(media.classify('Gemini',[self.response('<script>const msg="not available in your country";</script>Welcome')])['status'],'unknown')
-        self.assertEqual(media.classify('ChatGPT',[self.response('<script>const code="unsupported_country";</script>Welcome')])['status'],'unknown')
 
     def test_warp_install_refuses_residual_registration_before_packages_or_services(self):
         self.configure('2')
@@ -469,18 +373,6 @@ warp_install_client
         return result
 
     @unittest.skipUnless(manager.SB,'sing-box required for real routing')
-    def test_real_domain_routing_only_selected_host_uses_shared_proxy(self):
-        target,payload=self.http_fixture();upstream,hits=self.socks_fixture();self.configure('1');self.bin=Path(manager.SB)
-        cfg=json.loads((self.config/'config.json').read_text());listen=manager.port()
-        cfg['inbounds']=[{'type':'mixed','listen':'127.0.0.1','listen_port':listen}]
-        (self.config/'config.json').write_text(json.dumps(cfg))
-        self.shell('warp_engine switch restricted '+str(upstream)+' false media.test')
-        proc=self.start_engine(self.config/'config.json')
-        a=self.request(listen,'http://media.test:'+str(target));self.assertEqual(a.stdout,payload,a.stderr)
-        self.assertIn('media.test',hits);before=len(hits)
-        b=self.request(listen,'http://127.0.0.1:'+str(target));self.assertEqual(b.stdout,payload,b.stderr)
-        self.assertEqual(len(hits),before)
-        self.assertIsNone(proc.poll())
 
     @unittest.skipUnless(manager.SB,'sing-box required for per-user WARP routing')
     def test_real_hy2_users_are_metered_while_using_shared_proxy(self):

@@ -290,7 +290,7 @@ warp_menu(){
   choice=$1
  fi
  case $choice in
-  1) warp_install_client;; 3) warp_import_gateway;; 7) warp_dualstack;; 8) media_check;; 6) run_submenu warp_rules_menu;;
+  1) warp_install_client;; 3) warp_import_gateway;; 7) warp_dualstack;; 8) media_check --interactive;; 6) run_submenu warp_rules_menu;;
   4)
    domains=$(warp_profile_domains) || return 0
    prompt_read "$(L '本机 WARP SOCKS5 端口 [40000]：' 'Local WARP SOCKS5 port [40000]: ')" port || return 0; port=${port:-40000}

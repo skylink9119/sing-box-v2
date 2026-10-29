@@ -54,7 +54,7 @@ sub_menu(){
    say ' 5. HY2 端口跳跃' ' 5. HY2 port hopping'
    say ' 6. VPS 流量统计（vnStat）' ' 6. VPS traffic (vnStat)'
    say ' 7. 进程、内存与负载' ' 7. Processes, memory and load'
-   say ' 8. 流媒体可用性检测' ' 8. Streaming availability tests'
+   say ' 8. 流媒体 / 回程 / 测速' ' 8. Media / routes / speed tests'
    say ' 9. WARP 出站与分流' ' 9. WARP egress and routing'
    say '10. 住宅落地 / VPS 中转' '10. Residential landing / VPS relay'
    say '11. HAProxy TCP 透传' '11. HAProxy TCP passthrough'
@@ -130,7 +130,7 @@ dispatch_action(){
  argo) argo_manager "$@";; nodes) exports;; node_parameters) node_parameters;; subscription) subscription;; rename) rename_node;; qr) shadowrocket_qr;; users) users_manager;;
  service) service_manager "$@";; logs) journalctl -u sing-box -n 80 --no-pager;; argo_status) argo_status;;
  initialize) initialize_server;; firewall) firewall "$@";; audit) firewall_audit;; bbr) bbr;; hop) hop "$@";; traffic) traffic "$@";;
- media) media_check;; warp) warp_menu "$@";; relay) relay_menu "$@";; haproxy) haproxy_menu "$@";;
+ media) media_check "$@";; warp) warp_menu "$@";; relay) relay_menu "$@";; haproxy) haproxy_menu "$@";;
  reality) reality_menu "$@";;
  install_checks) installation_check_menu "$@";;
  rescue) rescue_menu "$@";;
@@ -162,12 +162,14 @@ run_submenu(){
   # Enter child menus before taking a lock, so nested idle menus also release it.
   case "$handler:$choice" in
    warp_menu:6) run_submenu warp_rules_menu; continue;;
+   warp_menu:8) run_submenu media_check; continue;;
   esac
   run_menu_action "$handler" "$choice"
  done
 }
 navigation_action(){
  case $1 in
+  media) run_submenu media_check;;
   firewall) run_submenu firewall;; service) run_submenu service_manager;;
   traffic) run_submenu traffic;; argo) run_submenu argo_manager;;
   settings) run_submenu node_settings;; certificate) run_submenu certificate_menu;;

@@ -122,3 +122,12 @@ users_manager'''
         self.assertEqual(result.stdout.count('USERS list'),2)
         self.assertIn('ACCOUNT_RESOURCES',result.stdout)
         self.assertNotIn('SELECT_LOCK=1',result.stdout)
+
+    def test_professional_diagnostics_cancel_speed_and_compare_preserve_menu(self):
+        code=self.mocks()+'''media_engine(){ echo "DIAGNOSTIC $*"; }
+warp_engine(){ echo 40000; };warp_loopback(){ :; };warp_verify(){ :; }
+main'''
+        result=self.shell(code,input='d\n8\n8\nn\n5\n0\n0\nq\n')
+        self.assertIn('DIAGNOSTIC compare',result.stdout)
+        self.assertNotIn('DIAGNOSTIC speed',result.stdout)
+        self.assertNotIn('SELECT_LOCK=1',result.stdout)

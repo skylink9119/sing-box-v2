@@ -1,214 +1,230 @@
-"""Anonymous service-page probes; evidence is never a playback guarantee."""
-import concurrent.futures
+"""Verified, on-demand upstream diagnostics. No node configuration is read."""
 import datetime
-import html
+import hashlib
+import io
 import json
 import os
 from pathlib import Path
+import platform
 import re
+import signal
 import subprocess
 import tempfile
-import urllib.parse
+import zipfile
 
-PROBES={
- 'Netflix':['https://www.netflix.com/title/81280792','https://www.netflix.com/title/70143836'],
- 'Disney+':['https://www.disneyplus.com/'],
- 'ChatGPT':['https://chatgpt.com/'],
- 'Gemini':['https://gemini.google.com/'],
- 'YouTube Premium':['https://www.youtube.com/premium'],
- 'Amazon Prime Video':['https://www.primevideo.com/'],
- 'TikTok':['https://www.tiktok.com/','https://www.tiktok.com/passport/web/store_region/']}
-LABELS={
- 'catalog':('片目页面有视频信息；播放未验证','Catalog video metadata; playback unverified'),
- 'supported':('页面声明地区支持；播放未验证','Page reports supported location; playback unverified'),
- 'offer':('页面提供订阅入口；订阅资格未验证','Subscription offer shown; eligibility unverified'),
- 'restricted':('页面明确提示地区限制','Explicit location restriction on page'),
- 'unknown':('页面可访问；解锁状态未知','Page reachable; unlock status unknown'),
- 'verification':('访问被拒绝或需验证；解锁未知','Access denied/verification required; unlock unknown'),
- 'network':('连接/DNS/TLS失败；解锁未知','Connection/DNS/TLS failed; unlock unknown'),
- 'changed':('响应异常或页面变化；解锁未知','Unexpected response/page changed; unlock unknown')}
+TOOLS = {'unlock': ('oneclickvirt/UnlockTests', 'Apache-2.0'), 'ecs': ('oneclickvirt/ecs', 'GPL-3.0')}
+MAX_DOWNLOAD = 128 * 1024 * 1024
 
-# These fields are page-provided hints, not proof of account eligibility or playback.
-REGION_FIELDS={
- 'Netflix':(('requestCountry','id'),('countryCode',),('country_code',)),
- 'Disney+':(('countryCode',),('country_code',),('currentTerritory',),('territory',),('regionCode',)),
- 'YouTube Premium':(('countryCode',),('country_code',),('gl',)),
- 'Amazon Prime Video':(('currentTerritory',),('territory',),('countryCode',),('country_code',)),
- 'TikTok':(('store_region',),('countryCode',),('country_code',),('region',))}
-REGION_NAMES={
- 'AU':('澳大利亚','Australia'),'BR':('巴西','Brazil'),'CA':('加拿大','Canada'),
- 'DE':('德国','Germany'),'ES':('西班牙','Spain'),'FR':('法国','France'),
- 'GB':('英国','United Kingdom'),'HK':('香港','Hong Kong'),'ID':('印度尼西亚','Indonesia'),
- 'IN':('印度','India'),'IT':('意大利','Italy'),'JP':('日本','Japan'),
- 'KR':('韩国','South Korea'),'MX':('墨西哥','Mexico'),'MY':('马来西亚','Malaysia'),
- 'NL':('荷兰','Netherlands'),'PH':('菲律宾','Philippines'),'RU':('俄罗斯','Russia'),
- 'SC':('塞舌尔','Seychelles'),'SG':('新加坡','Singapore'),'TH':('泰国','Thailand'),
- 'TR':('土耳其','Türkiye'),'TW':('台湾','Taiwan'),'US':('美国','United States'),
- 'VN':('越南','Vietnam')}
 
-def fetch(url,path='4',port=None,post=False):
-    # Ignore curlrc/proxy environment. No login cookies, authorization or node data.
-    with tempfile.TemporaryDirectory() as tmp:
-        body=Path(tmp)/'body'
-        cmd=['curl','-q','--silent','--show-error','--location','--max-redirs','4',
-             '--proto','=https','--proto-redir','=https','--connect-timeout','4','--max-time','12',
-             '--max-filesize','8388608','--limit-rate','1M','--user-agent','Mozilla/5.0 SKYBYTE-Manager/2.4',
-             '--header','Accept-Language: en-US,en;q=0.9','--output',str(body),
-             '--write-out','%{http_code}\n%{url_effective}']
-        if path=='warp':cmd+=['--noproxy','','--proxy','socks5h://127.0.0.1:'+str(port)]
-        else:cmd+=['--noproxy','*','-'+path]
-        if post:cmd+=['--request','POST','--data','']
-        cmd.append(url)
-        try:r=subprocess.run(cmd,capture_output=True,text=True,timeout=15)
-        except (subprocess.TimeoutExpired,OSError):return {'error':True,'code':0,'body':'','url':url}
-        lines=r.stdout.splitlines()
-        code=int(lines[0]) if lines and lines[0].isdigit() else 0
-        text=body.read_bytes()[:8388608].decode('utf-8','replace') if body.exists() else ''
-        return {'error':r.returncode!=0,'code':code,'body':text,'url':lines[1] if len(lines)>1 else url}
+def clean_env(home):
+    env = {k: os.environ[k] for k in ('PATH', 'LANG', 'LC_ALL', 'NO_COLOR', 'SSL_CERT_FILE', 'SSL_CERT_DIR') if k in os.environ}
+    env.update(HOME=str(home), TMPDIR=str(home))
+    return env
 
-def country_values(text,key):
-    # Handle both literal JSON and JSON strings embedded with escaped quotes.
-    quote=r'(?:\\)?["\']'
-    return list(dict.fromkeys(m[1].upper() for m in re.finditer(quote+re.escape(key)+quote+r'\s*:\s*'+quote+r'([A-Za-z]{2})'+quote,text)))
 
-def country(text,key):
-    return next(iter(country_values(text,key)),'-')
+def fetch(url, limit):
+    if not url.startswith('https://'):
+        raise ValueError('Non-HTTPS diagnostic download refused')
+    with tempfile.TemporaryDirectory(prefix='skybyte-diagnostic-download-') as home:
+        target = Path(home) / 'download'
+        args = ['curl', '-q', '-fsSL', '--proto', '=https', '--proto-redir', '=https',
+                '--connect-timeout', '8', '--max-time', '60', '--max-filesize', str(limit),
+                '--user-agent', 'SKYBYTE-Diagnostics', '-o', str(target), url]
+        result = subprocess.run(args, env=clean_env(home), capture_output=True, timeout=65)
+        if result.returncode:
+            raise ValueError('Official diagnostic download failed / 官方检测工具下载失败，请检查 GitHub 连接')
+        data = target.read_bytes()
+    if len(data) > limit:
+        raise ValueError('Diagnostic download too large')
+    return data
 
-def url_region(response):
-    url=response.get('url','')
-    try:parsed=urllib.parse.urlsplit(url)
-    except ValueError:return '-',''
-    query=urllib.parse.parse_qs(parsed.query)
-    for key in ('country','countryCode','region','gl'):
-        for value in query.get(key,[]):
-            if re.fullmatch('[A-Za-z]{2}',value):return value.upper(),'final URL '+key
-    # Locale paths identify the page's selected territory, not necessarily the egress IP.
-    match=re.search(r'(?:^|/)[a-z]{2}-([a-z]{2})(?:/|$)',parsed.path,re.I)
-    if match:return match[1].upper(),'final URL locale'
-    return '-',''
 
-def region_hint(service,responses):
-    hints=[]
-    for response in responses:
-        if response.get('error') or response.get('code')!=200:continue
-        body=html.unescape(response.get('body',''))
-        found=False
-        for fields in REGION_FIELDS.get(service,()):
-            if len(fields)==2:
-                parent,child=fields
-                quote=r'(?:\\)?["\']'
-                pattern=quote+re.escape(parent)+quote+r'\s*:\s*\{[^{}]{0,512}?'+quote+re.escape(child)+quote+r'\s*:\s*'+quote+r'([A-Za-z]{2})'+quote
-                values=[match[1].upper() for match in re.finditer(pattern,body,re.S)]
-                source=parent+'.'+child
-            else:
-                source=fields[0];values=country_values(body,source)
-            for value in values:
-                hints.append((value,source))
-                found=True
-        if not found:
-            value,source=url_region(response)
-            if value!='-':hints.append((value,source))
-    # Preserve conflicting provider hints instead of silently choosing one.
-    values=list(dict.fromkeys(value for value,_ in hints))
-    sources=list(dict.fromkeys(source for _,source in hints))
-    return '/'.join(values) if values else '-',', '.join(sources)
+def private_dir(path):
+    path = Path(path)
+    if not path.is_absolute() or any(p.is_symlink() for p in (path, *path.parents)):
+        raise ValueError('Unsafe diagnostic directory / 检测目录异常')
+    if path.exists() and not path.is_dir():
+        raise ValueError('Diagnostic directory is not a directory')
+    path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    path.chmod(0o700)
+    return path
 
-def region_label(region,language):
-    if region=='-':return '未识别' if language=='zh_CN' else 'not identified'
-    names=[]
-    for code in region.split('/'):
-        name=REGION_NAMES.get(code)
-        names.append((name[0] if language=='zh_CN' else name[1])+' ('+code+')' if name else code)
-    return '/'.join(names)
 
-def location_restricted(service,body):
-    low=body.lower()
-    messages={
-        'Netflix':('not available to watch in your area','this title is not available in your country'),
-        'Disney+':(),
-        'YouTube Premium':('premium is not available in your country',),
-        'Amazon Prime Video':('this video is currently unavailable to watch in your location',),
-        'TikTok':('this content is not available in your region','not available in your region')}
-    return any(phrase in low for phrase in messages.get(service,()))
+def asset_name(tool, system=None, machine=None):
+    system = (system or platform.system()).lower()
+    machine = machine or platform.machine()
+    arch = {'x86_64': 'amd64', 'amd64': 'amd64', 'aarch64': 'arm64', 'arm64': 'arm64',
+            'armv7l': 'arm', 'armv6l': 'arm', 'i386': '386', 'i686': '386'}.get(machine)
+    if system not in ('linux', 'darwin') or arch is None:
+        raise ValueError('Unsupported diagnostic architecture / 检测工具不支持此架构')
+    return ('ut-' + system + '-' + arch) if tool == 'unlock' else ('goecs_' + system + '_' + arch + '.zip')
 
-def json_boolean(text,key):
-    quote=r'(?:\\)?["\']'
-    match=re.search(quote+re.escape(key)+quote+r'\s*:\s*(true|false)',text,re.I)
-    return match[1].lower() if match else None
 
-def status_color(status):
-    if status in ('catalog','offer','supported'):return '\033[1;32m'
-    if status in ('restricted','network','changed'):return '\033[1;31m'
-    return '\033[1;33m'
-
-def ai_location_restricted(service,body):
-    if service not in ('ChatGPT','Gemini'):return False
-    try:
-        data=json.loads(body)
-        error=data.get('error',data) if isinstance(data,dict) else None
-    except (ValueError,TypeError):error=None
-    if isinstance(error,dict):
-        code=str(error.get('code',error.get('type',''))).lower()
-        if code in ('unsupported_country','unsupported_country_region_territory'):return True
-        visible=str(error.get('message','')).lower()
+def ensure_tool(report_dir, tool):
+    repo, _license = TOOLS[tool]
+    folder = private_dir(Path(report_dir).parent / 'diagnostic-tools' / tool)
+    metadata = json.loads(fetch('https://api.github.com/repos/' + repo + '/releases/latest', 2 * 1024 * 1024))
+    tag = metadata.get('tag_name', '')
+    if metadata.get('draft') or metadata.get('prerelease') or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,100}', tag):
+        raise ValueError('Invalid diagnostic release')
+    name = asset_name(tool)
+    assets = [x for x in metadata.get('assets', []) if x.get('name') == name]
+    if len(assets) != 1:
+        raise ValueError('Official diagnostic asset missing')
+    asset = assets[0]
+    url = 'https://github.com/' + repo + '/releases/download/' + tag + '/' + name
+    digest = asset.get('digest', '')
+    if asset.get('browser_download_url') != url or not re.fullmatch(r'sha256:[a-f0-9]{64}', digest):
+        raise ValueError('Official diagnostic SHA256/URL missing or invalid')
+    # Cache the original release asset, not an unverified extracted executable.
+    cached = folder / (digest[7:] + '.asset')
+    if cached.is_symlink() or (cached.exists() and not cached.is_file()):
+        raise ValueError('Unsafe diagnostic cache')
+    if cached.exists():
+        if cached.stat().st_size > MAX_DOWNLOAD: raise ValueError('Diagnostic cache too large')
+        data = cached.read_bytes()
     else:
-        # Do not mistake dormant JavaScript translations/error enums for a denial.
-        visible=re.sub(r'<(script|style)\b[^>]*>.*?</\1\s*>',' ',body,flags=re.I|re.S)
-        visible=html.unescape(re.sub(r'<[^>]+>',' ',visible)).lower()
-    phrases=('not available in your country','not available in your region','not supported in your country',
-             "gemini isn't available in your country",'gemini isn’t available in your country',
-             'user location is not supported for the api use')
-    return any(phrase in visible for phrase in phrases)
+        print('Downloading verified ' + repo + ' ' + tag + ' …', flush=True)
+        data = fetch(url, MAX_DOWNLOAD)
+    if len(data) > MAX_DOWNLOAD or hashlib.sha256(data).hexdigest() != digest[7:]:
+        raise ValueError('Diagnostic SHA256 mismatch; not executed / 检测工具校验失败，未执行')
+    if not cached.exists():
+        fd, temp = tempfile.mkstemp(dir=folder, prefix='.download-')
+        try:
+            with os.fdopen(fd, 'wb') as stream:
+                stream.write(data)
+            os.replace(temp, cached)
+        finally:
+            if os.path.exists(temp): os.unlink(temp)
+    # Retain only the current verified asset; diagnostics must not grow with every release.
+    for previous in folder.glob('*.asset'):
+        if previous != cached and re.fullmatch(r'[a-f0-9]{64}[.]asset', previous.name) and previous.is_file() and not previous.is_symlink():
+            previous.unlink()
+    if tool == 'ecs':
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            entries = [x for x in archive.infolist() if Path(x.filename).name in ('goecs', 'ecs') and not x.is_dir()]
+            if len(entries) != 1 or entries[0].file_size > MAX_DOWNLOAD:
+                raise ValueError('Invalid official diagnostic archive')
+            data = archive.read(entries[0])
+    return data, {'repository': repo, 'release': tag, 'asset': name, 'sha256': digest[7:]}
 
-def classify(service,responses):
-    main=responses[0];body=main['body'];low=body.lower()
-    region,region_source=region_hint(service,responses)
-    result={'service':service,'status':'unknown','region':region,'region_source':region_source,'http_code':main['code']}
-    if main['error']:result['status']='network';return result
-    if ai_location_restricted(service,body):
-        result['status']='restricted';return result
-    if main['code'] in (401,403,429,451) or any(x in low for x in ['verify you are human','cf-chl-','robot check','unusual traffic']):
-        result['status']='verification';return result
-    if main['code']!=200:result['status']='changed';return result
-    if location_restricted(service,body):result['status']='restricted';return result
-    if service=='Netflix':
-        if any(not r['error'] and r['code']==200 and re.search(r'<meta\b[^>]*(?:property|name)=["\']og:video',r['body'],re.I) for r in responses):result['status']='catalog'
-    elif service=='Disney+':
-        if json_boolean(body,'inSupportedLocation')=='false' or '/unavailable' in urllib.parse.urlsplit(main['url']).path:
-            result['status']='restricted'
-        elif json_boolean(body,'inSupportedLocation')=='true':result['status']='supported'
-    elif service=='YouTube Premium':
-        if 'purchaseButtonOverride' in body or 'start trial' in low:result['status']='offer'
-    return result
 
-def probe(service,path,port):
-    rows=[fetch(url,path,port,service=='TikTok' and n==1) for n,url in enumerate(PROBES[service])]
-    return classify(service,rows)
+def execute(args, home, timeout, stdout=None, stderr=None):
+    process = subprocess.Popen(args, cwd=home, env=clean_env(home), stdout=stdout, stderr=stderr, start_new_session=True)
+    try:
+        process.communicate(timeout=timeout)
+    except BaseException:
+        try: os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError: pass
+        try: process.communicate(timeout=2)
+        except subprocess.TimeoutExpired:
+            try: os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError: pass
+            process.communicate()
+        raise
+    return process
 
-def run(paths,report,port=None,language='zh_CN'):
-    en=language=='en_US';results=[]
-    for path in paths:
-        if path=='warp' and not (port and 1024<=port<=65535):raise ValueError('Invalid WARP proxy port')
-        label={'4':'VPS IPv4','6':'VPS IPv6','warp':'WARP proxy (remote DNS)'}[path]
-        print('\n'+label+'\n'+'-'*64,flush=True)
-        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
-            rows=list(pool.map(lambda s:probe(s,path,port),PROBES))
-        for row in rows:
-            row['path']=path;results.append(row)
-            color=status_color(row['status'])
-            if not __import__('sys').stdout.isatty() or os.environ.get('NO_COLOR'):color=''
-            region=region_label(row['region'],language)
-            source=(' ('+row['region_source']+')') if row.get('region_source') else ''
-            print(color+row['service']+' | '+LABELS[row['status']][int(en)]+' | '+('Page region clue: ' if en else '页面识别地区线索：')+region+source+' | HTTP '+str(row['http_code'])+('\033[0m' if color else ''))
-    report=Path(report);report.mkdir(exist_ok=True,mode=0o700)
-    if report.is_symlink():raise ValueError('Report directory is a symlink')
-    fd,tmp=tempfile.mkstemp(prefix='media-',suffix='.json',dir=report)
-    with os.fdopen(fd,'w') as f:
-        json.dump({'created_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'playback_verified':False,'results':results},f,ensure_ascii=False,indent=2)
-    print(('Report: ' if en else '报告：')+tmp)
-    return results
 
-if __name__=='__main__':
-    import sys
-    paths,report,port,lang=sys.argv[1:]
-    run(paths.split(','),report,int(port) if port else None,lang)
+def unlock_arguments(path, port=None, all_platforms=False, language='zh_CN'):
+    if path not in ('4', '6', 'warp'):
+        raise ValueError('Invalid diagnostic path')
+    args = ['-json', '-region', '20' if all_platforms else '0,21', '-conc', '6', '-timeout', '2m',
+            '-m', '6' if path == '6' else '4', '-L', 'en' if language in ('en', 'en_US') else 'zh']
+    if path == 'warp':
+        if type(port) is not int or not 1024 <= port <= 65535:
+            raise ValueError('Invalid loopback proxy port')
+        args += ['-socks-proxy', 'socks5://127.0.0.1:' + str(port)]
+    return args
+
+
+def ecs_arguments(mode, language='zh_CN'):
+    if mode not in ('route', 'speed', 'full'):
+        raise ValueError('Invalid benchmark mode')
+    # Explicitly opt into each module; upstream default includes uploads/stress tests.
+    return ['-menu=false', '-upload=false', '-log=false', '-l', 'zh', '-dns-mode', 'system',
+            '-basic=' + str(mode == 'full').lower(), '-ut=' + str(mode == 'full').lower(),
+            '-security=' + str(mode == 'full').lower(), '-backtrace=' + str(mode != 'speed').lower(),
+            '-nt3=' + str(mode != 'speed').lower(), '-speed=' + str(mode != 'route').lower(),
+            '-cpu=false', '-memory=false', '-disk=false', '-email=false', '-ping=false', '-web=false', '-tgdc=false']
+
+
+def safe_text(value):
+    # Provider strings must not inject terminal control sequences or extra rows.
+    value = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', str(value))
+    return ''.join(c for c in value if c.isprintable()).strip()[:250]
+
+
+def save_report(directory, report):
+    directory = private_dir(directory)
+    fd, name = tempfile.mkstemp(prefix='diagnostic-', suffix='.json', dir=directory)
+    with os.fdopen(fd, 'w') as stream:
+        json.dump(report, stream, ensure_ascii=False, indent=2)
+    return Path(name)
+
+
+def run(paths, report_dir, port=None, language='zh_CN', all_platforms=False):
+    if not paths or any(p not in ('4', '6', 'warp') for p in paths):
+        raise ValueError('Invalid diagnostic paths')
+    arguments = [unlock_arguments(p, port, all_platforms, language) for p in paths]
+    report_dir = private_dir(report_dir)
+    payload, source = ensure_tool(report_dir, 'unlock')
+    report = {'engine': source, 'time': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+              'playback_verified': False, 'runs': []}
+    failed = False
+    with tempfile.TemporaryDirectory(prefix='.unlock-', dir=report_dir.parent) as home:
+        binary = Path(home) / 'ut'; binary.write_bytes(payload); binary.chmod(0o700)
+        for path, args in zip(paths, arguments):
+            print('\n=== ' + ('SOCKS5 / WARP (address family selected by proxy)' if path == 'warp' else 'VPS direct IPv' + path) + ' ===', flush=True)
+            # Output goes to a private file so unexpected upstream output cannot exhaust RAM.
+            with tempfile.TemporaryFile() as output:
+                try:
+                    result = execute([str(binary), *args], home, 140, stdout=output, stderr=subprocess.DEVNULL)
+                    output.seek(0); raw = output.read(4 * 1024 * 1024 + 1)
+                    if len(raw) > 4 * 1024 * 1024: raise ValueError('Diagnostic result too large')
+                    data = json.loads(raw)
+                    if not isinstance(data, dict) or data.get('schema_version') != 'goecs.unlocktests/v1' or not isinstance(data.get('results'), list):
+                        raise ValueError('Unsupported diagnostic JSON schema')
+                    rows = []
+                    for item in data['results']:
+                        if not isinstance(item, dict): raise ValueError('Invalid provider result')
+                        row = {key: safe_text(item.get(key, '')) for key in ('name', 'status', 'region', 'unlock_type', 'info', 'error', 'ip_version')}
+                        rows.append(row)
+                    error = safe_text(data.get('error', ''))
+                    failed = failed or result.returncode != 0 or bool(error) or not rows
+                except (subprocess.TimeoutExpired, ValueError) as exc:
+                    rows = []; error = safe_text(type(exc).__name__ + ': diagnostic incomplete / 检测未完成'); failed = True
+            report['runs'].append({'path': path, 'results': rows, 'error': error})
+            print('平台 / Platform | 状态 / Status | 地区 / Region | 类型 / Type')
+            for row in rows:
+                print(' | '.join(row[k] or '-' for k in ('name', 'status', 'region', 'unlock_type')))
+                if row['info'] or row['error']: print('  ' + ' / '.join(x for x in (row['info'], row['error']) if x))
+            if error: print('检测未完成 / Incomplete: ' + error)
+    output = save_report(report_dir, report)
+    print('本机报告 / Local report: ' + str(output))
+    print('Upstream assessment; account eligibility/playback are not guaranteed. DNS/proxy types do not certify residential IPs.' if language in ('en', 'en_US') else '结果为上游检测判定；不保证账号资格或实际播放。DNS/代理类型为辅助判断，不能当作住宅 IP 认证。')
+    if failed: raise ValueError('Diagnostic incomplete; partial report retained / 检测未完成，已保留部分结果')
+    return report['runs']
+
+
+def benchmark(mode, report_dir, language='zh_CN'):
+    args = ecs_arguments(mode, language)
+    report_dir = private_dir(report_dir)
+    payload, source = ensure_tool(report_dir, 'ecs')
+    print('VPS direct network only / 仅测试 VPS 直连网络；代理和节点客户端线路不在本检测范围。', flush=True)
+    print('Engine: ' + source['repository'] + ' ' + source['release'], flush=True)
+    with tempfile.TemporaryDirectory(prefix='.ecs-', dir=report_dir.parent) as home:
+        binary = Path(home) / 'goecs'; binary.write_bytes(payload); binary.chmod(0o700)
+        result = execute([str(binary), *args], home, 1200)
+    if result.returncode: raise ValueError('Benchmark incomplete / 综合检测未完成')
+
+
+def diagnostic_main(argv):
+    if len(argv) != 4:
+        raise ValueError('Invalid diagnostic invocation')
+    action, directory, language, port = argv
+    if action in ('route', 'speed', 'full'):
+        return benchmark(action, directory, language)
+    mapping = {'4': ['4'], '6': ['6'], 'both': ['4', '6'], 'warp': ['warp'], 'compare': ['4', 'warp'], 'all': ['4']}
+    if action not in mapping:
+        raise ValueError('Unknown diagnostic operation')
+    return run(mapping[action], directory, int(port) if port else None, language, action == 'all')

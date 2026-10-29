@@ -20,7 +20,7 @@
 
 ---
 
-# SKYBYTE Manager V2.8.13 整理菜单分组，子菜单一项一行，保留原有按键；安装入口固定对应正式版本、校验 SHA256 并防止旧入口降级，空文件和异常下载不会执行；核心与脚本下载统一 HTTPS 与连接超时；SSH 放行失败会明确报错并停止开启防火墙。见[本次检查记录](docs/AUDIT-2026-10-29.md)。
+# SKYBYTE Manager V2.8.14 使用经过下载校验的 UnlockTests 替换旧流媒体检测，新增按需回程、测速与综合网络测评，支持直连和 WARP 对比；详见专业检测说明。
 
 **SKYBYTE Manager** 是基于 Bash 的 Ubuntu/Debian VPS 管理工具，提供简体中文和 English 界面，支持 sing-box 的 **VLESS + Reality + Vision、Hysteria2（HY2）及双协议部署**。通过交互菜单管理 Cloudflare Argo 隧道、WARP 出站分流、用户流量配额与有效期，并导出 Shadowrocket（小火箭）、v2rayN、Clash Verge/Mihomo/OpenClash 和 sing-box JSON 客户端配置。
 
@@ -30,7 +30,7 @@ YouTube：[SKYBYTE9119](https://www.youtube.com/@SKYBYTE9119) · [English](READM
 
 主菜单包含 SKYBYTE ASCII logo；菜单绿色加粗、节点链接红色加粗、警告黄色加粗、错误红色加粗。支持 ANSI 的交互终端显示颜色，`NO_COLOR=1` 可关闭。所有操作确认统一为 `[y/N]`：输入 `y` 或 `Y` 确认，回车或输入 `n/N` 取消。
 
-V2.8.13 优化菜单响应：启动时批量查询服务和网卡，系统查询与证书命令限时；账户摘要读取原子快照，不等待配额工作锁；内容未变时不重写快捷入口；修复追加协议和编辑端口时的 TCP TIME_WAIT 误报。不增加后台服务。转发资源占用取决于核心、流量和启用的组件，可用 **d → 7** 查看进程、内存和负载。见[完整检查记录](docs/AUDIT-2026-10-28.md)。
+V2.8.14 优化菜单响应：启动时批量查询服务和网卡，系统查询与证书命令限时；账户摘要读取原子快照，不等待配额工作锁；内容未变时不重写快捷入口；修复追加协议和编辑端口时的 TCP TIME_WAIT 误报。不增加后台服务。转发资源占用取决于核心、流量和启用的组件，可用 **d → 7** 查看进程、内存和负载。见[完整检查记录](docs/AUDIT-2026-10-28.md)。
 
 V2.8.11 新增 **节点安装前检测（a → 7）**，新安装及追加 Reality 自动检测；同时提供 sky9119.cc 短安装入口。
 
@@ -287,13 +287,17 @@ IPv6 地址使用正确 URI 方括号和证书 IP SAN。纯 IPv6 VPS 仍需能�
 
 备份包含 WARP 路由、私密网关配置和服务单元。恢复保留现存用户最新额度、有效期和用量，并协调恢复其出站策略。卸载停止并移除托管网关，保留外部 WireGuard 源文件；官方客户端仅在注册指纹仍匹配时断开，保留软件包、软件源及注册信息。备份含私钥，请勿分享。
 
-## 流媒体可用性检测（V2.4）
+## 专业流媒体、回程与测速
 
-入口 **d → 8**，支持 Netflix、Disney+、ChatGPT、Gemini、YouTube Premium、Amazon Prime Video、TikTok，可选直连 IPv4、直连 IPv6、WARP，或比较 IPv4 与 WARP。检测临时请求官方匿名页面，识别页面中的国家/地区字段、最终页面语言区域提示及明确的地区限制；输出注明识别字段来源，地区线索缺失或冲突时如实显示未识别或多个结果。请求保留 TLS 验证、限定超时与响应大小，不登录、不发送账号 Cookie，不执行第三方检测脚本。
+进入 **d → 8**。流媒体/AI 采用 [oneclickvirt/UnlockTests](https://github.com/oneclickvirt/UnlockTests)（Apache-2.0），是融合怪 Go 版使用的专项模块。默认检测全球平台和 AI，包含 Netflix、Disney+、YouTube Premium、TikTok、Spotify、ChatGPT、Gemini 等；可选全地区平台。支持 VPS 直连 IPv4、IPv6、双栈、WARP 与直连/WARP 对比，显示上游状态、地区、原生/DNS/代理类型及错误信息；不把 HTTP 200 自行判为解锁，保留未知、超时和验证限制。
 
-结果区分页面地区线索、页面明确报告的地区限制、片目/订阅入口和连接失败；地区字段/URL 语言只代表页面线索，不能证明 VPS 出口归属、完整片库或实际播放。HTTP 200 只表示页面响应，不能证明已解锁；403/429、验证码和页面变化通常标记为未知；ChatGPT/Gemini 响应中的明确不支持国家/地区错误单独标为地区限制。当前不登录账号、不验证付款资格或实际播放，也没有 AI 服务账号检测。WARP 检测使用代理远程 DNS，地址族不确定时不标成 IPv4/IPv6。
+三网回程、测速与综合网络测评采用 [融合怪 Go 版](https://github.com/oneclickvirt/ecs)（GPL-3.0），仅在选中时运行。回程不测速；测速与综合检测会先提示流量消耗并要求 `y`。综合检测关闭 CPU、内存和磁盘压力测试，避免不必要的负载。结果上传与工具日志默认关闭；回程上游模块仅中文启用，因此英文界面此项也使用中文结果。
 
-报告只保存分类结果、地区提示和 HTTP 状态，位于 `/etc/singbox-v2/reports/media-*.json`，权限 600，不保存原始网页或节点凭据。检测按需运行，不创建常驻探测任务。WARP 网关和每个用户实例会增加资源占用，可用 **d → 7** 查看进程、内存和负载；没有固定的最大用户容量承诺。
+官方工具按需下载，检查 GitHub Release 元数据、下载地址与 SHA256；已下载文件每次使用前重新校验。缓存仅保留当前资源，不增加常驻服务。检测时查询最新正式发布，不在打开主菜单时联网。下载失败、摘要不匹配、结果格式变更或超时会明确报错，不执行异常资源。检测退出/超时会清理子进程组。
+
+流媒体 JSON 报告保存在 `/etc/singbox-v2/reports/diagnostic-*.json`，权限 600，包含工具来源/摘要、检测路径、各平台状态和未完成原因，不包含原始网页或节点凭据。第三方检测会访问平台、DNS/地区服务；线路检测会访问探测节点和路由/IP 数据服务，对方可见出口 IP；综合检测关闭自动上传，不等于没有对外请求。工具临时 HOME 和工作目录与节点数据隔离，清除代理等环境变量，选中 WARP 时显式使用本机 SOCKS5。
+
+WARP 检测的物理出口地址族由代理决定，辅助 DNS 原生类型判定可能参考 VPS 的系统解析，不等同于客户端实际分流路径。VPS 直连检测也不能替代客户端连接节点后的实测。上游判定不保证账号资格、住宅 IP 属性、全片库或实际播放；回程只代表当时 VPS 到探测目标的线路，不代表所有用户线路。
 
 
 ## 安装后编辑节点（V2.5）
@@ -343,7 +347,7 @@ HY2 支持上下行 Mbps、`ignore_client_bandwidth` 与 Salamander 混淆，服
 
 ```bash
 python3 scripts/build.py --check
-python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.13
+python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.14
 ```
 
 打包只包含 `bootstrap.sh` 启动命令、安装入口、完整脚本、公开规则列表及SHA256SUMS，不发布运行时配置或凭据。

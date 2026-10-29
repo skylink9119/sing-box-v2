@@ -20,7 +20,7 @@
 
 ---
 
-# SKYBYTE Manager V2.8.13 groups menus and places one option on each line while retaining all existing keys. Installation now pins the matching stable release, verifies SHA256 and rejects downgrades; both empty and malformed installers are rejected. Core/manager download requests enforce HTTPS and connection timeouts. Failed SSH firewall rules now report failure and stop activation. See the [audit record](docs/AUDIT-2026-10-29.md).
+# SKYBYTE Manager V2.8.14 replaces media page probes with verified UnlockTests and adds optional goecs return-route/speed tests. See the professional diagnostics section.
 
 **SKYBYTE Manager** is a Bash-based Ubuntu/Debian VPS manager with Simplified Chinese and English interfaces. It installs sing-box with **VLESS + Reality + Vision, Hysteria2 (HY2), or both protocols**, manages Cloudflare Argo tunnels and WARP routing, and provides per-user traffic quotas and expiry. Client exports support Shadowrocket, v2rayN, Clash Verge/Mihomo/OpenClash and sing-box JSON.
 
@@ -30,7 +30,7 @@ If you find this script helpful, please subscribe to my YouTube channel and supp
 
 The main menu includes the SKYBYTE ASCII logo. Menus are bold green, credential links bold red, warnings bold yellow and errors bold red on ANSI terminals. Set `NO_COLOR=1` to disable colors. Every action uses `[y/N]`: type `y` or `Y` to confirm; Enter or `n/N` cancels.
 
-V2.8.13 improves menu response: batch startup service/interface queries, bound local probes and certificate commands, read the atomic account snapshot without waiting for the quota worker lock, skip unchanged shortcut writes, and fix remaining TCP TIME_WAIT false positives when adding protocols or editing ports. No additional background service. Forwarding resource use depends on cores, traffic and enabled components; inspect processes, memory and load in **d → 7**. See the [audit record](docs/AUDIT-2026-10-28.md).
+V2.8.14 improves menu response: batch startup service/interface queries, bound local probes and certificate commands, read the atomic account snapshot without waiting for the quota worker lock, skip unchanged shortcut writes, and fix remaining TCP TIME_WAIT false positives when adding protocols or editing ports. No additional background service. Forwarding resource use depends on cores, traffic and enabled components; inspect processes, memory and load in **d → 7**. See the [audit record](docs/AUDIT-2026-10-28.md).
 
 V2.8.11 adds **installation preflight (a → 7)**, automatic checks for new installs/Reality additions, and a short HTTPS install entry.
 
@@ -287,13 +287,17 @@ IPv6 exports use bracketed URI authorities and valid IP SANs. IPv6-only bootstra
 
 Backups include routing, private gateway configuration and owned units. Restore retains current account quotas, expiry and usage while reconciling routing. Uninstall stops/removes the managed gateway and preserves external source profiles. The official client is disconnected only when its registration fingerprint still matches; its package, repository and registration remain. Backups contain private keys; keep them private.
 
-## Streaming availability tests (V2.4)
+## Professional media, routes and speed tests
 
-Open **d → 8** for Netflix, Disney+, ChatGPT, Gemini, YouTube Premium, Amazon Prime Video and TikTok. Choose direct IPv4, direct IPv6, WARP or an IPv4/WARP comparison. Anonymous official-page requests identify country/region fields, final-page locale hints and explicit location restrictions; the output names the field source and reports missing or conflicting clues. Requests use verified TLS, bounded timeouts/body sizes, no account login or cookies, and no remote third-party scripts.
+Open **d → 8**. [UnlockTests](https://github.com/oneclickvirt/UnlockTests) (Apache-2.0), the specialized media engine used by goecs, replaces the old page parser. Default coverage is global platforms plus AI, including Netflix, Disney+, YouTube Premium, TikTok, Spotify, ChatGPT and Gemini; all-region tests are available. Choose VPS direct IPv4/IPv6/both, WARP, or direct/WARP comparison. Preserve upstream status, region, unlock type and errors rather than interpreting HTTP 200 as unlocking.
 
-Results distinguish page region clues, explicit location restrictions, catalog/subscription offers and connection failures. A page field or URL locale is only a clue; it does not prove the VPS egress country, a full catalog or playback. HTTP 200 confirms only a page response, not unlocking. 403/429, challenges and changed pages generally remain unknown; explicit unsupported-country/region errors from ChatGPT/Gemini are classified as location restrictions. No account login, payment eligibility or playback validation is performed; AI account availability is not tested. WARP uses proxy-side DNS and does not claim a specific egress address family.
+[goecs](https://github.com/oneclickvirt/ecs) (GPL-3.0) provides optional return-route, speed and combined network tests. Route-only tests disable speed; bandwidth-consuming tests require `y`. CPU, memory and disk stress tests, automatic result uploads and tool logging are disabled. Upstream China return-route modules require Chinese mode, including from the English menu.
 
-Private reports contain classifications, region hints and HTTP codes, at `/etc/singbox-v2/reports/media-*.json`, mode 600. Raw pages and node credentials are excluded. Probes run on demand without background jobs. WARP and each user core add resource usage; **d → 7** shows process/memory/load snapshots, without a fixed account-capacity promise.
+Official release metadata, URLs and SHA256 are verified on demand; cached assets are rehashed and only the current asset is retained. Latest stable releases are checked when running diagnostics, never while opening the main menu. Errors, timeouts or changed JSON schemas stop with an incomplete result; process groups and temporary files are cleaned up. No resident process is added.
+
+Media JSON reports are private mode 600 at `/etc/singbox-v2/reports/diagnostic-*.json`, recording provenance/digest, path, provider results and incomplete reasons, without raw pages or node credentials. Third-party probes contact platforms, DNS/region services and route/IP-data services, which see the egress IP. Uploads are disabled; external diagnostic requests still occur. Tools use temporary working/home directories, sanitized environments and an explicit loopback SOCKS5 proxy for WARP.
+
+Proxy egress address families are selected by the proxy; DNS-based native/proxy classification can consult system DNS. A VPS egress test does not establish client routing, account eligibility, residential-IP status or playback. Return routes describe the VPS-to-probe path at test time, not every subscriber route.
 
 
 ## Node editing (V2.5)
@@ -343,7 +347,7 @@ Restore retains current account policy/usage and current subscription tokens. HT
 
 ```bash
 python3 scripts/build.py --check
-python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.13
+python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.14
 ```
 
 Packaging includes only bootstrap.sh, install.sh, the full bundle, public rule catalog and SHA256SUMS, never runtime state or credentials.
