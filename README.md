@@ -20,7 +20,7 @@
 
 ---
 
-# SKYBYTE Manager V2.8.16：IPv6 备用入口
+# SKYBYTE Manager V2.8.17：IPv6 备用入口
 
 **SKYBYTE Manager** 是基于 Bash 的 Ubuntu/Debian VPS 管理工具，提供简体中文和 English 界面，支持 sing-box 的 **VLESS + Reality + Vision、Hysteria2（HY2）及双协议部署**。通过交互菜单管理 Cloudflare Argo 隧道、WARP 出站分流、用户流量配额与有效期，并导出 Shadowrocket（小火箭）、v2rayN、Clash Verge/Mihomo/OpenClash 和 sing-box JSON 客户端配置。
 
@@ -30,7 +30,7 @@ YouTube：[SKYBYTE9119](https://www.youtube.com/@SKYBYTE9119) · [English](READM
 
 主菜单包含 SKYBYTE ASCII logo；菜单绿色加粗、节点链接红色加粗、警告黄色加粗、错误红色加粗。支持 ANSI 的交互终端显示颜色，`NO_COLOR=1` 可关闭。所有操作确认统一为 `[y/N]`：输入 `y` 或 `Y` 确认，回车或输入 `n/N` 取消。
 
-V2.8.16 优化菜单响应：启动时批量查询服务和网卡，系统查询与证书命令限时；账户摘要读取原子快照，不等待配额工作锁；内容未变时不重写快捷入口；修复追加协议和编辑端口时的 TCP TIME_WAIT 误报。不增加后台服务。转发资源占用取决于核心、流量和启用的组件，可用 **d → 7** 查看进程、内存和负载。见[完整检查记录](docs/AUDIT-2026-10-28.md)。
+V2.8.17 优化菜单响应：启动时批量查询服务和网卡，系统查询与证书命令限时；账户摘要读取原子快照，不等待配额工作锁；内容未变时不重写快捷入口；修复追加协议和编辑端口时的 TCP TIME_WAIT 误报。不增加后台服务。转发资源占用取决于核心、流量和启用的组件，可用 **d → 7** 查看进程、内存和负载。见[完整检查记录](docs/AUDIT-2026-10-28.md)。
 
 V2.8.11 新增 **节点安装前检测（a → 7）**，新安装及追加 Reality 自动检测；同时提供 sky9119.cc 短安装入口。
 
@@ -50,7 +50,7 @@ V2.8.1 完整源码审计修复：一键入口验证目标归属并原子替换�
 
 进入 **d → 13**：`1` 查看状态，`2` 检测并启用，`3` 移除备用入口。先安装 Reality / HY2 节点，再启用备用入口；主节点与受限用户节点切换为双栈监听，额外导出带“IPv6备用”名称的链接及 JSON/YAML 节点（专用备用配置：`sing-box-client-ipv6.json`），原 IPv4 地址、UUID、密钥、端口、SNI 和配额保持不变。操作会备份、校验配置并重载正在运行的服务；本地监听或导出失败会回滚。停止的服务保持停止，Argo 回环入口不变。
 
-VPS 必须已经配置原生公网 IPv6 和可用路由，客户端网络也必须支持 IPv6。检测不会安装隧道、修改默认路由或关闭防火墙。活动 UFW 必须管理 IPv6；原端口规则同时放行 IPv6，服务商安全组仍需自行核对。IPv6 备用使用实际节点端口，不使用 IPv4 NAT 映射或端口跳跃；HY2 保留原 SNI 和证书验证。公网能否连接须从 IPv6 客户端实际测试，不能保证 IPv6 永远可用。
+检测会排除 WARP/WireGuard、TUN 等隧道网卡，不能把代理出口当作入站地址。VPS 必须已经配置原生公网 IPv6 和可用路由，客户端网络也必须支持 IPv6。检测不会安装隧道、修改默认路由或关闭防火墙。活动 UFW 必须管理 IPv6；原端口规则同时放行 IPv6，服务商安全组仍需自行核对。IPv6 备用使用实际节点端口，不使用 IPv4 NAT 映射或端口跳跃；HY2 保留原 SNI 和证书验证。公网能否连接须从 IPv6 客户端实际测试，不能保证 IPv6 永远可用。
 
 配置与含凭据的导出文件保存在当前 VPS；请安装防火墙，先放行 SSH 和实际节点 TCP/UDP 端口，勿公开链接、参数或截图。
 
@@ -357,7 +357,7 @@ HY2 支持上下行 Mbps、`ignore_client_bandwidth` 与 Salamander 混淆，服
 
 ```bash
 python3 scripts/build.py --check
-python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.16
+python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.17
 ```
 
 打包只包含 `bootstrap.sh` 启动命令、安装入口、完整脚本、公开规则列表及SHA256SUMS，不发布运行时配置或凭据。

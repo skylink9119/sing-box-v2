@@ -8,7 +8,7 @@
 set -Eeuo pipefail
 umask 077
 SCRIPT_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
-MANAGER_VERSION=2.8.16
+MANAGER_VERSION=2.8.17
 CORE_RECOMMENDED=1.14.3
 BASE=/etc/singbox-v2
 CONF=/etc/sing-box/config.json
@@ -6431,11 +6431,16 @@ def public_ipv6(value):
 
 
 def ipv6_candidates():
-    result = subprocess.run(['ip', '-j', '-6', 'addr', 'show', 'scope', 'global'],
+    result = subprocess.run(['ip', '-j', '-d', '-6', 'addr', 'show', 'scope', 'global'],
                             capture_output=True, text=True, check=True, timeout=4)
     candidates = []
     for interface in json.loads(result.stdout):
         if 'UP' not in interface.get('flags', []):
+            continue
+        # WARP/WireGuard/TUN egress addresses do not provide public ingress.
+        # Detailed link metadata avoids treating those addresses as native VPS IPs.
+        kind = interface.get('linkinfo', {}).get('info_kind', '')
+        if kind in {'wireguard', 'tun', 'tap', 'sit', 'ip6tnl', 'ipip', 'gre', 'gretap', 'ip6gre', 'ip6gretap', 'vti', 'vti6'} or interface.get('link_type') in {'none', 'sit', 'ip6tnl', 'ipip', 'gre', 'tunnel6'}:
             continue
         for item in interface.get('addr_info', []):
             if item.get('family') != 'inet6' or item.get('scope') != 'global':

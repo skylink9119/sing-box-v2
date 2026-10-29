@@ -41,3 +41,11 @@ class NativeIPv6Tests(unittest.TestCase):
  def test_ufw_active_without_ipv6_fails_before_enable(self):
   with mock.patch('shutil.which',return_value='/usr/sbin/ufw'),mock.patch.object(v6.subprocess,'run',return_value=subprocess.CompletedProcess([],0,'Status: active')),mock.patch.object(pathlib.Path,'read_text',return_value='IPV6=no\n'):
    with self.assertRaisesRegex(ValueError,'IPV6=yes'):v6.ipv6_firewall()
+
+ def test_warp_wireguard_and_tun_egress_addresses_are_not_backup_candidates(self):
+  address={'family':'inet6','scope':'global','local':PUBLIC}
+  for kind,link_type in (('wireguard','none'),('tun','none'),('tun','ether'),('sit','sit')):
+   data=[{'flags':['UP'],'link_type':link_type,'linkinfo':{'info_kind':kind},'addr_info':[address]},
+         {'flags':['UP'],'link_type':'ether','addr_info':[dict(address,local='2606:4700:4700::1111')]}]
+   with self.subTest(kind=kind,link_type=link_type),mock.patch.object(v6.subprocess,'run',return_value=subprocess.CompletedProcess([],0,json.dumps(data))):
+    self.assertEqual(v6.ipv6_candidates(),['2606:4700:4700::1111'])
