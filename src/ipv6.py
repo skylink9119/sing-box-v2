@@ -1,4 +1,4 @@
-"""Native IPv6 backup checks. No downloads, routing changes, or credential output."""
+"""Native IPv6 installation/backup checks. No downloads or routing changes."""
 import ipaddress
 import json
 import pathlib
@@ -70,9 +70,11 @@ def ipv6_firewall():
                             env={**os.environ, 'LC_ALL': 'C'})
     if result.returncode:
         raise ValueError('无法读取 UFW 状态 / Cannot inspect UFW')
-    if 'Status: active' not in result.stdout:
+    if result.stdout.startswith('Status: inactive'):
         print('提示：UFW 未启用，请配置防火墙 / UFW is inactive; configure your firewall')
         return
+    if not result.stdout.startswith('Status: active'):
+        raise ValueError('无法识别 UFW 状态 / Cannot determine UFW status')
     import re
     if not re.search(r'^IPV6\s*=\s*["\x27]?yes["\x27]?\s*(?:#.*)?$', pathlib.Path('/etc/default/ufw').read_text(), re.M | re.I):
         raise ValueError('UFW 已启用但未管理 IPv6；请先设置 IPV6=yes 并核对 SSH 的 IPv6 放行规则 / Active UFW does not manage IPv6; enable IPV6=yes and verify IPv6 SSH rules first')
@@ -145,6 +147,10 @@ def ipv6_cli(project, root, conf, action, value=''):
         if not values:
             raise ValueError('VPS 未发现可用的原生公网 IPv6；请先向服务商开通 / No native public IPv6; provision it with your VPS provider first')
         print('\n'.join(values))
+    elif action == 'check-install':
+        # A new IPv6 node has no state/configuration yet. Do not load or change it.
+        ipv6_local(value)
+        ipv6_firewall()
     elif action == 'check':
         ipv6_local(value)
         listeners = ipv6_listeners(project, root, conf)
@@ -154,6 +160,15 @@ def ipv6_cli(project, root, conf, action, value=''):
         ipv6_firewall()
     elif action == 'ready':
         ipv6_ready(ipv6_listeners(project, root, conf, users=False))
+    elif action == 'ready-install':
+        number = int(value)
+        if not 1 <= number <= 65535:
+            raise ValueError('Invalid IPv6 listener port')
+        listeners = [item for item in ipv6_listeners(project, root, conf, users=False)
+                     if item['listen'] == '::' and item['port'] == number]
+        if not listeners:
+            raise ValueError('New IPv6 listener missing')
+        ipv6_ready(listeners)
     elif action == 'status':
         state = json.loads((pathlib.Path(root) / 'state.json').read_text())
         states = list(state['nodes'].values()) if project == 'xray' else [state]

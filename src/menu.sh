@@ -31,6 +31,7 @@ sub_menu(){
    say ' 5. 节点参数与协议增删' ' 5. Node settings and protocol changes'
    say ' 6. 受限网络部署（Argo / IPv6 / NAT）' ' 6. Restricted networks (Argo / IPv6 / NAT)'
    say ' 7. 节点安装前检测（不安装）' ' 7. Node installation checks (no installation)'
+   say ' 8. 搭建 IPv6 节点' ' 8. Install IPv6 nodes'
    printf '%s' "$YELLOW"
    say '请按实际网络选择；HY2 需放行 UDP 端口。' 'Choose for your network; allow the HY2 UDP port.'
    printf '%s' "$GREEN"
@@ -92,6 +93,7 @@ sub_menu(){
   1:5) MAIN_ACTION=settings;;
   1:6) MAIN_ACTION=rescue;;
   1:7) MAIN_ACTION=install_checks;;
+  1:8) MAIN_ACTION=install_ipv6;;
   2:1) MAIN_ACTION=nodes;;
   2:2) MAIN_ACTION=subscription;;
   2:3) MAIN_ACTION=rename;;
@@ -134,6 +136,7 @@ dispatch_action(){
  local action=$1;shift
  case $action in
  install_reality) install_protocol 1;; install_hy2) install_protocol 2;; install_dual) install_protocol 3;;
+ install_ipv6) ipv6_install_menu "$@";;
  node_ports) edit_node_ports;;
  argo) argo_manager "$@";; nodes) exports;; node_parameters) report_output node_parameters;; subscription) subscription;; rename) rename_node;; qr) shadowrocket_qr;; users) users_manager;;
  service) service_manager "$@";; logs) report_output journalctl -u sing-box -n 80 --no-pager;; argo_status) report_output argo_status;;
@@ -188,6 +191,7 @@ navigation_action(){
   ipv6) run_submenu ipv6_menu;;
   reality) run_submenu reality_menu;;
   install_checks) run_submenu installation_check_menu;;
+  install_ipv6) run_submenu ipv6_install_menu;;
   hop) run_submenu hop;; update) run_submenu core_versions;;
   backup_tools) run_submenu backup_tools;; users) users_manager;;
   *) run_menu_action dispatch_action "$1";;
