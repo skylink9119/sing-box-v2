@@ -20,7 +20,9 @@
 
 ---
 
-# SKYBYTE Manager V2.8.18：独立节点端口编辑
+# SKYBYTE Manager V2.8.19：安装菜单协议提示
+
+安装菜单 **a → 1** 显示“安装 Reality + Vision（TCP；端口受阻时暂不建议）”，**a → 2** 显示“安装 Hysteria2（UDP；推荐优先尝试）”。请按实际网络选择；HY2 需放行 UDP 端口，推荐不代表公网一定可达。
 
 **SKYBYTE Manager** 是基于 Bash 的 Ubuntu/Debian VPS 管理工具，提供简体中文和 English 界面，支持 sing-box 的 **VLESS + Reality + Vision、Hysteria2（HY2）及双协议部署**。通过交互菜单管理 Cloudflare Argo 隧道、WARP 出站分流、用户流量配额与有效期，并导出 Shadowrocket（小火箭）、v2rayN、Clash Verge/Mihomo/OpenClash 和 sing-box JSON 客户端配置。
 
@@ -365,7 +367,7 @@ HY2 支持上下行 Mbps、`ignore_client_bandwidth` 与 Salamander 混淆，服
 
 ```bash
 python3 scripts/build.py --check
-python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.18
+python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.19
 ```
 
 打包只包含 `bootstrap.sh` 启动命令、安装入口、完整脚本、公开规则列表及SHA256SUMS，不发布运行时配置或凭据。
