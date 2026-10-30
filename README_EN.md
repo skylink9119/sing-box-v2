@@ -20,7 +20,9 @@
 
 ---
 
-# SKYBYTE Manager V2.8.18: direct node port editor
+# SKYBYTE Manager V2.8.19: installation protocol hints
+
+Installation menu **a → 1** labels Reality + Vision as TCP and advises against it when the port is blocked; **a → 2** labels Hysteria2 as UDP and recommends trying it first. Choose for your network and allow the HY2 UDP port; the recommendation does not guarantee public reachability.
 
 **SKYBYTE Manager** is a Bash-based Ubuntu/Debian VPS manager with Simplified Chinese and English interfaces. It installs sing-box with **VLESS + Reality + Vision, Hysteria2 (HY2), or both protocols**, manages Cloudflare Argo tunnels and WARP routing, and provides per-user traffic quotas and expiry. Client exports support Shadowrocket, v2rayN, Clash Verge/Mihomo/OpenClash and sing-box JSON.
 
@@ -365,7 +367,7 @@ Restore retains current account policy/usage and current subscription tokens. HT
 
 ```bash
 python3 scripts/build.py --check
-python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.18
+python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.19
 ```
 
 Packaging includes only bootstrap.sh, install.sh, the full bundle, public rule catalog and SHA256SUMS, never runtime state or credentials.

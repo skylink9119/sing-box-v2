@@ -24,13 +24,16 @@ sub_menu(){
  esac
  case $group in
   1)
-   say ' 1. 安装 Reality + Vision' ' 1. Install Reality + Vision'
-   say ' 2. 安装 Hysteria2' ' 2. Install Hysteria2'
+   say ' 1. 安装 Reality + Vision（TCP；端口受阻时暂不建议）' ' 1. Install Reality + Vision (TCP; avoid when the port is blocked)'
+   say ' 2. 安装 Hysteria2（UDP；推荐优先尝试）' ' 2. Install Hysteria2 (UDP; recommended first try)'
    say ' 3. 安装双协议' ' 3. Install both protocols'
    say ' 4. Argo 临时 / 固定隧道管理' ' 4. Argo Quick / Named Tunnel controls'
    say ' 5. 节点参数与协议增删' ' 5. Node settings and protocol changes'
    say ' 6. 受限网络部署（Argo / IPv6 / NAT）' ' 6. Restricted networks (Argo / IPv6 / NAT)'
    say ' 7. 节点安装前检测（不安装）' ' 7. Node installation checks (no installation)'
+   printf '%s' "$YELLOW"
+   say '请按实际网络选择；HY2 需放行 UDP 端口。' 'Choose for your network; allow the HY2 UDP port.'
+   printf '%s' "$GREEN"
    ;;
   2)
    say ' 1. 查看节点与各客户端格式' ' 1. View nodes and client formats'
