@@ -49,3 +49,17 @@ class NativeIPv6Tests(unittest.TestCase):
          {'flags':['UP'],'link_type':'ether','addr_info':[dict(address,local='2606:4700:4700::1111')]}]
    with self.subTest(kind=kind,link_type=link_type),mock.patch.object(v6.subprocess,'run',return_value=subprocess.CompletedProcess([],0,json.dumps(data))):
     self.assertEqual(v6.ipv6_candidates(),['2606:4700:4700::1111'])
+
+ def test_install_check_needs_no_existing_node_and_checks_firewall(self):
+  with mock.patch.object(v6,'ipv6_local') as local,mock.patch.object(v6,'ipv6_firewall') as firewall,mock.patch.object(v6,'ipv6_listeners') as listeners:
+   v6.ipv6_cli('sing-box','/nonexistent','/nonexistent','check-install',PUBLIC)
+   local.assert_called_once_with(PUBLIC);firewall.assert_called_once_with();listeners.assert_not_called()
+ def test_new_listener_readiness_excludes_existing_ipv4_nodes(self):
+  data=[{'listen':'0.0.0.0','port':443,'protocol':'tcp'},{'listen':'::','port':8443,'protocol':'tcp'}]
+  with mock.patch.object(v6,'ipv6_listeners',return_value=data),mock.patch.object(v6,'ipv6_ready') as ready:
+   v6.ipv6_cli('xray','/nonexistent','','ready-install','8443')
+   ready.assert_called_once_with([data[1]])
+   with self.assertRaises(ValueError):v6.ipv6_cli('xray','/nonexistent','','ready-install','443')
+ def test_unknown_ufw_status_stops_installation(self):
+  with mock.patch('shutil.which',return_value='/usr/sbin/ufw'),mock.patch.object(v6.subprocess,'run',return_value=subprocess.CompletedProcess([],0,'unexpected status')):
+   with self.assertRaisesRegex(ValueError,'UFW'):v6.ipv6_firewall()

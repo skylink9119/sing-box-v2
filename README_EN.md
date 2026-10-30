@@ -20,7 +20,7 @@
 
 ---
 
-# SKYBYTE Manager V2.8.19: installation protocol hints
+# SKYBYTE Manager V2.8.20: independent IPv6 node installation
 
 Installation menu **a → 1** labels Reality + Vision as TCP and advises against it when the port is blocked; **a → 2** labels Hysteria2 as UDP and recommends trying it first. Choose for your network and allow the HY2 UDP port; the recommendation does not guarantee public reachability.
 
@@ -55,6 +55,14 @@ Open **b → 8** (the existing **a → 5 → 1** path still works). Only install
 Port validation and collision checks precede the existing backup/transaction flow. Active UFW allows changed ports before switching listeners; UFW failure preserves node ports. Configuration, service and export failures roll back. Newly added UFW rules are retained with a warning after failure; old rules are not deleted. Update provider firewall/NAT mappings and re-import client nodes yourself.
 
 TCP-only edits retain HY2 hopping. Changing the HY2 listener disables old hopping; re-enable it as prompted.
+
+## Independent IPv6 node installation
+
+Open **a → 8**: `1` Reality + Vision (TCP), `2` Hysteria2 (UDP), `3` both. Select a native public IPv6, enter the ports and certificate/handshake settings, then confirm with `y`. Exported nodes use that IPv6 directly and have `IPv6` in the name; listeners are dual-stack, without automatically exporting an IPv4 address.
+
+Checks cover local address readiness/ownership, IPv6 routing and UFW; WARP/TUN addresses are excluded. Active UFW must manage IPv6 and selected ports are allowed before applying. A failed local listener check rolls back this installation; added firewall rules remain for review. Self-signed HY2 certificates include the IPv6 address and still require secure client trust.
+
+Existing installations are preserved; use **d → 13 → 2** for backups on existing nodes. VPS and client IPv6 plus provider IPv6 TCP/UDP rules are required. Local checks do not guarantee public reachability. IPv6-only servers need a separate working egress to IPv4-only sites/download sources; this does not change default routes or install WARP.
 
 ## IPv6 backup entry
 
@@ -367,7 +375,7 @@ Restore retains current account policy/usage and current subscription tokens. HT
 
 ```bash
 python3 scripts/build.py --check
-python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.19
+python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.20
 ```
 
 Packaging includes only bootstrap.sh, install.sh, the full bundle, public rule catalog and SHA256SUMS, never runtime state or credentials.

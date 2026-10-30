@@ -8,7 +8,7 @@
 set -Eeuo pipefail
 umask 077
 SCRIPT_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
-MANAGER_VERSION=2.8.19
+MANAGER_VERSION=2.8.20
 CORE_RECOMMENDED=1.14.3
 BASE=/etc/singbox-v2
 CONF=/etc/sing-box/config.json
@@ -282,9 +282,9 @@ EOF
 choose_node_name(){
  local value
  prompt_read "$(L '节点名称前缀 [SKYBYTE]（回车默认）：' 'Node name prefix [SKYBYTE] (Enter for default): ')" value || return 1
- python3 - "$value" <<'PY'
+ python3 - "$value" "${1:-}" <<'PY'
 import sys,unicodedata
-name=sys.argv[1].strip() or 'SKYBYTE'
+name=(sys.argv[1].strip() or 'SKYBYTE')+sys.argv[2]
 if len(name)>64 or any(unicodedata.category(c).startswith('C') for c in name):
  print('节点名称最多 64 个字符且不能包含控制字符 / Maximum 64 characters; no control characters',file=sys.stderr)
  sys.exit(1)
@@ -350,9 +350,17 @@ install_protocol() (
  [[ "$mode" == 0 ]] && return 0
  [[ "$mode" =~ ^[123]$ ]] || { err "Invalid selection"; return 1; }
  notice; confirm "$(L '同意声明并安装所选协议？' 'Accept notice and install selected protocol(s)?')" || return 0
- if [[ -e $CONF || -L $CONF || -e $META || -L $META || -e $BIN || -L $BIN || -e $SYSTEMD_DIR/sing-box.service || -L $SYSTEMD_DIR/sing-box.service ]] || command -v sing-box >/dev/null; then err "$(L '发现已有配置或核心，拒绝覆盖；若由本脚本管理，请用 a → 5 → 4 追加协议。' 'Existing configuration or binary found; refusing to overwrite. For managed nodes, add a protocol through a → 5 → 4.')"; return 1; fi
+ if [[ -e $CONF || -L $CONF || -e $META || -L $META || -e $BIN || -L $BIN || -e $SYSTEMD_DIR/sing-box.service || -L $SYSTEMD_DIR/sing-box.service ]] || command -v sing-box >/dev/null; then err "$(L '发现已有配置或核心，拒绝覆盖；追加协议用 a → 5 → 4，已有节点增加 IPv6 备用用 d → 13 → 2。' 'Existing configuration or binary found; refusing to overwrite. Add a protocol through a → 5 → 4, or add IPv6 backups through d → 13 → 2.')"; return 1; fi
  if systemctl list-unit-files sing-box.service --no-legend 2>/dev/null | grep -q sing-box; then err "$(L '已有 sing-box 服务，拒绝覆盖' 'Existing sing-box service found; refusing to overwrite')"; return 1; fi
  install_environment_check "$mode" || return 1
+ if [[ ${2:-} == ipv6 ]];then
+  local ipv6_status
+  supplied_ip=$(ipv6_install_address) || { ipv6_status=$?;[[ $ipv6_status == 2 ]] && return 0;return 1; }
+  listen_addr=::
+  warn "$(L '使用所选 IPv6 作为节点连接地址，监听支持双栈；客户端网络必须支持 IPv6。请放行云安全组和系统防火墙的 IPv6 TCP/UDP 端口。纯 IPv6 VPS 访问 IPv4 网站需要另行配置可用出站。' 'The selected IPv6 is the client address with a dual-stack listener. Client IPv6 and provider/host IPv6 TCP/UDP rules are required. IPv6-only VPSs need a separate working egress for IPv4-only sites.')"
+  if [[ $mode != 2 ]];then prompt_read "$(L 'Reality TCP 端口 [443]：' 'Reality TCP port [443]: ')" vp || return 1;vp=${vp:-443};fi
+  if [[ $mode != 1 ]];then prompt_read "$(L 'HY2 UDP 端口 [443]：' 'HY2 UDP port [443]: ')" hp || return 1;hp=${hp:-443};fi
+ fi
  if [[ ${2:-} == custom ]];then
   if [[ $mode != 2 ]];then prompt_read "$(L '本机 Reality TCP 端口 [443]：' 'Local Reality TCP port [443]: ')" vp || return 1;vp=${vp:-443};fi
   if [[ $mode != 1 ]];then prompt_read "$(L '本机 HY2 UDP 端口 [443]：' 'Local HY2 UDP port [443]: ')" hp || return 1;hp=${hp:-443};fi
@@ -374,8 +382,9 @@ install_protocol() (
  valid_port "$vp" && valid_port "$hp" || return 1;vp=$((10#$vp));hp=$((10#$hp))
  if [[ $mode != 2 ]];then haproxy_engine check_port "$vp" || return 1;fi
  install_port_check "$mode" "$vp" "$hp" "${listen_addr:-0.0.0.0}" || return 1
- local domain="" cert="" key="" sni="" node_name
- node_name=$(choose_node_name) || { err "$(L '节点名称无效' 'Invalid node name')"; return 1; }
+ local domain="" cert="" key="" sni="" node_name node_suffix=''
+ [[ ${2:-} != ipv6 ]] || node_suffix=-IPv6
+ node_name=$(choose_node_name "$node_suffix") || { err "$(L '节点名称无效' 'Invalid node name')"; return 1; }
  if [[ $mode != 1 ]]; then
   prompt_options 'HY2证书:
 1. 无域名(自动自签名)
@@ -455,14 +464,27 @@ PY_INSTALL_SAN
  chmod 600 "$CONF" "$META"
  "$BIN" check -c "$CONF" || { err "$(L '配置检查失败' 'Configuration check failed')"; return 1; }
  exports >/dev/null || return 1
+ if [[ ${2:-} == ipv6 ]];then
+  ipv6_engine check-install "$supplied_ip" || return 1
+  if command -v ufw >/dev/null;then
+   local ipv6_ufw_status
+   ipv6_ufw_status=$(LC_ALL=C ufw status) || { err "$(L '无法读取 UFW 状态，停止安装。' 'Cannot inspect UFW; installation stopped.')";return 1; }
+   if [[ $ipv6_ufw_status == *'Status: active'* ]];then
+    warn "$(L '即将先放行所选端口；后续安装失败时，已添加的放行规则会保留，请自行核对。' 'Allowing selected ports first; added rules remain if installation later fails. Review them if needed.')"
+    if [[ $mode != 2 ]];then ufw allow "$vp/tcp" || return 1;fi
+    if [[ $mode != 1 ]];then ufw allow "$hp/udp" || return 1;fi
+   fi
+  fi
+ fi
  installation_commit "$stage" "$final_bin" "$final_conf" "$final_meta" "$final_base" || return 1
  BIN=$final_bin;CONF=$final_conf;META=$final_meta;BASE=$final_base
  cert=$(state cert_path)
  "$BIN" check -c "$CONF" || return 1
  setup_service || return 1
- if command -v ufw >/dev/null && LC_ALL=C ufw status | grep -q '^Status: active'; then if [[ $mode != 2 ]]; then ufw allow "$vp/tcp"; fi; if [[ $mode != 1 ]]; then ufw allow "$hp/udp"; fi; fi
+ if [[ ${2:-} != ipv6 ]] && command -v ufw >/dev/null && LC_ALL=C ufw status | grep -q '^Status: active'; then if [[ $mode != 2 ]]; then ufw allow "$vp/tcp"; fi; if [[ $mode != 1 ]]; then ufw allow "$hp/udp"; fi; fi
  systemctl daemon-reload && systemctl enable --now sing-box && systemctl restart sing-box || return 1
  sleep 2; systemctl is-active --quiet sing-box || { err "$(L '服务启动失败，请查看 journalctl -u sing-box' 'Service failed; inspect journalctl -u sing-box')"; return 1; }
+ [[ ${2:-} != ipv6 ]] || ipv6_engine ready || return 1
  if [[ $cert_mode == 1 ]]; then echo "$(L '自签名证书：' 'Self-signed certificate: ')$cert"; openssl x509 -in "$cert" -noout -fingerprint -sha256; say '务必将证书安全导入客户端并验证，链接本身不足以建立信任。' 'Securely import and verify certificate on client; URL alone cannot establish trust.'; fi
  exports || return 1
  committed=true

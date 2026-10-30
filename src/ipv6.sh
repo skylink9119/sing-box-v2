@@ -8,6 +8,40 @@ except (ValueError,OSError,KeyError,subprocess.SubprocessError) as error:
  print(str(error),file=sys.stderr);sys.exit(1)
 PY_IPV6
 }
+ipv6_install_address(){
+ local candidates selected
+ if ! command -v ip >/dev/null;then
+  [[ -z ${SKYBYTE_ASSET_DIR:-} ]] || { err "$(L '离线模式缺少 iproute2，请先安装该依赖。' 'Offline mode requires iproute2 to be installed first.')";return 1; }
+  say '正在安装 IPv6 检测依赖 iproute2……' 'Installing iproute2 for IPv6 checks…' >&2
+  apt_install iproute2 >&2 || return 1
+  command -v ip >/dev/null || { err "$(L '安装后仍找不到 ip，请检查 PATH。' 'ip is still missing; inspect PATH.')";return 1; }
+ fi
+ candidates=$(ipv6_engine detect) || return 1
+ say '本机可用公网 IPv6：' 'Available native IPv6:' >&2
+ printf '%s\n' "$candidates" >&2
+ prompt_read "$(L '节点 IPv6（回车使用第一个；输入 0 取消）：' 'Node IPv6 (Enter uses first; 0 cancels): ')" selected || return 1
+ [[ $selected != 0 ]] || return 2
+ selected=${selected:-${candidates%%$'\n'*}}
+ ipv6_engine check-install "$selected" >&2 || return 1
+ printf '%s\n' "$selected"
+}
+ipv6_install_menu(){
+ local choice
+ if [[ $# == 0 || $1 == --menu ]];then
+  prompt_options '搭建 IPv6 节点（客户端需支持 IPv6）
+1. Reality + Vision（TCP）
+2. Hysteria2（UDP）
+3. 双协议（TCP + UDP）
+0. 返回' 'Install IPv6 nodes (client IPv6 required)
+1. Reality + Vision (TCP)
+2. Hysteria2 (UDP)
+3. Both protocols (TCP + UDP)
+0. Back'
+  [[ ${1:-} != --menu ]] || return 0
+  prompt_read '> ' choice || return 0
+ else choice=$1;fi
+ case $choice in 1|2|3) install_protocol "$choice" ipv6;;0)return 0;;*)return 1;;esac
+}
 ipv6_menu(){
  local choice candidates selected
  if [[ $# == 0 || $1 == --menu ]];then
