@@ -8,7 +8,7 @@
 set -Eeuo pipefail
 umask 077
 SCRIPT_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
-MANAGER_VERSION=2.8.17
+MANAGER_VERSION=2.8.18
 CORE_RECOMMENDED=1.14.3
 BASE=/etc/singbox-v2
 CONF=/etc/sing-box/config.json
@@ -6020,8 +6020,9 @@ def check_admin_port(value,protocol,adding=False):
    if p.exists() or p.is_symlink():
     if load(p)['port']==value:raise ValueError('Port reserved by a managed TCP service')
 
-# Handshake-only edits retain the unrelated HY2 listener and hopping rules.
-if action not in ('reality','ipv6'):meta['hop']=False
+# TCP-only port edits retain the unrelated HY2 listener and hopping rules.
+keep_hop=action in ('reality','ipv6') or (action=='ports' and len(args)==2 and args[1].isdecimal() and all(i['listen_port']==int(args[1]) for i in main['inbounds'] if i['type']=='hysteria2'))
+if not keep_hop:meta['hop']=False
 if action=='ipv6':
  value=args[0]
  if value!='off':
@@ -6199,6 +6200,7 @@ for n,(p,cfg,mp,s) in enumerate(paths):
  write(candidate,cfg);planned.append([str(candidate),str(p)])
  sm=stage/(str(n)+'-state.json');write(sm,s);planned.append([str(sm),str(mp)])
 write(stage/'plan.json',planned)
+if action=='ports' and keep_hop:write(stage/'keep-hopping',True)
 PY_CONFIG
 }
 configuration_apply(){
@@ -6210,7 +6212,7 @@ configuration_apply(){
   bind_family=$(state listen);bind_family=${bind_family:-0.0.0.0}
   reality_install_check "$4" "$3" "$bind_family" || return 1
  fi
- local stage snap admin=false users=false argo=false hop_active=false first_admin=false
+ local stage snap admin=false users=false argo=false hop_active=false first_admin=false ports_opened=false rules rule hop_was_active=false hop_was_enabled=false ufw_info=''
  if python3 - "$CONF" "$META" <<'PY_INITIAL_ADMIN'
 import json,sys
 c=json.load(open(sys.argv[1]));s=json.load(open(sys.argv[2]));sys.exit(0 if not c.get('inbounds') and s.get('deployment')=='argo-only' else 1)
@@ -6220,24 +6222,56 @@ PY_INITIAL_ADMIN
  if ! configuration_engine "$stage" "$@";then rm -rf "$stage";return 1;fi
  if ! haproxy_engine check_configs "$stage";then rm -rf "$stage";return 1;fi
  snap=$(backup) || { rm -rf "$stage";return 1; }
+ if [[ $1 == ports ]] && command -v ufw >/dev/null;then
+  ufw_info=$(LC_ALL=C ufw status) || { rm -rf "$stage";err "$(L '无法读取 UFW 状态，节点端口未修改。' 'Cannot inspect UFW; node ports unchanged.')";return 1; }
+ fi
+ if [[ $1 == ports ]] && grep -q '^Status: active' <<< "$ufw_info";then
+  rules=$(python3 - "$CONF" "$stage/0-config.json" <<'PY_CHANGED_PORTS'
+import json,sys
+old={i['type']:i['listen_port'] for i in json.load(open(sys.argv[1]))['inbounds']}
+for i in json.load(open(sys.argv[2]))['inbounds']:
+ if old.get(i['type'])!=i['listen_port']:print(str(i['listen_port'])+('/tcp' if i['type']=='vless' else '/udp'))
+PY_CHANGED_PORTS
+  ) || { rm -rf "$stage";return 1; }
+  while IFS= read -r rule;do
+   [[ -n $rule ]] || continue
+   if ! ufw allow "$rule";then
+    rm -rf "$stage"
+    err "$(L 'UFW 放行未完成，节点端口未修改；部分放行规则可能已添加，请核对防火墙。' 'UFW allow incomplete; node ports unchanged. Some allow rules may have been added; inspect the firewall.')";return 1
+   fi
+   ports_opened=true
+  done <<< "$rules"
+ fi
  if systemctl is-active --quiet sing-box.service;then admin=true;fi
  if [[ -f $BASE/users.json ]] && systemctl is-active --quiet skybyte-users.service;then users=true;users_stop || { rm -rf "$stage";return 1; };fi
  if [[ -f $BASE/argo-state.json ]] && systemctl is-active --quiet skybyte-argo-node.service;then argo=true;fi
- if [[ $1 != reality && $1 != ipv6 && $(state hop) == True ]];then hop_active=true;hop_disable || { warp_resume "$admin" "$argo" "$users" || :;rm -rf "$stage";return 1; };fi
- if ! configuration_commit "$stage" "$1" || ! configuration_resume "$first_admin" "$admin" "$argo" "$users" || { [[ $1 == ipv6 && ${2:-} != off && $admin == true ]] && ! ipv6_engine ready; } || { [[ $1 == reality || $1 == ipv6 ]] && ! configuration_export_all; };then
+ if [[ $1 != reality && $1 != ipv6 && ! -f $stage/keep-hopping && $(state hop) == True ]];then
+  hop_active=true
+  if [[ $1 == ports ]];then
+   if systemctl is-active --quiet singbox-v2-hop.service;then hop_was_active=true;fi
+   if systemctl is-enabled --quiet singbox-v2-hop.service;then hop_was_enabled=true;fi
+  else hop_disable || { warp_resume "$admin" "$argo" "$users" || :;rm -rf "$stage";return 1; };fi
+ fi
+ if ! configuration_commit "$stage" "$1" || { [[ $1 == ports && $hop_active == true ]] && ! hop_disable; } || ! configuration_resume "$first_admin" "$admin" "$argo" "$users" || { [[ $1 == ipv6 && ${2:-} != off && $admin == true ]] && ! ipv6_engine ready; } || { [[ $1 == reality || $1 == ipv6 || $1 == ports ]] && ! configuration_export_all; };then
   [[ $users != true ]] || users_stop || :
   [[ $first_admin != true ]] || systemctl disable --now sing-box.service || :
   configuration_rollback "$stage" || :
-  if [[ $hop_active == true ]];then systemctl start singbox-v2-hop.service || :;fi
+  if [[ $hop_active == true ]];then
+   if [[ $1 == ports ]];then
+    [[ $hop_was_enabled != true ]] || systemctl enable singbox-v2-hop.service || :
+    [[ $hop_was_active != true ]] || systemctl start singbox-v2-hop.service || :
+   else systemctl start singbox-v2-hop.service || :;fi
+  fi
   [[ $first_admin != true ]] || admin=false
   warp_resume "$admin" "$argo" "$users" || :
+  if [[ $ports_opened == true ]];then warn "$(L '新端口的 UFW 放行规则保留，请在防火墙菜单核对。' 'New UFW allow rules are retained; review them in the firewall menu.')";fi
   rm -rf "$stage";err "$(L '配置修改失败，已尝试恢复原配置' 'Configuration edit failed; original config restoration attempted')";return 1
  fi
  rm -rf "$stage"
- if [[ $1 != reality ]] && command -v ufw >/dev/null && LC_ALL=C ufw status | grep -q '^Status: active';then
+ if [[ $1 != reality && $1 != ports ]] && command -v ufw >/dev/null && LC_ALL=C ufw status | grep -q '^Status: active';then
   firewall_allow_protocols || return 1
  fi
- if [[ $1 != reality && $1 != ipv6 ]];then configuration_export_all || return 1;fi
+ if [[ $1 != reality && $1 != ipv6 && $1 != ports ]];then configuration_export_all || return 1;fi
  ok "$(L "配置已更新；备份：$snap" "Configuration updated; backup: $snap")"
  if [[ $hop_active == true ]];then warn "$(L '跳跃已关闭，请按新监听端口重新开启；旧 UFW 规则保留。' 'Hopping disabled; re-enable for the new listener. Old UFW rules remain.')";fi
 }
@@ -6250,7 +6284,7 @@ configuration_commit(){
 import json,os,pathlib,shutil,sys,tempfile
 stage=pathlib.Path(sys.argv[1]);plan=json.loads((stage/'plan.json').read_text());rollback=[]
 targets=[value for _,value in plan]
-if sys.argv[2] in ('reality','ipv6'):
+if sys.argv[2] in ('reality','ipv6','ports'):
  # Include exports in the same rollback journal before any live files change.
  names=('nodes.txt','subscription-base64.txt','v2rayn-nodes.txt','v2rayn-subscription.txt','shadowrocket-nodes.txt','shadowrocket-subscription.txt','shadowrocket-native-nodes.txt','shadowrocket-native-subscription.txt','outbounds.json','sing-box-client.json','sing-box-client-ipv6.json','clash-verge.yaml','mihomo-proxies.yaml','subscription-notes.txt','hy2-client-ca.pem','hy2-client-ca.cer','hy2-client-ca.mobileconfig')
  for _,value in plan:
@@ -6288,6 +6322,46 @@ configuration_resume(){
  fi
  warp_resume "$admin" "$argo" "$users"
 }
+edit_node_ports(){
+ configuration_guard || return 1
+ local current vp hp old_vp old_hp value
+ current=$(python3 - "$CONF" <<'PY_NODE_PORTS'
+import json,sys
+nodes={i['type']:i['listen_port'] for i in json.load(open(sys.argv[1]))['inbounds'] if i['type'] in ('vless','hysteria2')}
+if not nodes:raise SystemExit('尚未安装直连节点 / No direct node installed')
+print(nodes.get('vless',0),nodes.get('hysteria2',0))
+PY_NODE_PORTS
+ ) || return 1
+ read -r old_vp old_hp <<< "$current"
+ vp=$old_vp;hp=$old_hp
+ if [[ $old_vp != 0 ]];then
+  report_output say "Reality TCP 当前端口：${old_vp}" "Reality TCP current port: ${old_vp}"
+  prompt_read "$(L 'Reality TCP 新端口（回车保留）：' 'New Reality TCP port (Enter keeps it): ')" value || return 0
+  vp=${value:-$old_vp}
+ fi
+ if [[ $old_hp != 0 ]];then
+  report_output say "HY2 UDP 当前端口：${old_hp}" "HY2 UDP current port: ${old_hp}"
+  prompt_read "$(L 'HY2 UDP 新端口（回车保留）：' 'New HY2 UDP port (Enter keeps it): ')" value || return 0
+  hp=${value:-$old_hp}
+ fi
+ if [[ $vp == "$old_vp" && $hp == "$old_hp" ]];then say '端口未变更。' 'Ports unchanged.';return 0;fi
+ for value in "$old_vp:$vp" "$old_hp:$hp";do
+  [[ ${value%%:*} != 0 ]] || continue
+  value=${value#*:}
+  { valid_port "$value" && (( 10#$value == 443 || 10#$value >= 1024 )); } || { err "$(L '端口须为 443 或 1024–65535。' 'Use port 443 or 1024–65535.')";return 1; }
+ done
+ vp=$((10#$vp));hp=$((10#$hp))
+ if [[ $vp == "$old_vp" && $hp == "$old_hp" ]];then say '端口未变更。' 'Ports unchanged.';return 0;fi
+ [[ $old_vp == 0 ]] || say "Reality TCP：$old_vp → $vp" "Reality TCP: $old_vp → $vp"
+ [[ $old_hp == 0 ]] || say "HY2 UDP：$old_hp → $hp" "HY2 UDP: $old_hp → $hp"
+ warn "$(L '保留 UUID、密钥、握手网站和用户端口；运行中的主节点会短暂重载。已启用 UFW 时自动放行新端口，云安全组需自行放行。' 'Keeps UUIDs, keys, handshake sites and account ports. Running administrator nodes briefly reload. Active UFW allows new ports; provider firewall rules require your action.')"
+ if [[ $hp != "$old_hp" && $(state hop) == True ]];then warn "$(L '修改 HY2 端口会停用当前端口跳跃；需要时请重新开启。' 'Changing the HY2 port disables current port hopping; re-enable it if needed.')";fi
+ confirm "$(L '应用以上端口变更？' 'Apply these port changes?')" || { say '已取消，端口未变更。' 'Cancelled; ports unchanged.';return 0; }
+ [[ $old_vp != 0 ]] || vp=443
+ [[ $old_hp != 0 ]] || hp=443
+ configuration_apply ports "$vp" "$hp" || return 1
+ say '端口已更新，请从 b → 1 获取新节点并重新导入客户端；启用的 IPv6 备用同步更新。' 'Ports updated. Get new nodes from b > 1 and re-import them; configured IPv6 backups are updated too.'
+}
 node_settings(){
  check_owned || return 1
  local choice vp hp value protocol cert key domain up down ignore obfs bootstrap=false public='' listen='' family
@@ -6314,8 +6388,7 @@ node_settings(){
   choice=$1
  fi
  case $choice in
-  1) prompt_read 'Reality TCP [443]: ' vp || return 0;prompt_read 'HY2 UDP [443]: ' hp || return 0
-   confirm "$(L '修改管理员端口，保留用户端口及凭据？' 'Change admin ports, retaining user ports and credentials?')" && configuration_apply ports "${vp:-443}" "${hp:-443}";;
+  1) edit_node_ports;;
   2) prompt_read "$(L '公网 IP 或 DDNS 域名：' 'Public IP or DDNS domain: ')" value || return 0
    confirm "$(L '更新所有节点的服务器地址？' 'Update server address for all nodes?')" && configuration_apply address "$value";;
   3) reality_replace;;
@@ -7095,7 +7168,7 @@ usage_help(){
  if [[ ${LANGUAGE_CHOICE:-zh_CN} == en_US ]];then cat <<'HELP_EN'
 SKYBYTE Manager — quick guide
 1. Install: main a → Reality/HY2/both. Enter defaults, allow actual TCP/UDP ports in provider firewall.
-2. Node edits: main a → 5. Change admin ports/address/SNI or add/remove a protocol without resetting credentials/usage. Active hopping is disabled after edits; re-enable it for the current listener.
+2. Node ports: b → 8 (Enter keeps current values). Other node edits: main a → 5. Change admin ports/address/SNI or add/remove a protocol without resetting credentials/usage. TCP-only port edits retain HY2 hopping; changing HY2 ports disables hopping. Re-enable it for the current listener.
 3. Client import: main b → 1 or 4. Use Shadowrocket native links/QR, v2rayN, full Mihomo YAML or sing-box JSON. Self-signed HY2 needs explicit public-certificate trust; never share private keys.
 4. Accounts: main g. Initialize, create accounts and set quota/expiry. Share personal exports, not administrator nodes. Accounts are not actual people and may share credentials.
 5. HTTPS subscriptions: obtain a trusted certificate through main e → 6, then main b → 6. Create/rotate/revoke personal links through user menu 16. Configure provider TCP access. Tokens grant access to credentials: keep links private. Revocation does not rotate node passwords.
@@ -7114,7 +7187,7 @@ HELP_EN
  else cat <<'HELP_ZH'
 SKYBYTE Manager — 快速使用说明
 1. 安装：主菜单 a 选择 Reality、HY2或双协议。回车使用默认值，云安全组需放行实际 TCP/UDP 端口。
-2. 节点修改：主菜单a → 5，可改管理员端口、地址、SNI或增删协议，保留凭据与用量。修改后已启用的跳跃会关闭，请按当前监听端口重新开启。
+2. 修改节点端口：b → 8（回车保留当前端口）；其它节点修改：主菜单a → 5，可改管理员端口、地址、SNI或增删协议，保留凭据与用量。仅改 TCP 端口保留 HY2 跳跃；更改 HY2 端口后请重新开启跳跃。
 3. 导入客户端：主菜单b → 1或4，提供小火箭专用链接/二维码、v2rayN、完整 Mihomo YAML与sing-box JSON。自签名 HY2 须信任公开证书；不要分享私钥。
 4. 用户管理：主菜单g，初始化后添加用户并设额度/有效期。只分享个人节点，不要分享管理员节点；账户数量不代表真实人数，无法阻止凭据分享。
 5. 在线订阅：主菜单e → 6获取可信证书，再通过主菜单b → 6配置HTTPS服务。用户菜单16签发、重置、撤销个人链接。云安全组需允许订阅 TCP 端口。Token可获取节点凭据，链接请保密；撤销订阅不等于更换节点密码。
@@ -7176,6 +7249,7 @@ sub_menu(){
    say ' 5. 用户数量、流量与有效期管理' ' 5. Account limits, traffic quotas and expiry'
    say ' 6. HTTPS 个人在线订阅' ' 6. Personal HTTPS subscriptions'
    say ' 7. 查看节点参数（注意保密）' ' 7. View node parameters (keep private)'
+   say ' 8. 修改节点端口' ' 8. Change node ports'
    ;;
   3)
    say ' 1. sing-box 状态与启停' ' 1. sing-box status and controls'
@@ -7231,6 +7305,7 @@ sub_menu(){
   2:5) MAIN_ACTION=users;;
   2:6) MAIN_ACTION=online;;
   2:7) MAIN_ACTION=node_parameters;;
+  2:8) MAIN_ACTION=node_ports;;
   3:1) MAIN_ACTION=service;;
   3:2) MAIN_ACTION=logs;;
   3:3) MAIN_ACTION=argo_status;;
@@ -7265,6 +7340,7 @@ dispatch_action(){
  local action=$1;shift
  case $action in
  install_reality) install_protocol 1;; install_hy2) install_protocol 2;; install_dual) install_protocol 3;;
+ node_ports) edit_node_ports;;
  argo) argo_manager "$@";; nodes) exports;; node_parameters) report_output node_parameters;; subscription) subscription;; rename) rename_node;; qr) shadowrocket_qr;; users) users_manager;;
  service) service_manager "$@";; logs) report_output journalctl -u sing-box -n 80 --no-pager;; argo_status) report_output argo_status;;
  initialize) initialize_server;; firewall) firewall "$@";; audit) report_output firewall_audit;; bbr) bbr;; hop) hop "$@";; traffic) traffic "$@";;

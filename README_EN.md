@@ -20,7 +20,7 @@
 
 ---
 
-# SKYBYTE Manager V2.8.17: IPv6 backup entry
+# SKYBYTE Manager V2.8.18: direct node port editor
 
 **SKYBYTE Manager** is a Bash-based Ubuntu/Debian VPS manager with Simplified Chinese and English interfaces. It installs sing-box with **VLESS + Reality + Vision, Hysteria2 (HY2), or both protocols**, manages Cloudflare Argo tunnels and WARP routing, and provides per-user traffic quotas and expiry. Client exports support Shadowrocket, v2rayN, Clash Verge/Mihomo/OpenClash and sing-box JSON.
 
@@ -30,7 +30,7 @@ If you find this script helpful, please subscribe to my YouTube channel and supp
 
 The main menu includes the SKYBYTE ASCII logo. Menus are bold green, credential links bold red, warnings bold yellow and errors bold red on ANSI terminals. Set `NO_COLOR=1` to disable colors. Every action uses `[y/N]`: type `y` or `Y` to confirm; Enter or `n/N` cancels.
 
-V2.8.17 improves menu response: batch startup service/interface queries, bound local probes and certificate commands, read the atomic account snapshot without waiting for the quota worker lock, skip unchanged shortcut writes, and fix remaining TCP TIME_WAIT false positives when adding protocols or editing ports. No additional background service. Forwarding resource use depends on cores, traffic and enabled components; inspect processes, memory and load in **d → 7**. See the [audit record](docs/AUDIT-2026-10-28.md).
+V2.8.18 improves menu response: batch startup service/interface queries, bound local probes and certificate commands, read the atomic account snapshot without waiting for the quota worker lock, skip unchanged shortcut writes, and fix remaining TCP TIME_WAIT false positives when adding protocols or editing ports. No additional background service. Forwarding resource use depends on cores, traffic and enabled components; inspect processes, memory and load in **d → 7**. See the [audit record](docs/AUDIT-2026-10-28.md).
 
 V2.8.11 adds **installation preflight (a → 7)**, automatic checks for new installs/Reality additions, and a short HTTPS install entry.
 
@@ -45,6 +45,14 @@ V2.8.6 fixes literal `\n` text in WARP menus. One option per line, grouped as pr
 V2.8.3 fixes first installation on minimal VPS images without `curl`: the new bootstrap checks for curl and installs it with CA certificates when missing, then starts the installer. APT or download failure stops the operation while preserving input for the language prompt and menus. Copy the complete updated installation command below.
 
 V2.8.1 whole-source audit fixes: the installer checks ownership and atomically publishes the manager, rejecting symlinks and concurrent operations. Restore journals original files privately, rolls back files/service states on failure, and preserves unrelated configuration files. User allocation reserves inactive managed ports and inherits the actual listener family. Node-edit rollback reloads the original admin config; offline selection survives menu actions; standalone Argo certificate issuance no longer prompts to configure absent HY2. Initial generation passes UUIDs, passwords and private keys through a file descriptor instead of process arguments. Media results show region sources/conflicts without claiming account eligibility or playback.
+
+## Change node ports
+
+Open **b → 8** (the existing **a → 5 → 1** path still works). Only installed Reality TCP / HY2 UDP listeners are prompted. Current values are shown; Enter keeps them and `y` applies changes. UUIDs, keys, handshake sites, certificates and quota-managed account ports/usage remain intact. IPv6 backups update too. Unchanged or cancelled input does not restart services.
+
+Port validation and collision checks precede the existing backup/transaction flow. Active UFW allows changed ports before switching listeners; UFW failure preserves node ports. Configuration, service and export failures roll back. Newly added UFW rules are retained with a warning after failure; old rules are not deleted. Update provider firewall/NAT mappings and re-import client nodes yourself.
+
+TCP-only edits retain HY2 hopping. Changing the HY2 listener disables old hopping; re-enable it as prompted.
 
 ## IPv6 backup entry
 
@@ -357,7 +365,7 @@ Restore retains current account policy/usage and current subscription tokens. HT
 
 ```bash
 python3 scripts/build.py --check
-python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.17
+python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.18
 ```
 
 Packaging includes only bootstrap.sh, install.sh, the full bundle, public rule catalog and SHA256SUMS, never runtime state or credentials.

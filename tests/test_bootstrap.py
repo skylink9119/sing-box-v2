@@ -108,7 +108,7 @@ bash(){
         self.assertEqual(events[-2:], ['launch', 'stdin:menu input preserved'])
         download = events[0]
         self.assertIn("--proto =https --proto-redir =https", download)
-        self.assertIn('https://github.com/skylink9119/sing-box-v2/releases/download/v2.8.17/install.sh', download)
+        self.assertIn('https://github.com/skylink9119/sing-box-v2/releases/download/v2.8.18/install.sh', download)
         self.assertNotIn(' -k ', download)
 
     def test_missing_curl_is_installed_before_download_on_supported_systems(self):

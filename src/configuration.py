@@ -36,8 +36,9 @@ def check_admin_port(value,protocol,adding=False):
    if p.exists() or p.is_symlink():
     if load(p)['port']==value:raise ValueError('Port reserved by a managed TCP service')
 
-# Handshake-only edits retain the unrelated HY2 listener and hopping rules.
-if action not in ('reality','ipv6'):meta['hop']=False
+# TCP-only port edits retain the unrelated HY2 listener and hopping rules.
+keep_hop=action in ('reality','ipv6') or (action=='ports' and len(args)==2 and args[1].isdecimal() and all(i['listen_port']==int(args[1]) for i in main['inbounds'] if i['type']=='hysteria2'))
+if not keep_hop:meta['hop']=False
 if action=='ipv6':
  value=args[0]
  if value!='off':
@@ -215,3 +216,4 @@ for n,(p,cfg,mp,s) in enumerate(paths):
  write(candidate,cfg);planned.append([str(candidate),str(p)])
  sm=stage/(str(n)+'-state.json');write(sm,s);planned.append([str(sm),str(mp)])
 write(stage/'plan.json',planned)
+if action=='ports' and keep_hop:write(stage/'keep-hopping',True)

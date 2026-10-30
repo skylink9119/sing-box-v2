@@ -131,3 +131,7 @@ main'''
         self.assertIn('DIAGNOSTIC compare',result.stdout)
         self.assertNotIn('DIAGNOSTIC speed',result.stdout)
         self.assertNotIn('SELECT_LOCK=1',result.stdout)
+
+    def test_node_port_editor_is_available_from_nodes_menu(self):
+        result=self.shell(self.mocks()+'edit_node_ports(){ echo PORT_EDITOR; };main',input='b\n8\n0\nq\n')
+        self.assertIn('PORT_EDITOR',result.stdout)
