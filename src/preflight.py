@@ -145,7 +145,44 @@ def environment(report, project, os_release='/etc/os-release', paths=(), reality
             report.add('fail', '安装存储空间', 'Installation storage', '无法检查：' + str(destination), 'Cannot inspect: ' + str(destination))
 
 
-def ports(report, listen, tcp=None, udp=None):
+def managed_hy2_listener(number, listen, config, binary, state, proc=Path('/proc')):
+    """Confirm config, systemd PID, executable, command and every socket owner."""
+    import re
+    try:
+        config, binary, state = map(Path, (config, binary, state))
+        if any(p.is_symlink() or not p.is_file() for p in (config, binary, state)):
+            return False
+        metadata = json.loads(state.read_text())
+        if not isinstance(metadata, dict) or metadata.get('mode') not in ('2', '3'):
+            return False
+        nodes = json.loads(config.read_text()).get('inbounds', [])
+        if not isinstance(nodes, list) or not any(
+                isinstance(n, dict) and n.get('type') == 'hysteria2'
+                and n.get('listen_port') == number
+                and (n.get('listen') == listen or
+                     (listen == '0.0.0.0' and n.get('listen') == '::'
+                      and not n.get('ipv6_only', False))) for n in nodes):
+            return False
+        result = subprocess.run(['systemctl', 'show', 'sing-box.service', '--property=MainPID', '--value'],
+                                capture_output=True, text=True, check=True, timeout=3)
+        pid = result.stdout.strip()
+        if not pid.isdigit() or int(pid) <= 0:
+            return False
+        process = proc / pid
+        if (process / 'exe').resolve() != binary.resolve():
+            return False
+        args = (process / 'cmdline').read_bytes().decode().rstrip('\0').split('\0')
+        if args[1:] != ['run', '-c', str(config)]:
+            return False
+        result = subprocess.run(['ss', '-H', '-lnup', 'sport = :' + str(number)],
+                                capture_output=True, text=True, check=True, timeout=3)
+        rows = result.stdout.splitlines()
+        return bool(rows) and all(set(re.findall(r'pid=(\d+)', row)) == {pid} for row in rows)
+    except (OSError, ValueError, TypeError, KeyError, AttributeError, subprocess.SubprocessError):
+        return False
+
+
+def ports(report, listen, tcp=None, udp=None, managed=None):
     if tcp is None and udp is None:
         raise ValueError('Port required')
     family = socket.AF_INET6 if ':' in listen else socket.AF_INET
@@ -166,6 +203,11 @@ def ports(report, listen, tcp=None, udp=None):
             report.add('pass', label, label, '本机可绑定（' + listen + '）', 'Locally bindable (' + listen + ')')
         except OSError as error:
             occupied = error.errno == errno.EADDRINUSE
+            if occupied and protocol == 'UDP' and managed and managed_hy2_listener(number, listen, *managed):
+                report.add('warn', label, label,
+                           '本脚本已安装的 HY2 正在使用此端口，无需重复安装。查看节点 b → 1；修改端口 b → 8；服务状态 c → 1。此端口并非空闲。',
+                           'Already installed: this manager’s HY2 uses this port. Do not reinstall. Nodes: b → 1; change port: b → 8; service: c → 1. The port is not free.')
+                continue
             report.add('fail', label, label,
                        '已被占用，请选择其他空闲端口；TCP 与 UDP 分别检查。' if occupied else '无法绑定该地址族/端口，请检查 IPv4/IPv6 与系统权限。',
                        'Occupied; choose another free port. TCP and UDP are checked separately.' if occupied else 'Cannot bind; check IPv4/IPv6 support and privileges.')
@@ -245,13 +287,15 @@ def main(argv=None):
     parser.add_argument('--udp-port', type=int)
     parser.add_argument('--offline', action='store_true')
     parser.add_argument('--existing-core', action='store_true')
+    parser.add_argument('--managed-hy2', nargs=3, metavar=('CONFIG', 'BINARY', 'STATE'))
     options = parser.parse_args(argv)
     report = Report(options.language in ('en', 'en_US'))
     try:
         if options.phase == 'environment':
             environment(report, options.project, options.os_release, options.paths, options.reality)
         elif options.phase == 'ports':
-            ports(report, options.listen, options.tcp_port, options.udp_port)
+            ports(report, options.listen, options.tcp_port, options.udp_port,
+                  options.managed_hy2 if options.project == 'sing-box' else None)
         else:
             print(report.tr('正在检查 GitHub HTTPS（网络等待上限 10 秒）……',
                             'Checking GitHub HTTPS (10-second network wait limit)…'), flush=True)

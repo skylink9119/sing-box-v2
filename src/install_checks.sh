@@ -9,9 +9,10 @@ install_environment_check(){
 }
 install_port_check(){
  local mode=$1 tcp=$2 udp=$3 listen=${4:-0.0.0.0} options=()
+ [[ ${5:-} != diagnostic ]] || options+=(--managed-hy2 "$CONF" "$BIN" "$META")
  [[ $mode == 2 ]] || options+=(--tcp-port "$tcp")
  [[ $mode == 1 ]] || options+=(--udp-port "$udp")
- if ! report_output report_output install_check_engine --project sing-box --language "${LANGUAGE_CHOICE:-zh_CN}" --phase ports --listen "$listen" "${options[@]}";then
+ if ! report_output install_check_engine --project sing-box --language "${LANGUAGE_CHOICE:-zh_CN}" --phase ports --listen "$listen" "${options[@]}";then
   err "$(L '需要其他端口时，可用 a → 6 → 3 自定义监听端口安装；请保留现有服务并选择空闲端口。' 'For another port, use a → 6 → 3 to install with custom ports. Retain existing services and choose a free port.')"
   return 1
  fi
@@ -60,7 +61,7 @@ installation_check_menu(){
  if [[ $choice != 2 ]];then
   prompt_read 'Reality SNI [addons.mozilla.org]: ' sni || return 0;sni=${sni:-addons.mozilla.org}
  fi
- install_environment_check "$choice" && install_port_check "$choice" "$tcp" "$udp" "$listen" || return 1
+ install_environment_check "$choice" && install_port_check "$choice" "$tcp" "$udp" "$listen" diagnostic || return 1
  [[ $choice == 2 ]] || install_reality_target "$sni" || return 1
  install_download_check
 }

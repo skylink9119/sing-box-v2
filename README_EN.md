@@ -20,7 +20,9 @@
 
 ---
 
-# SKYBYTE Manager V2.8.20: independent IPv6 node installation
+# SKYBYTE Manager V2.8.21: recognize ports owned by installed HY2
+
+Read-only installation checks (**a → 7**) verify the managed configuration, systemd service, executable and actual socket owners when a UDP port is occupied. Confirmed managed HY2 is reported as already installed, with links to nodes (**b → 1**), port editing (**b → 8**) and service status (**c → 1**). Other or unverified owners remain conflicts. Installation never treats an occupied port as free or overwrites an existing node.
 
 Installation menu **a → 1** labels Reality + Vision as TCP and advises against it when the port is blocked; **a → 2** labels Hysteria2 as UDP and recommends trying it first. Choose for your network and allow the HY2 UDP port; the recommendation does not guarantee public reachability.
 
@@ -375,7 +377,7 @@ Restore retains current account policy/usage and current subscription tokens. HT
 
 ```bash
 python3 scripts/build.py --check
-python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.20
+python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.21
 ```
 
 Packaging includes only bootstrap.sh, install.sh, the full bundle, public rule catalog and SHA256SUMS, never runtime state or credentials.

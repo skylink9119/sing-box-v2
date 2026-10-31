@@ -12,6 +12,15 @@ class InstallationCheckTests(unittest.TestCase):
     configure = manager.ManagerTest.configure
     install_mocks = reliability.ReliabilityTest.install_mocks
 
+    def test_owned_hy2_inspection_is_only_enabled_for_diagnostics(self):
+        result = self.shell('install_check_engine(){ printf "%s\\n" "$*"; };install_port_check 2 443 443')
+        self.assertNotIn('--managed-hy2', result.stdout)
+        result = self.shell('install_check_engine(){ printf "%s\\n" "$*"; };installation_check_menu 2', input='\n1\n')
+        self.assertIn('--managed-hy2', result.stdout)
+        self.assertIn('--udp-port 443', result.stdout)
+        self.assertFalse((self.config/'config.json').exists())
+        self.assertFalse((self.base/'state.json').exists())
+
     def assert_no_node(self):
         self.assertFalse(self.bin.exists())
         self.assertFalse((self.config/'config.json').exists())

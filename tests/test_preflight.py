@@ -3,6 +3,7 @@ import contextlib
 import errno
 import importlib.util
 import io
+import json
 import os
 from pathlib import Path
 import socket
@@ -34,6 +35,72 @@ class PreflightTests(unittest.TestCase):
         with contextlib.redirect_stdout(out):
             status = report.render()
         return status, out.getvalue()
+
+    def test_managed_hy2_requires_config_service_executable_and_all_socket_owners(self):
+        config, binary, state = [self.root / n for n in ('config.json', 'sing-box', 'state.json')]
+        binary.write_text('binary')
+        state.write_text(json.dumps({'mode': '2'}))
+        node = {'type': 'hysteria2', 'listen': '0.0.0.0', 'listen_port': 443}
+        config.write_text(json.dumps({'inbounds': [node]}))
+        proc = self.root / 'proc'
+        process = proc / '123'
+        process.mkdir(parents=True)
+        (process / 'exe').symlink_to(binary)
+        command = '\0'.join([str(binary), 'run', '-c', str(config)]) + '\0'
+        (process / 'cmdline').write_text(command)
+        row = 'UNCONN 0 0 0.0.0.0:443 0.0.0.0:* users:(("sing-box",pid=123,fd=7))'
+
+        def identified(output=row, pid='123'):
+            with mock.patch.object(checks.subprocess, 'run', side_effect=[
+                    types.SimpleNamespace(stdout=pid), types.SimpleNamespace(stdout=output)]):
+                return checks.managed_hy2_listener(443, '0.0.0.0', config, binary, state, proc)
+
+        self.assertTrue(identified())
+        for output in ('', row.replace('123', '456'), 'UNCONN 0 0 *:443 *:*',
+                       row + '\n' + row.replace('123', '456')):
+            self.assertFalse(identified(output))
+        self.assertFalse(identified(pid='0'))
+        (process / 'cmdline').write_text(command.replace(str(config), '/foreign/config.json'))
+        self.assertFalse(identified())
+        (process / 'cmdline').write_text(command)
+        (process / 'exe').unlink()
+        (process / 'exe').symlink_to(self.root / 'foreign-binary')
+        self.assertFalse(identified())
+        (process / 'exe').unlink()
+        (process / 'exe').symlink_to(binary)
+        node['listen'] = '::'
+        config.write_text(json.dumps({'inbounds': [node]}))
+        self.assertTrue(identified())
+        node['ipv6_only'] = True
+        config.write_text(json.dumps({'inbounds': [node]}))
+        self.assertFalse(identified())
+        for content in ('[]', '{"inbounds": null}', '{"inbounds": [null]}', '{}', 'invalid'):
+            config.write_text(content)
+            self.assertFalse(identified())
+        config.write_text(json.dumps({'inbounds': [{'type': 'hysteria2', 'listen': '0.0.0.0', 'listen_port': 443}]}))
+        for content in ('[]', '{}', '{"mode": "1"}'):
+            state.write_text(content)
+            self.assertFalse(identified())
+
+    def test_owned_udp_is_only_a_reminder_in_explicit_read_only_diagnostics(self):
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as listener:
+            listener.bind(('127.0.0.1', 0))
+            port = listener.getsockname()[1]
+            with mock.patch.object(checks.shutil, 'which', return_value=None), mock.patch.object(
+                    checks, 'managed_hy2_listener', return_value=True) as identify:
+                report = checks.Report(True)
+                checks.ports(report, '127.0.0.1', udp=port)
+                self.assertEqual(report.items[0][0], 'fail')
+                identify.assert_not_called()
+                report = checks.Report(True)
+                checks.ports(report, '127.0.0.1', udp=port, managed=('config', 'binary', 'state'))
+                self.assertEqual(report.items[0][0], 'warn')
+                self.assertIn('Already installed', self.output(report)[1])
+                self.assertEqual(self.output(report)[0], 0)
+                identify.return_value = False
+                report = checks.Report()
+                checks.ports(report, '127.0.0.1', udp=port, managed=('config', 'binary', 'state'))
+                self.assertEqual(report.items[0][0], 'fail')
 
     def test_existing_unlocked_package_files_are_not_a_conflict_or_changed(self):
         path = self.root/'lock-frontend'
