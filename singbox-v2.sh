@@ -8,7 +8,7 @@
 set -Eeuo pipefail
 umask 077
 SCRIPT_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
-MANAGER_VERSION=2.8.24
+MANAGER_VERSION=2.8.25
 CORE_RECOMMENDED=1.14.3
 BASE=/etc/singbox-v2
 CONF=/etc/sing-box/config.json
@@ -567,6 +567,22 @@ status(){
  echo 'UFW:';firewall_audit;echo 'Hop:'
  if [[ -f $META && $(state hop_backend) == iptables ]];then iptables -w 5 -t nat -S SKYBYTE_HY2_HOP 2>/dev/null || :;else nft list table ip singbox_v2_hop 2>/dev/null || :;fi
 }
+configuration_check(){
+ check_owned || return 1
+ if [[ ! -x $BIN ]];then
+  err "$(L '[未检查] sing-box 核心不存在或不可执行' '[Not checked] sing-box binary is missing or not executable')"
+  return 1
+ fi
+ say '===== sing-box 配置检查 =====' '===== sing-box configuration check ====='
+ printf '%s: %s\n' "$(L '配置文件' 'Configuration file')" "$CONF"
+ if "$BIN" check -c "$CONF";then
+  say '[通过] 配置检查通过' '[PASS] Configuration check passed'
+  say '检查范围：配置有效性，不代表服务已运行或公网已连通。' 'Scope: configuration validity; service status and public connectivity are not tested.'
+ else
+  err "$(L '[失败] 配置检查未通过，请查看上方核心报错' '[FAIL] Configuration check failed; see the core error above')"
+  return 1
+ fi
+}
 service_manager(){
  local x
  # --menu renders only; a numeric argument executes one selected operation.
@@ -605,7 +621,7 @@ service_manager(){
     5) confirm "$(L '设置开机自启？' 'Enable sing-box at boot?')" || return 0
        systemctl enable sing-box ;;
    esac ;;
-  6) check_owned && "$BIN" check -c "$CONF" ;;
+  6) report_output configuration_check ;;
   0) return 0 ;;
   *) err "$(L '无效选择' 'Invalid choice')"; return 1 ;;
  esac
@@ -5551,11 +5567,11 @@ core_versions(){
  current=$("$BIN" version | awk 'NR==1{print $3}') || return 1
  # --menu renders only; a numeric argument executes one selected operation.
  if [[ $# == 0 || $1 == --menu ]]; then
- say "当前内核：${current}；本版测试内核：$CORE_RECOMMENDED" "Current core: $current; tested core for this release: $CORE_RECOMMENDED"
- prompt_options '1. 安装本版测试内核
+ say "当前内核：${current}；本脚本已验证的内核版本：$CORE_RECOMMENDED" "Current core: $current; core version verified with this manager: $CORE_RECOMMENDED"
+ prompt_options '1. 安装脚本已验证版本（可能降级）
 2. 最新稳定版
 3. 指定版本 / 降级
-0. 返回' '1. Tested core
+0. 返回' '1. Install verified version (may downgrade)
 2. Latest stable
 3. Specific version / downgrade
 0. Back'
@@ -7327,7 +7343,7 @@ SKYBYTE Manager — 快速使用说明
 6. 证书：主菜单e → 6，用隔离的 ACME/Certbot 目录通过 HTTP-01 或 Cloudflare DNS-01申请，自动续签需手动开启。HTTP须公网 TCP80可达，DNS Token私密保存，不停止已有网站、不覆盖外部证书。
 7. WARP/流媒体：主菜单d → 9 / 8。WARP默认仅所选流媒体和AI域名，不能保证国家或解锁；匿名检测不验证播放。WARP菜单6维护规则列表，应用新列表需单独确认。
 8. 备份：主菜单e → 2新建、3恢复、7列表/预检/加密导出/导入/确认清理旧备份。备份含私钥。恢复保留当前用量、策略和当前订阅Token。
-9. 版本：主菜单e → 1选本版测试内核、最新稳定版或指定版本/降级，须检查全部托管配置。每周自动更新保持移除。
+9. 版本：主菜单e → 1选脚本已验证版本（可能降级）、最新稳定版或指定版本/降级，须检查全部托管配置。每周自动更新保持移除。
 10. 资源：主菜单d → 7，每个用户一个内核，容量需实测。配额周期检查，不是精确计费。
 11. 住宅落地 / VPS 中转：主菜单d → 10，再选6查看具体步骤，导入一个 Reality/Vision 或 HY2 落地链接/JSON。客户端连接本 VPS，网站看到落地出口。自签名 HY2 须提供可信公开证书；中转与 WARP 分流择一启用，中转失败不自动直连。速度需按两段链路实测。
 12. HAProxy TCP 透传：主菜单d → 11，再选12查看说明。A 可只运行 TCP 转发，B 运行带认证的 Reality/Trojan 节点；手机保留 B 的认证、SNI及TLS验证，仅改连接地址和端口为 A。不支持 HY2/原生UDP。配额在 B 管理。本菜单可单独备份、恢复与卸载，完整 sing-box 备份中的 haproxy 子目录需单独恢复。

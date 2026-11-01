@@ -114,6 +114,22 @@ status(){
  echo 'UFW:';firewall_audit;echo 'Hop:'
  if [[ -f $META && $(state hop_backend) == iptables ]];then iptables -w 5 -t nat -S SKYBYTE_HY2_HOP 2>/dev/null || :;else nft list table ip singbox_v2_hop 2>/dev/null || :;fi
 }
+configuration_check(){
+ check_owned || return 1
+ if [[ ! -x $BIN ]];then
+  err "$(L '[未检查] sing-box 核心不存在或不可执行' '[Not checked] sing-box binary is missing or not executable')"
+  return 1
+ fi
+ say '===== sing-box 配置检查 =====' '===== sing-box configuration check ====='
+ printf '%s: %s\n' "$(L '配置文件' 'Configuration file')" "$CONF"
+ if "$BIN" check -c "$CONF";then
+  say '[通过] 配置检查通过' '[PASS] Configuration check passed'
+  say '检查范围：配置有效性，不代表服务已运行或公网已连通。' 'Scope: configuration validity; service status and public connectivity are not tested.'
+ else
+  err "$(L '[失败] 配置检查未通过，请查看上方核心报错' '[FAIL] Configuration check failed; see the core error above')"
+  return 1
+ fi
+}
 service_manager(){
  local x
  # --menu renders only; a numeric argument executes one selected operation.
@@ -152,7 +168,7 @@ service_manager(){
     5) confirm "$(L '设置开机自启？' 'Enable sing-box at boot?')" || return 0
        systemctl enable sing-box ;;
    esac ;;
-  6) check_owned && "$BIN" check -c "$CONF" ;;
+  6) report_output configuration_check ;;
   0) return 0 ;;
   *) err "$(L '无效选择' 'Invalid choice')"; return 1 ;;
  esac
