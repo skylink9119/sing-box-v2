@@ -10,14 +10,22 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def assemble(name, chain=()):
-    if name in chain:
-        raise ValueError('Recursive source include: ' + name)
-    path = ROOT / 'src' / name
-    if path.parent != ROOT / 'src':
-        raise ValueError('Invalid source include')
+    """Expand repository-local source includes; never load modules on the VPS."""
+    relative = Path(name) if '/' in name else Path('src') / name
+    if (relative.is_absolute() or '..' in relative.parts or
+            relative.parts[0] not in ('src', 'lib', 'modules') or
+            len(relative.parts) != 2 or
+            not re.fullmatch(r'[a-z0-9_]+[.](?:sh|py)', relative.name)):
+        raise ValueError('Invalid source include: ' + name)
+    key = relative.as_posix()
+    if key in chain:
+        raise ValueError('Recursive source include: ' + key)
+    path = ROOT / relative
+    if path.is_symlink() or path.parent.is_symlink() or not path.is_file():
+        raise ValueError('Missing or symlinked source include: ' + key)
     source = path.read_text()
-    return re.sub(r'^# @include ([a-z0-9_]+\.(?:sh|py))\n',
-                  lambda match: assemble(match[1], chain + (name,)), source, flags=re.M)
+    return re.sub(r'^# @include ([^\n]+)\n',
+                  lambda match: assemble(match[1], chain + (key,)), source, flags=re.M)
 
 
 def main():
