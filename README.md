@@ -20,7 +20,9 @@
 
 ---
 
-# SKYBYTE Manager V2.8.22：模块化维护结构
+# SKYBYTE Manager V2.8.23：模块化维护结构
+
+本次检查修复错误状态被吞掉及模块末尾引用漏检；详见[检查记录](docs/AUDIT-2026-11-01.md)。
 
 安装前检测 **a → 7** 遇到 UDP 端口占用时，会核对本脚本配置、systemd 服务、核心进程和实际监听归属。确认是已安装 HY2 后提示“已安装，无需重复安装”，并提供查看节点 **b → 1**、修改端口 **b → 8** 和服务状态 **c → 1** 入口；其他或无法确认的占用仍报冲突。此识别仅用于只读检测，不把占用端口当作空闲端口，不覆盖已有节点。
 
@@ -377,7 +379,7 @@ HY2 支持上下行 Mbps、`ignore_client_bandwidth` 与 Salamander 混淆，服
 
 ```bash
 python3 scripts/build.py --check
-python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.22
+python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.23
 ```
 
 打包只包含 `bootstrap.sh` 启动命令、安装入口、完整脚本、公开规则列表及SHA256SUMS，不发布运行时配置或凭据。

@@ -24,7 +24,9 @@ def assemble(name, chain=()):
     if path.is_symlink() or path.parent.is_symlink() or not path.is_file():
         raise ValueError('Missing or symlinked source include: ' + key)
     source = path.read_text()
-    return re.sub(r'^# @include ([^\n]+)\n',
+    if source and not source.endswith("\n"):
+        source += "\n"
+    return re.sub(r'^# @include ([^\n]+)(?:\n|$)',
                   lambda match: assemble(match[1], chain + (key,)), source, flags=re.M)
 
 

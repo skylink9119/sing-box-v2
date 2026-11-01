@@ -21,6 +21,32 @@ class InstallationCheckTests(unittest.TestCase):
         self.assertFalse((self.config/'config.json').exists())
         self.assertFalse((self.base/'state.json').exists())
 
+    def test_firewall_failure_is_not_reported_as_success(self):
+        for operation in ('default deny incoming', 'default allow outgoing', '--force enable'):
+            code = """need_root(){ :; };require_cmd(){ :; };confirm(){ return 0; }
+detect_ssh_ports(){ SSH_PORTS=22; };firewall_allow_protocols(){ :; }
+ufw(){ echo "UFW $*"; [[ $* != '"""+operation+"""' ]]; }
+if firewall 2; then echo UNEXPECTED_SUCCESS; else echo EXPECTED_FAILURE; fi"""
+            result = self.shell(code, input='22\n')
+            self.assertIn('EXPECTED_FAILURE', result.stdout)
+            self.assertNotIn('UNEXPECTED_SUCCESS', result.stdout)
+            if operation != '--force enable':
+                self.assertNotIn('UFW --force enable', result.stdout)
+        result = self.shell('need_root(){ :; };require_cmd(){ :; };confirm(){ return 0; };ufw(){ return 7; };if firewall 3; then echo BAD; else echo FAILED; fi')
+        self.assertIn('FAILED', result.stdout)
+        self.assertNotIn('BAD', result.stdout)
+
+    def test_service_and_traffic_errors_reach_menu_caller(self):
+        result = self.shell('check_owned(){ :; };confirm(){ return 0; };systemctl(){ return 9; };if service_manager 2; then echo BAD; else echo FAILED; fi')
+        self.assertIn('FAILED', result.stdout)
+        result = self.shell('require_cmd(){ :; };vnstat(){ return 9; };if traffic 2; then echo BAD; else echo FAILED; fi')
+        self.assertIn('FAILED', result.stdout)
+
+    def test_cancelled_controls_remain_successful_noops(self):
+        for action in ('firewall 3', 'service_manager 2', 'traffic 1'):
+            result=self.shell('need_root(){ :; };require_cmd(){ :; };check_owned(){ :; };confirm(){ return 1; };'+action)
+            self.assertEqual(result.returncode,0)
+
     def assert_no_node(self):
         self.assertFalse(self.bin.exists())
         self.assertFalse((self.config/'config.json').exists())

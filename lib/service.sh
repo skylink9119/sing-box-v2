@@ -137,10 +137,23 @@ service_manager(){
   x=$1
  fi
  case "$x" in
- 1) report_output status;; 2) check_owned && confirm "$(L '启动 sing-box？' 'Start sing-box?')" && systemctl start sing-box;;
- 3) check_owned && confirm "$(L '重启 sing-box？' 'Restart sing-box?')" && "$BIN" check -c "$CONF" && systemctl restart sing-box;;
- 4) check_owned && warn "$(L '管理员直连节点将断开连接；Argo 和受限用户请单独管理' 'Admin direct nodes will disconnect; manage Argo and quota users separately')" && confirm "$(L '停止 sing-box？' 'Stop sing-box?')" && systemctl stop sing-box;;
- 5) check_owned && confirm "$(L '设置开机自启？' 'Enable sing-box at boot?')" && systemctl enable sing-box;;
- 6) check_owned && "$BIN" check -c "$CONF";; 0) return;; *) err "$(L '无效选择' 'Invalid choice')";; esac
- return 0
+  1) report_output status ;;
+  2|3|4|5)
+   check_owned || return 1
+   case "$x" in
+    2) confirm "$(L '启动 sing-box？' 'Start sing-box?')" || return 0
+       systemctl start sing-box ;;
+    3) confirm "$(L '重启 sing-box？' 'Restart sing-box?')" || return 0
+       "$BIN" check -c "$CONF" || return 1
+       systemctl restart sing-box ;;
+    4) warn "$(L '管理员直连节点将断开连接；Argo 和受限用户请单独管理' 'Admin direct nodes will disconnect; manage Argo and quota users separately')"
+       confirm "$(L '停止 sing-box？' 'Stop sing-box?')" || return 0
+       systemctl stop sing-box ;;
+    5) confirm "$(L '设置开机自启？' 'Enable sing-box at boot?')" || return 0
+       systemctl enable sing-box ;;
+   esac ;;
+  6) check_owned && "$BIN" check -c "$CONF" ;;
+  0) return 0 ;;
+  *) err "$(L '无效选择' 'Invalid choice')"; return 1 ;;
+ esac
 }

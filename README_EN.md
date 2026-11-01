@@ -20,7 +20,9 @@
 
 ---
 
-# SKYBYTE Manager V2.8.22: modular source architecture
+# SKYBYTE Manager V2.8.23: modular source architecture
+
+This audit fixes swallowed command failures and module includes at EOF. See the [audit record](docs/AUDIT-2026-11-01.md).
 
 Read-only installation checks (**a → 7**) verify the managed configuration, systemd service, executable and actual socket owners when a UDP port is occupied. Confirmed managed HY2 is reported as already installed, with links to nodes (**b → 1**), port editing (**b → 8**) and service status (**c → 1**). Other or unverified owners remain conflicts. Installation never treats an occupied port as free or overwrites an existing node.
 
@@ -377,7 +379,7 @@ Restore retains current account policy/usage and current subscription tokens. HT
 
 ```bash
 python3 scripts/build.py --check
-python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.22
+python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.23
 ```
 
 Packaging includes only bootstrap.sh, install.sh, the full bundle, public rule catalog and SHA256SUMS, never runtime state or credentials.
