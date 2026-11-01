@@ -20,7 +20,7 @@
 
 ---
 
-# SKYBYTE Manager V2.8.25：模块化维护结构
+# SKYBYTE Manager V2.8.26：模块化维护结构
 
 配置检查现在显示明确的通过、失败或未检查提示；内核菜单明确区分当前版本与脚本验证基准。
 
@@ -379,7 +379,7 @@ HY2 支持上下行 Mbps、`ignore_client_bandwidth` 与 Salamander 混淆，服
 
 ```bash
 python3 scripts/build.py --check
-python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.25
+python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.26
 ```
 
 打包只包含 `bootstrap.sh` 启动命令、安装入口、完整脚本、公开规则列表及SHA256SUMS，不发布运行时配置或凭据。

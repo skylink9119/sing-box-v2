@@ -1223,6 +1223,7 @@ apply_update 9.9.9"""
         self.assertEqual(hits,[]);self.assertEqual(self.user_db()['users'][0]['upload'],1234)
 
     def test_startup_info_uses_local_system_and_actual_service_state(self):
+        self.bin.write_text('#!/bin/sh\necho "sing-box version 1.14.4"\n')
         code="""uname(){ case "$1" in -r) echo test-kernel;; -m) echo x86_64;; esac; }
 systemd-detect-virt(){ echo kvm; }
 startup_probe(){ "$@"; }
@@ -1234,10 +1235,15 @@ startup_info"""
         for lang,os_label,running in [('en_US','OS','Running'),('zh_CN','操作系统','运行中')]:
             result=self.shell('LANGUAGE_CHOICE='+lang+'; '+code)
             self.assertIn(os_label+': Debian',result.stdout)
-            for value in ['test-kernel','amd64','kvm','192.0.2.10/24','2001:db8::10/64','sing-box: '+running]:
+            for value in ['test-kernel','amd64','kvm','192.0.2.10/24','2001:db8::10/64','sing-box(1.14.4): '+running]:
                 self.assertIn(value,result.stdout)
             self.assertNotIn('SHOULD_NOT_QUERY_NETWORK',result.stdout)
             self.assertEqual(result.stderr.count('SYSTEM_QUERY'),1)
+
+    def test_startup_version_failure_is_unknown_without_hiding_service_state(self):
+        result=self.shell("startup_probe(){ return 124; }; startup_info")
+        self.assertIn('sing-box(Version unknown): Installed, status unknown',result.stdout)
+        self.assertNotIn('sing-box(1.14.3)',result.stdout)
 
     def test_startup_info_handles_unavailable_optional_commands(self):
         result=self.shell('OS_RELEASE=/nonexistent; BIN=/nonexistent; startup_probe(){ return 124; }; startup_info')

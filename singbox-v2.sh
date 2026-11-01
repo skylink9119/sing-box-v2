@@ -8,7 +8,7 @@
 set -Eeuo pipefail
 umask 077
 SCRIPT_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
-MANAGER_VERSION=2.8.25
+MANAGER_VERSION=2.8.26
 CORE_RECOMMENDED=1.14.3
 BASE=/etc/singbox-v2
 CONF=/etc/sing-box/config.json
@@ -296,7 +296,7 @@ startup_service_info(){
  printf '  %s: %s\n' "$label" "$value"
 }
 startup_info(){
- local os kernel arch virtual ipv4 ipv6 addresses services sb=false argo=false nginx=false users=false hp=false cert_info
+ local os kernel arch virtual ipv4 ipv6 addresses services sb=false argo=false nginx=false users=false hp=false cert_info core_output core_version sb_label=sing-box
  # shellcheck disable=SC1090
  os=$( ( . "$OS_RELEASE"; printf '%s' "${PRETTY_NAME:-${ID:-}}" ) 2>/dev/null) || os=''
  os=${os:-$(L '未知' 'Unknown')}
@@ -311,7 +311,15 @@ startup_info(){
   ipv4=$(awk '$3=="inet" {print $4}' <<< "$addresses" | paste -sd ', ' -)
   ipv6=$(awk '$3=="inet6" {print $4}' <<< "$addresses" | paste -sd ', ' -)
  fi
- [[ ! -x $BIN ]] || sb=true
+ if [[ -x $BIN ]];then
+  sb=true
+  core_version=$(L '版本未知' 'Version unknown')
+  core_output=$(startup_probe "$BIN" version) || core_output=''
+  if [[ $core_output =~ ^sing-box[[:space:]]version[[:space:]]([0-9]+[.][0-9]+[.][0-9]+([-+][[:alnum:].-]+)?)($|[[:space:]]) ]];then
+   core_version=${BASH_REMATCH[1]}
+  fi
+  sb_label="sing-box($core_version)"
+ fi
  if [[ -x $BASE/cloudflared ]] || command -v cloudflared >/dev/null; then argo=true; fi
  if command -v nginx >/dev/null; then nginx=true; fi
  services=$(startup_probe systemctl show --no-pager --property=Id,LoadState,ActiveState sing-box.service skybyte-argo-tunnel.service nginx.service skybyte-haproxy.service skybyte-users.service) || services=''
@@ -321,7 +329,7 @@ startup_info(){
  say '系统信息：' 'System information:'
  printf '  %s: %s\n' "$(L '操作系统' 'OS')" "$os" "$(L '内核' 'Kernel')" "$kernel" "$(L '处理器架构' 'Architecture')" "$arch" "$(L '虚拟化' 'Virtualization')" "$virtual"
  printf '  IPv4: %s\n  IPv6: %s\n' "${ipv4:-$(L '未检测到' 'Not detected')}" "${ipv6:-$(L '未检测到' 'Not detected')}"
- startup_service_info sing-box "$sb" sing-box.service "$services"
+ startup_service_info "$sb_label" "$sb" sing-box.service "$services"
  startup_service_info Argo "$argo" skybyte-argo-tunnel.service "$services"
  startup_service_info Nginx "$nginx" nginx.service "$services"
  [[ ! -d $BASE/haproxy ]] || hp=true
@@ -5567,7 +5575,7 @@ core_versions(){
  current=$("$BIN" version | awk 'NR==1{print $3}') || return 1
  # --menu renders only; a numeric argument executes one selected operation.
  if [[ $# == 0 || $1 == --menu ]]; then
- say "当前内核：${current}；本脚本已验证的内核版本：$CORE_RECOMMENDED" "Current core: $current; core version verified with this manager: $CORE_RECOMMENDED"
+ say "当前内核：${current}" "Current core: $current"
  prompt_options '1. 安装脚本已验证版本（可能降级）
 2. 最新稳定版
 3. 指定版本 / 降级
