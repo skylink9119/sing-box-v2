@@ -21,8 +21,7 @@ traffic(){
   x=$1
  fi
  case "$x" in
- 1) confirm "$(L '安装 vnStat？' 'Install vnStat?')" && apt_install vnstat && systemctl enable --now vnstat;;
+ 1) if confirm "$(L '安装 vnStat？' 'Install vnStat?')"; then apt_install vnstat && systemctl enable --now vnstat; fi;;
  2) require_cmd vnstat && report_output vnstat -d;; 3) require_cmd vnstat && report_output vnstat -m;;
  4) require_cmd vnstat && report_output vnstat -l;; 5) require_cmd vnstat && report_output vnstat;; 0) return;; *) err "$(L '无效选择' 'Invalid choice')";; esac
- return 0
 }

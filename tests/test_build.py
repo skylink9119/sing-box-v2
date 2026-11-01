@@ -88,3 +88,10 @@ class ModularBuildTests(unittest.TestCase):
         result = self.build()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('symlinked', result.stderr)
+
+    def test_final_include_without_newline_is_not_silently_ignored(self):
+        entry = self.root / 'src/manager.sh'
+        entry.write_text(entry.read_text() + '# @include modules/missing.sh')
+        result = self.build()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Missing', result.stderr)

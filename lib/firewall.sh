@@ -98,7 +98,7 @@ firewall(){
   choice=$1
  fi
  case "$choice" in
- 1) confirm "$(L '安装 UFW？' 'Install UFW?')" && apt_install ufw ;;
+ 1) if confirm "$(L '安装 UFW？' 'Install UFW?')"; then apt_install ufw ; fi;;
  2)
    require_cmd ufw || return
    say '当前 SSH 监听信息（必须人工核实）：' 'SSH listener information (VERIFY manually):'
@@ -114,18 +114,19 @@ firewall(){
    while read -r detected; do [[ -z $detected ]] || ufw allow "$detected/tcp" || return 1; done <<<"$SSH_PORTS"
    firewall_allow_protocols || return 1
    if [[ -f $META && $(state hop) == True ]]; then ufw allow "$(state hop_start):$(state hop_end)/udp" || return 1; fi
-   ufw default deny incoming; ufw default allow outgoing; ufw --force enable
+   ufw default deny incoming || return 1
+   ufw default allow outgoing || return 1
+   ufw --force enable || return 1
    warn "$(L '如有 HY2 跳跃或云防火墙，需另外确认规则。' 'Check HY2 hopping and provider firewall rules separately.')" ;;
- 3) require_cmd ufw && confirm "$(L '关闭 UFW 会降低保护，确定？' 'Disable UFW and reduce protection?')" && ufw --force disable ;;
+ 3) require_cmd ufw && if confirm "$(L '关闭 UFW 会降低保护，确定？' 'Disable UFW and reduce protection?')"; then ufw --force disable ; fi;;
  4) require_cmd ufw && report_output ufw status verbose ;;
  5) require_cmd ufw || return
     prompt_read "$(L '端口：' 'Port: ')" port; valid_port "$port" || return 1
     prompt_read "$(L '协议 (tcp/udp)：' 'Protocol (tcp/udp): ')" proto; [[ $proto == tcp || $proto == udp ]] || return 1
-    confirm "$(L "放行 $port/${proto}？" "Allow $port/$proto?")" && ufw allow "$port/$proto" ;;
+    if confirm "$(L "放行 $port/${proto}？" "Allow $port/$proto?")"; then ufw allow "$port/$proto" ; fi;;
  6) require_cmd ufw || return; ufw status numbered
     prompt_read "$(L '规则编号：' 'Rule number: ')" port; [[ $port =~ ^[0-9]+$ ]] || return 1
-    confirm "$(L '删除指定规则？确认不会影响 SSH！' 'Delete rule? Ensure SSH stays reachable!')" && ufw --force delete "$port" ;;
+    if confirm "$(L '删除指定规则？确认不会影响 SSH！' 'Delete rule? Ensure SSH stays reachable!')"; then ufw --force delete "$port" ; fi;;
  0) return;; *) err "$(L '无效选择' 'Invalid choice')";;
  esac
- return 0
 }
