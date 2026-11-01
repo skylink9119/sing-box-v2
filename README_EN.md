@@ -20,9 +20,9 @@
 
 ---
 
-# SKYBYTE Manager V2.8.24: modular source architecture
+# SKYBYTE Manager V2.8.25: modular source architecture
 
-This release splits the WARP/relay Python backend by responsibility and validates generated backends. See [module development](docs/MODULES.md).
+Configuration checks now report pass/fail/not-checked results; the core menu distinguishes installed versions from the manager verification baseline.
 
 Read-only installation checks (**a → 7**) verify the managed configuration, systemd service, executable and actual socket owners when a UDP port is occupied. Confirmed managed HY2 is reported as already installed, with links to nodes (**b → 1**), port editing (**b → 8**) and service status (**c → 1**). Other or unverified owners remain conflicts. Installation never treats an occupied port as free or overwrites an existing node.
 
@@ -379,7 +379,7 @@ Restore retains current account policy/usage and current subscription tokens. HT
 
 ```bash
 python3 scripts/build.py --check
-python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.24
+python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.25
 ```
 
 Packaging includes only bootstrap.sh, install.sh, the full bundle, public rule catalog and SHA256SUMS, never runtime state or credentials.

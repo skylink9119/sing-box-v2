@@ -45,11 +45,11 @@ core_versions(){
  current=$("$BIN" version | awk 'NR==1{print $3}') || return 1
  # --menu renders only; a numeric argument executes one selected operation.
  if [[ $# == 0 || $1 == --menu ]]; then
- say "当前内核：${current}；本版测试内核：$CORE_RECOMMENDED" "Current core: $current; tested core for this release: $CORE_RECOMMENDED"
- prompt_options '1. 安装本版测试内核
+ say "当前内核：${current}；本脚本已验证的内核版本：$CORE_RECOMMENDED" "Current core: $current; core version verified with this manager: $CORE_RECOMMENDED"
+ prompt_options '1. 安装脚本已验证版本（可能降级）
 2. 最新稳定版
 3. 指定版本 / 降级
-0. 返回' '1. Tested core
+0. 返回' '1. Install verified version (may downgrade)
 2. Latest stable
 3. Specific version / downgrade
 0. Back'
