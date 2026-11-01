@@ -105,3 +105,31 @@ class ModularBuildTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         result = subprocess.run(['bash', '-n', str(self.root / PAYLOAD)], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_backend_fragment_change_is_detected(self):
+        fragment = self.root / 'src/warp_relay.py'
+        fragment.write_text(fragment.read_text() + '\n# backend change\n')
+        result = self.build('--check')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('backend is stale', result.stderr)
+
+    def test_missing_backend_fragment_preserves_existing_outputs(self):
+        payload = (self.root / PAYLOAD).read_bytes()
+        backend = (self.root / 'src/warp.py').read_bytes()
+        (self.root / 'src/warp_relay.py').unlink()
+        result = self.build()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Missing', result.stderr)
+        self.assertEqual(payload, (self.root / PAYLOAD).read_bytes())
+        self.assertEqual(backend, (self.root / 'src/warp.py').read_bytes())
+
+    def test_invalid_backend_syntax_is_rejected_before_writing(self):
+        payload = (self.root / PAYLOAD).read_bytes()
+        backend = (self.root / 'src/warp.py').read_bytes()
+        fragment = self.root / 'src/warp_relay.py'
+        fragment.write_text(fragment.read_text() + '\ndef broken(:\n')
+        result = self.build()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('SyntaxError', result.stderr)
+        self.assertEqual(payload, (self.root / PAYLOAD).read_bytes())
+        self.assertEqual(backend, (self.root / 'src/warp.py').read_bytes())
