@@ -13,7 +13,7 @@ OS_RELEASE=${OS_RELEASE:-/etc/os-release}
 APT_ROOT=${APT_ROOT:-/etc/apt}
 L(){ printf '%s / %s' "$1" "$2"; }
 warn(){ printf '%s\n' "$*" >&2; }
-# @include packages.sh
+# @include lib/packages.sh
 installer_dependencies(){
  local name
  local missing=()

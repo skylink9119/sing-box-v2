@@ -1,0 +1,49 @@
+# 模块开发说明 / Module development
+
+此次重构将 Bash 源码按职责拆分，供后续功能扩展；当前菜单与节点配置格式沿用现有行为。
+The Bash source is organized by responsibility for future work; existing menu and node formats are retained.
+
+| 方向 / Area | 源码 / Source | 职责 / Responsibility |
+|---|---|---|
+| 界面 / UI | `lib/common.sh`, `lib/menu.sh` | 语言、颜色、输入、确认和菜单；保持主菜单字母与子菜单数字。 |
+| 服务器 / Server | `lib/detect.sh`, `lib/packages.sh`, `lib/service.sh`, `lib/firewall.sh` | 环境检查、依赖、服务、防火墙和 BBR；复用现有事务与回退。 |
+| 流量 / Traffic | `lib/traffic.sh`, `lib/users.sh` | sing-box：vnStat、用户配额与有效期。Xray：现有流媒体/线路/测速；不包含用户配额服务。 |
+| 订阅 / Subscription | `lib/subscription.sh`, `lib/subscription_exports.sh`, `lib/online.sh` | 复用现有客户端导出、HTTPS 个人订阅。 |
+| 协议 / Protocol | `modules/install.sh`, `modules/reality.sh`, `modules/hysteria2.sh`, `modules/argo.sh` | 协议安装与诊断；共用端口、证书、服务和备份能力。 |
+| 网络扩展 / Networking | `modules/ipv6.sh`, `modules/warp.sh` | 复用已有 IPv6 / WARP 检测与应用流程。 |
+
+## 目录与构建 / Layout and build
+
+- `src/manager.sh`：配置、版本与模块清单 / configuration, version and composition.
+- `lib/`：公共操作 / shared operations.
+- `modules/`：协议与网络功能 / protocol and networking features.
+- `src/*.py`：配置、校验、诊断及事务后端 / configuration, validation, diagnostics and transactions.
+- `tests/`：隔离的功能回归测试 / isolated regression fixtures.
+
+在源码里使用 `# @include lib/name.sh` 或 `# @include modules/name.sh` 声明模块；Python 后端仍由现有构建器嵌入。模块文件由构建器处理，不应单独运行或在 VPS 上动态 `source`。
+Use build-time includes for Bash modules; Python backends remain embedded by the builder. Module files are not standalone programs and are not dynamically sourced on the VPS.
+
+```bash
+python3 scripts/build.py
+python3 scripts/build.py --check
+python3 -m unittest discover -s tests -v
+bash tests/test_ports.sh
+bash tests/test_reinstall.sh
+bash tests/test_uninstall.sh
+```
+
+测试只操作临时目录和替代服务，不在宿主机安装/卸载服务。测试依赖和真实核心路径按 README 配置；可设置 `PYTHON_BIN`。独立入口复用现有回归测试，完整测试集仍由 CI 执行。
+Tests use temporary directories and substitute services. Follow the README for test dependencies and real engine paths; `PYTHON_BIN` selects Python for focused entry points. CI still runs the complete suite.
+
+## 扩展约定 / Extension rules
+
+1. 界面负责收集参数，模块调用既有校验和事务；不要在菜单渲染时安装依赖或联网。Keep rendering read-only; validate inputs before mutations.
+2. 配置写入前检查归属、端口、证书和防火墙；失败复用既有回退，不覆盖其他服务。Reuse ownership checks and existing rollback paths.
+3. 复用公共确认、语言和报告函数；数据输出避免混入提示或凭据。Reuse common prompts and reports; keep credentials private.
+4. 添加模块后更新入口清单与测试；通过构建、静态检查及对应协议测试。Register new modules and test the generated payload.
+5. 禁止 include 绝对路径、上级目录、软链接或递归；缺失模块必须令构建失败。Includes are limited to repository source directories and must fail on missing, recursive or symlinked paths.
+
+## 发布与运行 / Distribution and runtime
+
+源码目录用于维护；安装器继续发布一个自包含的管理脚本及校验摘要。更新后的 VPS 无需保存 `lib/`、`modules/`，也不增加菜单启动时的模块下载或外部网络请求。此重构本身不承诺更高网络速度或引入额外后台服务。
+Source directories support maintenance. Releases continue to distribute a standalone manager and checksums. Installed VPSs do not need the source tree, extra module downloads or additional menu-time network requests. This refactor does not add background services or promise faster network throughput.

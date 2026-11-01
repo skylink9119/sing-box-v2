@@ -20,7 +20,7 @@
 
 ---
 
-# SKYBYTE Manager V2.8.21: recognize ports owned by installed HY2
+# SKYBYTE Manager V2.8.22: modular source architecture
 
 Read-only installation checks (**a → 7**) verify the managed configuration, systemd service, executable and actual socket owners when a UDP port is occupied. Confirmed managed HY2 is reported as already installed, with links to nodes (**b → 1**), port editing (**b → 8**) and service status (**c → 1**). Other or unverified owners remain conflicts. Installation never treats an occupied port as free or overwrites an existing node.
 
@@ -212,7 +212,7 @@ Menu **f → 3** requires case-insensitive `y` confirmation and first backs up c
 Backups, external certificates, unknown user files, reports, UFW allow rules, BBR/FQ settings and system packages such as vnStat remain. It does not reset the firewall or delete unrelated nftables tables. Backups contain private keys; protect permissions and disk space. To restore after uninstall, deploy again and restore the retained backup through menu e → 3.
 
 ```bash
-for file in bootstrap.sh install.sh singbox-v2.sh src/*.sh; do bash -n "$file"; done
+for file in bootstrap.sh install.sh singbox-v2.sh src/*.sh lib/*.sh modules/*.sh tests/*.sh; do bash -n "$file"; done
 shellcheck bootstrap.sh install.sh singbox-v2.sh
 python3 -m unittest discover -s tests -v
 ```
@@ -288,7 +288,7 @@ Backups include policies, usage, configurations and certificates. Restore retain
 
 ## Source modules and build
 
-Edit `src/quickstart.sh` (single-line installation command), `bootstrap.sh` (full bootstrap checks), `installer.sh` (entry point), `packages.sh` (APT/archive compatibility), `shortcut.sh` (`sb` launcher), `manager.sh` (base services/install), `subscriptions.sh` (exports), `users.sh` (user UI/services), `users.py` (accounting/diagnostics), `operations.sh` (updates/certificates/resources), `menu.sh` (menu/entry point), `rescue.sh`/`rescue.py` (restricted networks, Argo rescue, offline assets and IPv6/NAT helpers), `hopping.sh` (UDP hopping), `media.sh`/`media.py` (media probes), `warp.sh`/`warp.py` (gateway/owned routing), `relay.sh` (sing-box residential relay), `haproxy.sh`/`haproxy.py` (independent TCP passthrough), `configuration.sh`/`configuration.py` (node edits), `acme.sh` (issuance), `online.sh`/`online.py` (HTTPS delivery), `reliability.sh`/`backup.py` (transactions/versions/backups) and `help.sh` (guide). Run `python3 scripts/build.py` to produce the self-contained `singbox-v2.sh`, `install.sh`, `bootstrap.sh` and the bilingual installation commands; CI uses `--check` to reject stale bundles. Do not edit the generated bundle directly.
+Maintain configuration and module composition in `src/manager.sh`, shared UI/detection/firewall/service/traffic/subscription/account/backup functions in `lib/`, and protocol/network features in `modules/`. Python configuration and validation backends remain in `src/*.py`. `python3 scripts/build.py` generates standalone payloads; VPS installation and updates do not download modules individually. See the [module development guide](docs/MODULES.md) for ownership and extension rules. Do not edit generated files.
 
 The original `install.sh` entry remains sufficient: deployed scripts contain all modules and require no runtime module downloads. `bash singbox-v2.sh --self-check` checks embedded Python syntax and outputs the version without root. systemd/UFW operations are tested through isolated mocks; actual VPS deployment still needs verification.
 
@@ -377,7 +377,7 @@ Restore retains current account policy/usage and current subscription tokens. HT
 
 ```bash
 python3 scripts/build.py --check
-python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.21
+python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.22
 ```
 
 Packaging includes only bootstrap.sh, install.sh, the full bundle, public rule catalog and SHA256SUMS, never runtime state or credentials.

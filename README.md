@@ -20,7 +20,7 @@
 
 ---
 
-# SKYBYTE Manager V2.8.21：识别已安装 HY2 的端口占用
+# SKYBYTE Manager V2.8.22：模块化维护结构
 
 安装前检测 **a → 7** 遇到 UDP 端口占用时，会核对本脚本配置、systemd 服务、核心进程和实际监听归属。确认是已安装 HY2 后提示“已安装，无需重复安装”，并提供查看节点 **b → 1**、修改端口 **b → 8** 和服务状态 **c → 1** 入口；其他或无法确认的占用仍报冲突。此识别仅用于只读检测，不把占用端口当作空闲端口，不覆盖已有节点。
 
@@ -212,7 +212,7 @@ HY2 跳跃默认关闭，入口 **d → 5**，可选择 nftables（默认）或 
 保留备份、外部证书、未知用户文件、报告、UFW 放行规则、BBR/FQ 设置及 vnStat 等系统软件；不会重置防火墙或删除其他 nftables 表。备份仍包含私钥，请保护其权限和磁盘空间。需要恢复时先重新部署，再从菜单 e → 3 恢复保留的备份。
 
 ```bash
-for file in bootstrap.sh install.sh singbox-v2.sh src/*.sh; do bash -n "$file"; done
+for file in bootstrap.sh install.sh singbox-v2.sh src/*.sh lib/*.sh modules/*.sh tests/*.sh; do bash -n "$file"; done
 shellcheck bootstrap.sh install.sh singbox-v2.sh
 python3 -m unittest discover -s tests -v
 ```
@@ -288,7 +288,7 @@ GitHub Actions 在 Ubuntu 24.04 和 Debian 11、12、13 容器执行检查。详
 
 ## 源码模块与构建
 
-维护源码在 `src/`：`quickstart.sh` 为一行安装命令，`bootstrap.sh` 为完整启动检查，`installer.sh` 为一键入口，`packages.sh` 为 APT 兼容与归档修复，`shortcut.sh` 为 `sb` 快捷入口；`manager.sh` 为基础服务及安装逻辑，`subscriptions.sh` 为订阅导出，`users.sh` 为用户界面/服务，`users.py` 为配额与诊断，`operations.sh` 为更新/证书/资源，`menu.sh` 为主菜单及启动入口；`rescue.sh`/`rescue.py` 管理受限网络、Argo 应急、离线资产及 IPv6/NAT 辅助，`hopping.sh` 管理 UDP 跳跃，`media.sh`/`media.py` 检测流媒体，`warp.sh`/`warp.py` 管理 WARP 网关与托管路由，`relay.sh` 提供 sing-box 住宅落地中转界面，`haproxy.sh`/`haproxy.py` 提供独立 TCP 透传；`configuration.sh`/`configuration.py` 编辑节点，`acme.sh` 管理证书申请，`online.sh`/`online.py` 提供 HTTPS 订阅，`reliability.sh`/`backup.py` 管理安装事务、版本与备份，`help.sh` 提供使用说明。运行 `python3 scripts/build.py` 生成完整 `singbox-v2.sh`、`install.sh`、`bootstrap.sh` 与中英文安装命令；`python3 scripts/build.py --check` 检查是否同步。不要直接修改生成文件。
+源码按职责维护：`src/manager.sh` 只保留配置和模块清单；`lib/` 管理界面、检测、防火墙、服务、流量、订阅、用户及备份；`modules/` 管理 Reality、HY2、Argo、WARP、IPv6、证书和中转；`src/*.py` 保留配置与校验后端。运行 `python3 scripts/build.py` 合成独立脚本，VPS 安装和更新无需逐个下载模块。完整职责表与扩展约定见 [模块开发说明](docs/MODULES.md)。不要直接修改生成文件。
 
 安装仍只需 `install.sh`，部署的脚本自带所有模块，不在运行时下载或加载额外文件。`bash singbox-v2.sh --self-check` 无需 root，可检查内嵌 Python 语法并输出版本。systemd/UFW 操作使用隔离模拟测试；实际 VPS 部署仍需验证。
 
@@ -377,7 +377,7 @@ HY2 支持上下行 Mbps、`ignore_client_bandwidth` 与 Salamander 混淆，服
 
 ```bash
 python3 scripts/build.py --check
-python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.21
+python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.22
 ```
 
 打包只包含 `bootstrap.sh` 启动命令、安装入口、完整脚本、公开规则列表及SHA256SUMS，不发布运行时配置或凭据。
