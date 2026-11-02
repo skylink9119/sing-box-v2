@@ -151,7 +151,7 @@ xhttp_service_menu(){
 5. Check config
 6. Logs
 0. Back';return;fi
- xhttp_command service "$1"
+ report_output xhttp_command service "$1"
 }
 xhttp_edit_menu(){
  if [[ ${1:-} == --menu ]];then prompt_options '1. 重命名

@@ -122,7 +122,7 @@ service_menu(){
  case $choice in
   1) report_output systemctl status skybyte-sb-xhttp.service --no-pager || true;;
   2) systemctl start skybyte-sb-xhttp.service;; 3) systemctl stop skybyte-sb-xhttp.service;; 4) systemctl restart skybyte-sb-xhttp.service;;
-  5) report_output configuration_check;;
+  5) configuration_check;;
   6) report_output journalctl -u skybyte-sb-xhttp.service -n 60 --no-pager;; 0) return 0;; *) return 1;;
  esac
 }

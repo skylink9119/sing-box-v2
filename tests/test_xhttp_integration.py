@@ -63,6 +63,7 @@ xhttp_guided_install xhttp-reality'''
         self.assertIn(str(self.base/'xhttp-core/xray'),unit)
         self.assertIn('EXTRAS=0 0 0 xhttp',r.stdout)
         self.assertIn('vless://',self.shell('view_all_nodes').stdout)
+        self.assertIn('[PASS] Configuration check passed',self.shell('xhttp_service_menu 5').stdout)
 
     @unittest.skipUnless(XRAY,'official Xray required')
     def test_failed_service_start_removes_new_node_config_and_preserves_other_files(self):
