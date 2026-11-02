@@ -1549,6 +1549,12 @@ deployment_hopping(){
  fi
  if [[ $(state hop) == True ]];then
   hop_guard && systemctl is-active --quiet singbox-v2-hop.service || return 1
+  case $(state hop_backend) in
+   nftables) nft list table ip singbox_v2_hop >/dev/null 2>&1 || return 1;;
+   iptables) iptables -w 5 -t nat -S SKYBYTE_HY2_HOP >/dev/null 2>&1 || return 1;;
+   *) return 1;;
+  esac
+  [[ $(state hop_target) == "$(protocol_port hysteria2)" ]] || return 1
   report_output say '[通过] 保留现有 HY2 跳跃范围' '[PASS] Existing HY2 hopping range retained'
   return 0
  fi

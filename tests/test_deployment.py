@@ -96,8 +96,8 @@ deployment_hopping""")
         self.assertFalse(json.loads(p.read_text())['hop'])
 
     def test_existing_hopping_range_is_not_replaced(self):
-        self.configure('2');p=self.base/'state.json';state=json.loads(p.read_text());state.update(hop=True,hop_start=31000,hop_end=32000);p.write_text(json.dumps(state))
-        result=self.shell('hop_guard(){ :; };systemctl(){ :; };hop(){ echo BAD; };deployment_hopping')
+        self.configure('2');p=self.base/'state.json';state=json.loads(p.read_text());state.update(hop=True,hop_start=31000,hop_end=32000,hop_backend="nftables",hop_target=443);p.write_text(json.dumps(state))
+        result=self.shell('hop_guard(){ :; };systemctl(){ :; };nft(){ :; };hop(){ echo BAD; };deployment_hopping')
         self.assertIn('range retained',result.stdout);self.assertNotIn('BAD',result.stdout)
         self.assertEqual(json.loads(p.read_text())['hop_start'],31000)
 
@@ -109,6 +109,11 @@ deployment_hopping""")
         result=self.shell('bbr_apply(){ echo BAD; };deployment_bbr',ok=False)
         self.assertNotIn('BAD',result.stdout)
         self.assertEqual((self.root/'bbr.conf').read_text(),'external config\n')
+
+    def test_active_oneshot_without_kernel_hopping_table_is_not_success(self):
+        self.configure('2');p=self.base/'state.json';state=json.loads(p.read_text());state.update(hop=True,hop_start=20000,hop_end=30000,hop_backend='nftables',hop_target=443);p.write_text(json.dumps(state))
+        result=self.shell('hop_guard(){ :; };systemctl(){ :; };nft(){ return 1; };deployment_hopping',ok=False)
+        self.assertNotEqual(result.returncode,0);self.assertNotIn('[PASS]',result.stdout)
 
     def test_bundle_uses_one_confirmation_and_hopping_follows_firewall(self):
         self.configure('2')
