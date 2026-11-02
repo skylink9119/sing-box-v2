@@ -179,3 +179,8 @@ xhttp_guided_install'''
         root=self.base/'xhttp';root.mkdir();(root/'.owner').write_text(OWNER)
         self.assertEqual(self.shell('xhttp_command ports').stdout,'')
         self.shell('ufw(){ echo BAD; };firewall_allow_protocols')
+
+    def test_update_without_xhttp_never_downloads_or_looks_up_core(self):
+        result=self.shell('xhttp_latest(){ echo BAD_LOOKUP;return 1; };xhttp_command update',ok=False)
+        self.assertNotEqual(result.returncode,0);self.assertNotIn('BAD_LOOKUP',result.stdout+result.stderr)
+        self.assertFalse((self.base/'xhttp-core').exists())

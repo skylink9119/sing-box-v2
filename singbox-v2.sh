@@ -10406,7 +10406,9 @@ xhttp_install_automatic(){
       qr_nodes;;
   service) helper guard || return 1;recover || return 1;service_menu "$2";;
   edit) helper guard || return 1;recover || return 1;edit_nodes "$2";;
-  update) CORE_VERSION=$(xhttp_latest) || return 1;recover || return 1;update_core;;
+  update)
+    [[ -x $SKYBYTE_XRAY_BINARY && -f $SKYBYTE_XRAY_DIR/config.json ]] || { error '尚未安装 XHTTP，请先选择 1 或 2；未下载 Xray。' 'XHTTP is not installed. Choose 1 or 2 first; Xray was not downloaded.';return 1; }
+    CORE_VERSION=$(xhttp_latest) || return 1;recover || return 1;update_core;;
   backup) [[ $# != 2 ]] || { helper backup --file "$2";return; };make_backup;;
   restore) restore_backup;;
   guard) [[ ! -e $SKYBYTE_XRAY_DIR && ! -L $SKYBYTE_XRAY_DIR ]] || helper guard;;
