@@ -141,7 +141,7 @@ deployment_apply_selected(){
   fi
  fi
  if [[ $selected_qr == 1 ]];then
-  if command -v qrencode >/dev/null;then report_output say '[通过] 二维码工具已安装；sing-box 用 b → 4，XHTTP 用 a → 10 → 5' '[PASS] qrencode installed; sing-box: b → 4, XHTTP: a → 10 → 5'
+  if command -v qrencode >/dev/null;then report_output say '[通过] 二维码工具已安装；sing-box 用 b → 4，XHTTP 用 b → 11 → 5' '[PASS] qrencode installed; sing-box: b → 4, XHTTP: b → 11 → 5'
   else err "$(L '[失败] 二维码工具不可用' '[FAIL] qrencode unavailable')";failed=1;fi
  else report_output say '[跳过] 二维码工具' '[SKIP] QR tooling';fi
  if [[ $selected_bbr == 1 ]];then

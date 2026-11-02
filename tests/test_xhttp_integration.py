@@ -34,7 +34,7 @@ deployment_apply_selected(){ echo "EXTRAS=$*"; }
 
     def test_new_menu_and_nested_navigation_stay_without_an_idle_lock(self):
         code=navigation.NavigationTests.mocks(self)+'''xhttp_command(){ echo "XHTTP=$*"; };main'''
-        r=self.shell(code,input='a\n10\n6\n5\n0\n7\n1\n0\n3\n0\n0\nq\n')
+        r=self.shell(code,input='b\n11\n6\n5\n0\n7\n1\n0\n3\n0\n0\nq\n')
         self.assertIn('XHTTP=service 5',r.stdout);self.assertIn('XHTTP=edit 1',r.stdout)
         self.assertIn('XHTTP=show',r.stdout);self.assertNotIn('SELECT_LOCK=1',r.stdout)
         self.assertFalse((self.base/'xhttp-core').exists())

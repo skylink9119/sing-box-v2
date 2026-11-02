@@ -54,12 +54,29 @@ guided_install() (
  say "UFW：$(wizard_selected "$WIZARD_FIREWALL")" "UFW: $(wizard_selected "$WIZARD_FIREWALL")"
  say "二维码工具：$(wizard_selected "$WIZARD_QR")" "QR tool: $(wizard_selected "$WIZARD_QR")"
  if [[ $WIZARD_FIREWALL == 1 ]];then detect_ssh_ports || return 1;fi
- say '需要修改端口、连接地址、证书或握手网站，请取消后选 a → 9 自定义安装。' 'For custom ports, address, certificates or Reality target, cancel and choose a → 9.'
+ say '需要修改端口、连接地址、证书或握手网站，请取消后选 a → 6 自定义安装。' 'For custom ports, address, certificates or Reality target, cancel and choose a → 6.'
  confirm "$(L '同意声明并按以上计划开始自动安装？' 'Accept the notice and install using this plan?')" || return 0
  install_protocol "$WIZARD_PROTOCOL" "$install_kind"
 )
 manual_install(){
- local WIZARD_PROTOCOL
- if wizard_protocol;then install_protocol "$WIZARD_PROTOCOL" custom
- else [[ $? == 2 ]] && return 0;return 1;fi
+ local choice
+ prompt_options '自定义安装：
+1. Reality + Vision
+2. Hysteria2
+3. 双协议（Reality + HY2）
+4. XHTTP + Reality
+5. XHTTP + TLS / CDN
+0. 返回' 'Custom installation:
+1. Reality + Vision
+2. Hysteria2
+3. Both (Reality + HY2)
+4. XHTTP + Reality
+5. XHTTP + TLS / CDN
+0. Back'
+ prompt_read '> ' choice || return 0
+ case $choice in
+  1|2|3)install_protocol "$choice" custom;;
+  4)xhttp_command install 2;;5)xhttp_command install 3;;
+  0)return 0;;*)err "$(L '无效协议选项' 'Invalid protocol')";return 1;;
+ esac
 }

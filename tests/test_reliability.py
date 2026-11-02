@@ -196,7 +196,7 @@ download_binary(){ cp '''+shlex.quote(manager.SB)+''' "$2";chmod 755 "$2"; }
   old=(self.base/'warp-rules.json').read_bytes();catalog['media']=['bad;command'];p.write_text(json.dumps(catalog));self.assertNotEqual(self.shell('warp_engine catalog_update '+shlex.quote(str(p)),ok=False).returncode,0);self.assertEqual(old,(self.base/'warp-rules.json').read_bytes())
  def test_bilingual_new_menu_entries_and_rootless_help(self):
   for language in ('en_US','zh_CN'):
-   for group,choice,action in ((1,6,'settings'),(2,6,'online'),(5,6,'acme'),(5,7,'backup_tools'),(6,4,'help')):
+   for group,choice,action in ((2,9,'settings'),(2,10,'argo'),(2,11,'xhttp'),(2,6,'online'),(5,6,'acme'),(5,7,'backup_tools'),(6,4,'help')):
     r=self.shell('LANGUAGE_CHOICE='+language+';sub_menu '+str(group)+';echo "$MAIN_ACTION"',input=str(choice)+'\n');self.assertTrue(r.stdout.rstrip().endswith(action))
    r=self.shell('LANGUAGE_CHOICE='+language+';usage_help');self.assertIn('HTTPS',r.stdout);self.assertIn('ACME',r.stdout)
   r=subprocess.run([manager.BASH,str(manager.ROOT/'singbox-v2.sh'),'--help'],capture_output=True,text=True);self.assertEqual(r.returncode,0);self.assertIn('SKYBYTE',r.stdout)

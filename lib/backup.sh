@@ -82,7 +82,7 @@ restore() (
  if [[ -f $BASE/users.json ]];then users_engine export_all | while IFS= read -r service;do users_export "$service" >/dev/null || return 1;done || return 1;fi
  auxiliary_restore_snapshot "$path" || return 1
  if [[ -f $path/xhttp.tar.gz ]];then
-  warn "$(L '此备份包含独立 XHTTP 存档；请通过 a → 10 → 10 恢复 xhttp.tar.gz，sing-box 恢复不会覆盖当前 XHTTP。' 'This snapshot includes an independent XHTTP archive. Restore xhttp.tar.gz through a → 10 → 10; sing-box restore preserves current XHTTP.')"
+  warn "$(L '此备份包含独立 XHTTP 存档；请通过 b → 11 → 10 恢复 xhttp.tar.gz，sing-box 恢复不会覆盖当前 XHTTP。' 'This snapshot includes an independent XHTTP archive. Restore xhttp.tar.gz through b → 11 → 10; sing-box restore preserves current XHTTP.')"
  fi
  restore_done=true
  ok "$(L '配置已恢复；需要跳跃时请重新开启' 'Configuration restored; re-enable hopping if needed')"

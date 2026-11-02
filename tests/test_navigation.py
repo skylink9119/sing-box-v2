@@ -138,12 +138,26 @@ main'''
 
     def test_install_menu_has_unique_numbers_and_ipv6_guided_dispatch(self):
         import re
-        actions=['install_reality','install_hy2','install_dual','install_reality_ipv6',
-                 'argo','settings','rescue','install_checks','manual_install','xhttp']
+        actions=['install_reality','install_hy2','install_xhttp','install_dual',
+                 'install_reality_ipv6','manual_install','rescue']
         for language in ('zh_CN','en_US'):
             for choice,action in enumerate(actions,1):
                 result=self.shell('LANGUAGE_CHOICE='+language+';sub_menu 1;echo "ACTION=$MAIN_ACTION"',input=str(choice)+'\n')
                 self.assertIn('ACTION='+action,result.stdout)
-                self.assertEqual(re.findall(r'^\s*(\d+)\. ',result.stdout,re.M),[str(n) for n in range(1,11)]+['0'])
+                self.assertEqual(re.findall(r'^\s*(\d+)\. ',result.stdout,re.M),[str(n) for n in range(1,8)]+['0'])
         result=self.shell('guided_install(){ echo "GUIDED=$*"; };dispatch_action install_reality_ipv6')
         self.assertIn('GUIDED=1 ipv6',result.stdout)
+
+    def test_third_install_option_enters_xhttp_wizard_instead_of_management(self):
+        code=self.mocks()+'''xhttp_guided_install(){ echo "AUTO=$1"; }
+xhttp_menu(){ echo BAD_MANAGEMENT_MENU; }
+main'''
+        for language,choice,kind in [('zh_CN','','xhttp-reality'),('en_US','2','xhttp-tls')]:
+            result=self.shell('LANGUAGE_CHOICE='+language+';'+code,input='a\n3\n'+choice+'\n0\nq\n')
+            self.assertIn('AUTO='+kind,result.stdout)
+            self.assertNotIn('BAD_MANAGEMENT_MENU',result.stdout)
+            self.assertFalse((self.base/'xhttp-core').exists())
+        result=self.shell(code,input='a\n3\n0\n0\nq\n')
+        self.assertNotIn('AUTO=',result.stdout)
+        result=self.shell(code,input='a\n3\n')
+        self.assertNotIn('AUTO=',result.stdout)

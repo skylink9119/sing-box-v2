@@ -29,7 +29,7 @@ guided_install'''
     def test_manual_channel_keeps_custom_installation_and_existing_parameter_editing(self):
         result=self.shell('install_protocol(){ echo "MANUAL=$*"; };manual_install',input='3\n')
         self.assertIn('MANUAL=3 custom',result.stdout)
-        result=self.shell('sub_menu 1;echo "$MAIN_ACTION"',input='9\n')
+        result=self.shell('sub_menu 1;echo "$MAIN_ACTION"',input='6\n')
         self.assertTrue(result.stdout.rstrip().endswith('manual_install'))
 
     def test_unselected_features_do_not_install_packages_or_change_system_settings(self):
@@ -56,3 +56,8 @@ notice(){ :; };guided_install '''+mode
                     if mode!='1':self.assertEqual(state['cert_mode'],'1')
                     self.assertNotIn('optional setup is incomplete',result.stdout)
                 finally:fixture.doCleanups()
+
+    def test_manual_installation_includes_both_xhttp_variants(self):
+        for selection,kind in [('4','2'),('5','3')]:
+            result=self.shell('xhttp_command(){ echo "MANUAL=$*"; };manual_install',input=selection+'\n')
+            self.assertIn('MANUAL=install '+kind,result.stdout)

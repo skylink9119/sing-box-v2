@@ -15,7 +15,7 @@ class InstallationCheckTests(unittest.TestCase):
     def test_owned_hy2_inspection_is_only_enabled_for_diagnostics(self):
         result = self.shell('install_check_engine(){ printf "%s\\n" "$*"; };install_port_check 2 443 443')
         self.assertNotIn('--managed-hy2', result.stdout)
-        result = self.shell('install_check_engine(){ printf "%s\\n" "$*"; };installation_check_menu 2', input='\n1\n')
+        result = self.shell('install_check_engine(){ printf "%s\\n" "$*"; };install_port_check 2 443 443 0.0.0.0 diagnostic')
         self.assertIn('--managed-hy2', result.stdout)
         self.assertIn('--udp-port 443', result.stdout)
         self.assertFalse((self.config/'config.json').exists())
@@ -98,18 +98,22 @@ install_protocol 1'''
         self.assertEqual(before, after)
         self.assertFalse(list(self.backups.iterdir()))
 
-    def test_standalone_checks_remain_open_and_do_not_install(self):
+    def test_removed_menu_keeps_automatic_checks_without_implicit_installation(self):
         code = '''install_check_engine(){ echo "CHECK $*"; }
 reality_engine(){ echo "TARGET $*"; }
 apt_install(){ echo UNEXPECTED_APT; }
 download_binary(){ echo UNEXPECTED_DOWNLOAD; }
-flock(){ :; };load_language(){ :; }
-run_submenu installation_check_menu'''
-        result = self.shell(code, input='1\n\n1\n\n0\n')
+! declare -F installation_check_menu
+install_environment_check 1
+install_port_check 1 443 443
+install_reality_target addons.mozilla.org
+install_download_check'''
+        result = self.shell(code)
         for phase in ('environment', 'ports', 'download'):
             self.assertIn('--phase '+phase, result.stdout)
         self.assertIn('--target addons.mozilla.org:443 --sni addons.mozilla.org', result.stdout)
         self.assertNotIn('UNEXPECTED_', result.stdout)
         self.assertFalse((self.base/'state.json').exists())
-        result = self.shell('sub_menu 1;echo "$MAIN_ACTION"', input='8\n')
-        self.assertIn('install_checks', result.stdout)
+        result = self.shell('sub_menu 1;echo "$MAIN_ACTION"', input='7\n')
+        self.assertIn('rescue', result.stdout)
+        self.assertNotIn('Node installation checks (no installation)',result.stdout)
