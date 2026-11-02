@@ -65,6 +65,7 @@ sub_menu(){
    say '11. HAProxy TCP 透传' '11. HAProxy TCP passthrough'
    say '12. Reality 握手网站检测' '12. Reality handshake target checks'
    say '13. IPv6 备用入口' '13. IPv6 backup entry'
+   say '14. 一键配置 BBR / 防火墙 / 二维码工具' '14. Set up BBR / firewall / QR tools'
    ;;
   5)
    say ' 1. 手动更新 sing-box' ' 1. Update sing-box'
@@ -118,6 +119,7 @@ sub_menu(){
   4:11) MAIN_ACTION=haproxy;;
   4:12) MAIN_ACTION=reality;;
   4:13) MAIN_ACTION=ipv6;;
+  4:14) MAIN_ACTION=automatic_setup;;
   5:1) MAIN_ACTION=update;;
   5:2) MAIN_ACTION=backup;;
   5:3) MAIN_ACTION=restore;;
@@ -140,6 +142,7 @@ dispatch_action(){
  node_ports) edit_node_ports;;
  argo) argo_manager "$@";; nodes) exports;; node_parameters) report_output node_parameters;; subscription) subscription;; rename) rename_node;; qr) shadowrocket_qr;; users) users_manager;;
  service) service_manager "$@";; logs) report_output journalctl -u sing-box -n 80 --no-pager;; argo_status) report_output argo_status;;
+ automatic_setup) automatic_setup;;
  initialize) initialize_server;; firewall) firewall "$@";; audit) report_output firewall_audit;; bbr) bbr;; hop) hop "$@";; traffic) traffic "$@";;
  media) media_check "$@";; warp) warp_menu "$@";; relay) relay_menu "$@";; haproxy) haproxy_menu "$@";;
  ipv6) ipv6_menu "$@";;

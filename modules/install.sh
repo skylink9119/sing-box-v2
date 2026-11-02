@@ -209,4 +209,5 @@ PY_INSTALL_SAN
  exports || return 1
  committed=true
  ok "$(L '部署完成；请检查云防火墙' 'Installed; check provider firewall')"
+ automatic_setup || warn "$(L '节点已保留，部分配套配置未完成，可通过 d → 14 重试。' 'Node retained; some optional setup is incomplete. Retry via d → 14.')"
 )

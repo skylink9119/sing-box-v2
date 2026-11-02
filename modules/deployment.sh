@@ -1,0 +1,130 @@
+# Automatic post-install setup; one explicit confirmation, no hidden menu input.
+deployment_firewall_gate(){
+ python3 - <<'PY_DEPLOYMENT_GATE'
+# @include deployment_checks.py
+PY_DEPLOYMENT_GATE
+}
+deployment_firewall(){
+ local status port listeners allowed
+ detect_ssh_ports || return 1
+ [[ -n $SSH_PORTS ]] || { err "$(L '未确认 SSH 端口，未启用防火墙' 'SSH ports unknown; firewall was not enabled')";return 1; }
+ while IFS= read -r port;do valid_port "$port" || return 1;done <<<"$SSH_PORTS"
+ status=$(LC_ALL=C ufw status) || return 1
+ case $status in
+  'Status: active'*) ;;
+  'Status: inactive'*)
+   deployment_firewall_gate || return 1
+   # Do not silently block an existing website or other public listener.
+   listeners=$(ss -H -lntu) || return 1
+   allowed=$(python3 - "$CONF" <<'PY_DEPLOYMENT_PORTS'
+import json,sys
+for inbound in json.load(open(sys.argv[1]))['inbounds']:
+ print(('tcp' if inbound['type']=='vless' else 'udp')+':'+str(inbound['listen_port']))
+PY_DEPLOYMENT_PORTS
+   ) || return 1
+   python3 - "$SSH_PORTS" "$allowed" 3< <(printf '%s\n' "$listeners") <<'PY_DEPLOYMENT_LISTENERS' || return 1
+import os,sys
+allowed={'tcp:'+port for port in sys.argv[1].split()}|set(sys.argv[2].split())
+for line in os.fdopen(3):
+ fields=line.split()
+ if len(fields)<5:raise SystemExit('Cannot parse listeners / 无法识别监听信息')
+ address,port=fields[4].rsplit(':',1)
+ if address.startswith('127.') or address in ('[::1]','::1'):continue
+ if fields[0]+':'+port not in allowed:raise SystemExit('Other public listeners detected; inspect d → 2 first / 存在其它公开监听服务，请先通过 d → 2 手工核对')
+PY_DEPLOYMENT_LISTENERS
+   ;;
+  *) err "$(L 'UFW 状态未知，未启用' 'Unknown UFW state; not enabled')";return 1;;
+ esac
+ # Both IP families must be protected; do not silently enable IPv4-only UFW.
+ grep -Eq '^IPV6=[Yy][Ee][Ss][[:space:]]*$' "${UFW_DEFAULTS:-/etc/default/ufw}" || { err "$(L 'UFW IPv6 配置未开启，请先人工核对' 'UFW IPv6 protection is not enabled; inspect manually')";return 1; }
+ while IFS= read -r port;do ufw allow "$port/tcp" || return 1;done <<<"$SSH_PORTS"
+ firewall_allow_protocols || return 1
+ if [[ -f $META && $(state hop) == True ]];then ufw allow "$(state hop_start):$(state hop_end)/udp" || return 1;fi
+ if [[ $status == 'Status: inactive'* ]];then
+  deployment_firewall_gate || return 1
+  ufw default deny incoming || return 1
+  ufw default allow outgoing || return 1
+  ufw --force enable || return 1
+ fi
+ status=$(LC_ALL=C ufw status) || return 1
+ [[ $status == 'Status: active'* ]]
+}
+deployment_bbr() (
+ local previous_cc previous_qdisc created=false
+ if [[ -L $SYSCTL_FILE ]] || { [[ -e $SYSCTL_FILE ]] && ! cmp -s "$SYSCTL_FILE" <(printf 'net.core.default_qdisc = fq\nnet.ipv4.tcp_congestion_control = bbr\n'); };then
+  err "$(L 'BBR 配置路径已有其它内容，未覆盖' 'BBR configuration path is already used; retained')";return 1
+ fi
+ [[ -e $SYSCTL_FILE ]] || created=true
+ previous_cc=$(sysctl -n net.ipv4.tcp_congestion_control) || return 1
+ previous_qdisc=$(sysctl -n net.core.default_qdisc) || return 1
+ if bbr_apply && [[ $(sysctl -n net.ipv4.tcp_congestion_control) == bbr && $(sysctl -n net.core.default_qdisc) == fq ]];then return 0;fi
+ sysctl -w "net.ipv4.tcp_congestion_control=$previous_cc" "net.core.default_qdisc=$previous_qdisc" || err "$(L 'BBR 参数恢复未完成，请人工检查 sysctl' 'BBR parameter restore incomplete; inspect sysctl manually')"
+ if [[ $created == true ]] && cmp -s "$SYSCTL_FILE" <(printf 'net.core.default_qdisc = fq\nnet.ipv4.tcp_congestion_control = bbr\n');then rm -f -- "$SYSCTL_FILE";fi
+ return 1
+)
+
+deployment_hopping(){
+ local target listeners address
+ case $(protocol_mode) in 2|3) ;;*) return 2;;esac
+ address=$(state ip) || return 1
+ if [[ $address == *:* ]];then
+  report_output say '[跳过] 当前 HY2 节点使用 IPv6；现有端口跳跃仅支持 IPv4' '[SKIP] HY2 uses IPv6; current hopping supports IPv4 only'
+  return 2
+ fi
+ if [[ $(state hop) == True ]];then
+  hop_guard && systemctl is-active --quiet singbox-v2-hop.service || return 1
+  report_output say '[通过] 保留现有 HY2 跳跃范围' '[PASS] Existing HY2 hopping range retained'
+  return 0
+ fi
+ target=$(protocol_port hysteria2) || return 1
+ if (( target >= 20000 && target <= 30000 ));then
+  err "$(L 'HY2 监听端口位于默认跳跃范围内，请用 d → 5 自选范围' 'HY2 listener overlaps the default hopping range; choose another through d → 5')";return 1
+ fi
+ listeners=$(ss -H -lun) || return 1
+ python3 - 3< <(printf '%s\n' "$listeners") <<'PY_HOP_RANGE' || return 1
+import os
+for line in os.fdopen(3):
+ fields=line.split()
+ if len(fields)<5:raise SystemExit('Cannot inspect UDP listeners / 无法核对 UDP 监听')
+ port=fields[4].rsplit(':',1)[1]
+ if not port.isdigit() or 20000<=int(port)<=30000:raise SystemExit('UDP hopping range is occupied; choose another through d → 5 / 默认跳跃范围已占用，请用 d → 5 自选范围')
+PY_HOP_RANGE
+ hop 1 --automatic || return 1
+ systemctl is-active --quiet singbox-v2-hop.service || return 1
+ report_output say '[通过] HY2 已开启 20000–30000/UDP 跳跃；请放行云安全组同一范围' '[PASS] HY2 hopping enabled on UDP 20000–30000; allow the same provider range'
+}
+automatic_setup(){
+ need_root
+ check_owned || return 1
+ say '自动配置：安装 UFW/二维码工具、启用 BBR + FQ、放行 SSH 与节点端口后启用 UFW；HY2 自动配置 IPv4 端口跳跃。' 'Automatic setup: install UFW/qrencode, enable BBR + FQ, allow SSH/node ports and enable UFW; configure IPv4 hopping for HY2.'
+ say 'BBR 作用于 TCP，不直接改变 HY2 的 UDP 拥塞控制。云防火墙仍需在服务商处放行。' 'BBR affects TCP, not HY2 UDP congestion control. Provider firewall rules still need checking.'
+ detect_ssh_ports || return 1
+ confirm "$(L '按以上计划自动配置？' 'Apply this automatic setup plan?')" || return 0
+ local failed=0 firewall_ready=false hopping_status packages=()
+ command -v ufw >/dev/null || packages+=(ufw)
+ command -v qrencode >/dev/null || packages+=(qrencode)
+ if (( ${#packages[@]} ));then
+  if ! apt_install --no-install-recommends "${packages[@]}";then
+   err "$(L '[失败] 工具安装未完成，已安装的节点保留' '[FAIL] Tool installation incomplete; installed nodes retained')"
+   failed=1
+  fi
+ fi
+ if command -v qrencode >/dev/null;then
+  report_output say '[通过] 二维码工具已安装' '[PASS] qrencode is installed'
+ else err "$(L '[失败] 二维码工具不可用' '[FAIL] qrencode unavailable')";failed=1;fi
+ if deployment_bbr;then report_output say '[通过] 已开启 BBR + FQ' '[PASS] BBR + FQ enabled'
+ else err "$(L '[未完成] BBR 未成功启用，请查看上方原因' '[INCOMPLETE] BBR not enabled; inspect the reason above')";failed=1;fi
+ if command -v ufw >/dev/null && deployment_firewall;then
+  firewall_ready=true
+  report_output say '[通过] UFW 已启用，已放行 SSH 和实际节点端口' '[PASS] UFW enabled with SSH and actual node ports allowed'
+ else err "$(L '[未完成] 防火墙设置未完成，请用 d → 2 核对' '[INCOMPLETE] Firewall setup incomplete; inspect d → 2')";failed=1;fi
+ if [[ $(protocol_mode) == 2 || $(protocol_mode) == 3 ]];then
+  if [[ $firewall_ready == true ]];then
+   if deployment_hopping;then :;else
+    hopping_status=$?
+    if [[ $hopping_status != 2 ]];then err "$(L '[未完成] HY2 跳跃未启用，请用 d → 5 核对' '[INCOMPLETE] HY2 hopping not enabled; inspect d → 5')";failed=1;fi
+   fi
+  else err "$(L '[未完成] 请先完成防火墙设置，再开启 HY2 跳跃' '[INCOMPLETE] Complete firewall setup before HY2 hopping')";failed=1;fi
+ fi
+ return "$failed"
+}

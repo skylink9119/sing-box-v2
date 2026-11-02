@@ -8,7 +8,7 @@
 set -Eeuo pipefail
 umask 077
 SCRIPT_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
-MANAGER_VERSION=2.8.28
+MANAGER_VERSION=2.8.29
 CORE_RECOMMENDED=1.14.3
 BASE=/etc/singbox-v2
 CONF=/etc/sing-box/config.json
@@ -38,6 +38,7 @@ HAPROXY_RUNTIME_DIR=/run/systemd/system
 # @include lib/subscription.sh
 # @include modules/certificate.sh
 # @include modules/install.sh
+# @include modules/deployment.sh
 # @include modules/hysteria2.sh
 # @include lib/users.sh
 # @include modules/argo.sh

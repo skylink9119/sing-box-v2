@@ -42,6 +42,9 @@ hop(){
  fi
  if [[ $choice == 2 ]]; then confirm "$(L '关闭跳跃？' 'Disable hopping?')" && hop_disable; return; fi
  [[ $choice == 1 ]] || return 0
+ if [[ ${2:-} == --automatic ]];then
+  backend=nftables;start=20000;end=30000
+ else
  prompt_options '1. nftables（默认）
 2. iptables' '1. nftables (default)
 2. iptables'
@@ -49,10 +52,13 @@ hop(){
  case $backend in 1) backend=nftables;; 2) backend=iptables;; *) return 1;; esac
  prompt_read "$(L '起始端口 [20000]：' 'Start port [20000]: ')" start || return 0; start=${start:-20000}
  prompt_read "$(L '结束端口 [40000]：' 'End port [40000]: ')" end || return 0; end=${end:-40000}
+ fi
  if ! valid_port "$start" || ! valid_port "$end" || ! ((10#$start>=1024 && 10#$start<=10#$end && 10#$end-10#$start<=20000)); then err "$(L '范围非法，最多20001个端口' 'Invalid range, maximum 20001 ports')"; return 1; fi
  start=$((10#$start));end=$((10#$end));target=$(protocol_port hysteria2) || return 1
  if [[ -f $BASE/users.json ]]; then users_guard && users_engine hop_check "$start" "$end" || return 1; fi
- confirm "$(L "将 UDP $start-$end 转发到 HY2 监听端口 ${target}？" "Forward UDP $start-$end to HY2 listener $target?")" || return 0
+ if [[ ${2:-} != --automatic ]];then
+  confirm "$(L "将 UDP $start-$end 转发到 HY2 监听端口 ${target}？" "Forward UDP $start-$end to HY2 listener $target?")" || return 0
+ fi
  if [[ $backend == nftables ]]; then require_cmd nft || return 1; else command -v iptables >/dev/null || { apt_install iptables || return 1; }; fi
  if command -v nft >/dev/null && nft list table ip singbox_v2_hop >/dev/null 2>&1; then err "$(L '已有跳跃规则，请先关闭' 'Hopping rules exist; disable first')"; return 1; fi
  if command -v iptables >/dev/null && iptables -w 5 -t nat -S SKYBYTE_HY2_HOP >/dev/null 2>&1; then err "$(L '已有跳跃链，请先关闭，拒绝覆盖' 'Hopping chain exists; disable first; refusing overwrite')"; return 1; fi
