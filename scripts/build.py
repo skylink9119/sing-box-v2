@@ -3,6 +3,7 @@
 import argparse
 import ast
 import json
+import hashlib
 from pathlib import Path
 import re
 
@@ -54,8 +55,17 @@ def main():
     if catalog['media']!=values['MEDIA'] or catalog['ai']!=values['AI'] or catalog['version']!=values['RULE_VERSION']:parser.exit(1,'WARP catalog and source defaults differ\n')
     quickstart=assemble('quickstart.sh').removeprefix('#!/usr/bin/env bash\n')
     version=re.search(r'^MANAGER_VERSION=([0-9]+\.[0-9]+\.[0-9]+)$',assemble('manager.sh'),re.M)[1]
+    installer_sha256 = None
+    manager_sha256 = None
     for source,filename in [('manager.sh','singbox-v2.sh'),('installer.sh','install.sh'),('bootstrap.sh','bootstrap.sh')]:
         result = assemble(source).replace('@MANAGER_VERSION@',version)
+        if filename == 'singbox-v2.sh':
+            manager_sha256 = hashlib.sha256(result.encode()).hexdigest()
+        if filename == 'install.sh':
+            result = result.replace('@MANAGER_SHA256@', manager_sha256)
+            installer_sha256 = hashlib.sha256(result.encode()).hexdigest()
+        elif filename == 'bootstrap.sh':
+            result = result.replace('@INSTALLER_SHA256@', installer_sha256)
         target = ROOT / filename
         if args.check:
             if target.read_text() != result:

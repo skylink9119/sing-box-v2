@@ -101,7 +101,7 @@ import json,sys
 sys.exit(0 if any(i.get('type') in ('vless','hysteria2') for i in json.load(open(sys.argv[1])).get('inbounds',[])) else 1)
 PY_USERS_PROTOCOLS
  then warn "$(L 'Argo 单独部署不支持配额用户；请先安装 Reality 或 HY2 直连节点。' 'Quota accounts require a direct Reality or HY2 node; standalone Argo alone is unsupported.')";return 1;fi
- warn "$(L '仅新建的受限账户执行人数、流量和到期限制。原管理员节点及 Argo 不受此配额管理。每人独立进程/端口；请放行云防火墙对应端口。' 'Limits apply only to new managed accounts. Existing admin nodes and Argo are outside these quotas. Each account uses its own process/port; allow those provider firewall ports.')"
+ warn "$(L '仅新建的受限账户执行人数、流量和到期限制。原管理员节点及 Argo 不受此配额管理。每个运行账户独立进程/端口，内存随运行账户数增加；请先用 d → 7 检查资源并放行对应端口。' 'Limits apply only to new managed accounts. Existing admin nodes and Argo are outside these quotas. Each running account uses its own process/port and adds memory overhead; inspect resources with d → 7 and allow provider firewall ports.')"
  local choice max name quota days id action port snap
  if [[ $# == 0 || $1 == --menu ]]; then
   printf '%s' "$GREEN"

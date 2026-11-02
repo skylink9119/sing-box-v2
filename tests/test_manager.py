@@ -557,10 +557,24 @@ curl(){ :; }
 ss(){ :; }
 ufw(){ printf 'UFW %s\\n' "$*"; }
 initialize_server""", input='y\n')
-        self.assertIn('APT upgrade -y',result.stdout)
-        self.assertIn('APT install -y',result.stdout)
+        self.assertNotIn('APT upgrade -y',result.stdout)
+        self.assertIn('APT install -y --no-install-recommends',result.stdout)
+        self.assertNotIn(' vim ',result.stdout)
+        self.assertNotIn(' git ',result.stdout)
+        self.assertNotIn(' htop ',result.stdout)
         self.assertNotIn('UFW --force enable',result.stdout)
         self.assertNotIn('SYSTEMCTL reboot',result.stdout)
+
+    def test_initialization_optional_tools_and_upgrade_require_explicit_choice(self):
+        result=self.shell("""need_root(){ :; }
+apt-get(){ printf 'APT %s\\n' "$*"; }
+systemctl(){ :; };timedatectl(){ :; };getent(){ :; };curl(){ :; };ss(){ :; };ufw(){ :; }
+initialize_server""",input='y\ny\ny\n')
+        self.assertIn('APT upgrade -y',result.stdout)
+        installs=[line for line in result.stdout.splitlines() if line.startswith('APT install ')]
+        self.assertEqual(len(installs),1)
+        for tool in ('vim','git','htop','mtr-tiny'):
+            self.assertIn(tool,installs[0].split())
 
     def test_bbr_fq_writes_only_managed_sysctl(self):
         self.shell("""need_root(){ :; }

@@ -20,9 +20,9 @@
 
 ---
 
-# SKYBYTE Manager V2.8.26: modular source architecture
+# SKYBYTE Manager V2.8.27: modular source architecture
 
-Configuration checks now report pass/fail/not-checked results; the core menu distinguishes installed versions from the manager verification baseline.
+This release pins installer/manager hashes, makes initialization tools optional, and adds non-interactive manager installation. See [installation security and resource limits](docs/INSTALL-SECURITY.md).
 
 Read-only installation checks (**a → 7**) verify the managed configuration, systemd service, executable and actual socket owners when a UDP port is occupied. Confirmed managed HY2 is reported as already installed, with links to nodes (**b → 1**), port editing (**b → 8**) and service status (**c → 1**). Other or unverified owners remain conflicts. Installation never treats an occupied port as free or overwrites an existing node.
 
@@ -379,7 +379,7 @@ Restore retains current account policy/usage and current subscription tokens. HT
 
 ```bash
 python3 scripts/build.py --check
-python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.26
+python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.27
 ```
 
 Packaging includes only bootstrap.sh, install.sh, the full bundle, public rule catalog and SHA256SUMS, never runtime state or credentials.

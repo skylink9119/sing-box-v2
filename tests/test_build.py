@@ -133,3 +133,20 @@ class ModularBuildTests(unittest.TestCase):
         self.assertIn('SyntaxError', result.stderr)
         self.assertEqual(payload, (self.root / PAYLOAD).read_bytes())
         self.assertEqual(backend, (self.root / 'src/warp.py').read_bytes())
+
+    def test_release_comparison_refuses_missing_or_replaced_assets(self):
+        import importlib.util
+        spec=importlib.util.spec_from_file_location('verify_assets',self.root/'scripts/verify_release_assets.py')
+        module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+        built=self.root/'built';published=self.root/'published'
+        built.mkdir();published.mkdir()
+        for name in module.ASSETS:
+            (built/name).write_text('built '+name)
+            (published/name).write_text('built '+name)
+        module.verify(built,published)
+        (published/'install.sh').write_text('replacement')
+        with self.assertRaisesRegex(ValueError,'install.sh'):
+            module.verify(built,published)
+        (published/'install.sh').unlink()
+        with self.assertRaisesRegex(ValueError,'install.sh'):
+            module.verify(built,published)

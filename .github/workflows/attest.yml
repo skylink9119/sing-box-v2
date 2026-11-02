@@ -1,0 +1,42 @@
+name: Attest published release
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published release tag
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  attest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    env:
+      RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Validate release tag
+        run: '[[ $RELEASE_TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]'
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          persist-credentials: false
+      - name: Rebuild exact tagged source
+        run: |
+          test "$(bash singbox-v2.sh --self-check)" = "${RELEASE_TAG#v}"
+          python3 scripts/package_release.py --output release-assets
+      - name: Compare published assets before attesting
+        run: |
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir published-assets --pattern bootstrap.sh --pattern install.sh --pattern singbox-v2.sh --pattern warp-rules.json --pattern SHA256SUMS
+          python3 scripts/verify_release_assets.py release-assets published-assets
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: release-assets/*
