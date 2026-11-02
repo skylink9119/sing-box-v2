@@ -1,5 +1,7 @@
 """Run the pasteable curl bootstrap with isolated download/package simulators."""
 import os
+import hashlib
+import re
 from pathlib import Path
 import shlex
 import subprocess
@@ -60,6 +62,7 @@ curl(){
  fi
  case $TEST_FAILURE in
   empty) : > "$output";;
+  tampered) printf '#!/usr/bin/env bash\n# altered but valid script\n' > "$output";;
   syntax) printf '#!/usr/bin/env bash\nif ((\n' > "$output";;
   html) printf '<html>upstream error</html>\n' > "$output";;
   *) printf '#!/usr/bin/env bash\n# downloaded fixture\n' > "$output";;
@@ -85,6 +88,10 @@ bash(){
             action = 'installer_dependencies'
         else:
             action = (ROOT/'src/quickstart.sh' if quickstart else ROOT/'bootstrap.sh').read_text()
+            if not quickstart:
+                fixture = b'#!/usr/bin/env bash\n# downloaded fixture\n'
+                action = re.sub(r"'[a-f0-9]{64}'", "'"+hashlib.sha256(fixture).hexdigest()+"'", action)
+
         result = subprocess.run([BASH, '-c', source+definitions+'\n'+action],
             input='menu input preserved\n', capture_output=True, text=True, timeout=10, cwd=self.root,
             env={**os.environ, 'TEST_ROOT':str(self.root), 'TEST_FAILURE':failure, 'TEST_UID':uid,
@@ -101,6 +108,19 @@ bash(){
                 self.assertIn('Invalid installer download', result.stderr)
                 self.assertFalse(any(event == 'launch' for event in events))
 
+    def test_valid_bash_with_wrong_hash_is_never_executed(self):
+        result,events=self.run_case(present=True,failure='tampered')
+        self.assertNotEqual(result.returncode,0)
+        self.assertIn('Installer SHA256 mismatch',result.stderr)
+        self.assertNotIn('launch',events)
+
+    def test_bootstrap_pins_exact_generated_installer_bytes(self):
+        expected=hashlib.sha256((ROOT/'install.sh').read_bytes()).hexdigest()
+        self.assertIn("'"+expected+"'",(ROOT/'bootstrap.sh').read_text())
+        self.assertNotIn('@INSTALLER_SHA256@',(ROOT/'bootstrap.sh').read_text())
+        manager_digest=hashlib.sha256((ROOT/'singbox-v2.sh').read_bytes()).hexdigest()
+        self.assertIn('MANAGER_SHA256='+manager_digest,(ROOT/'install.sh').read_text())
+
     def test_existing_curl_skips_apt_and_preserves_interactive_input(self):
         result, events = self.run_case(present=True)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -108,7 +128,7 @@ bash(){
         self.assertEqual(events[-2:], ['launch', 'stdin:menu input preserved'])
         download = events[0]
         self.assertIn("--proto =https --proto-redir =https", download)
-        self.assertIn('https://github.com/skylink9119/sing-box-v2/releases/download/v2.8.26/install.sh', download)
+        self.assertIn('https://github.com/skylink9119/sing-box-v2/releases/download/v2.8.27/install.sh', download)
         self.assertNotIn(' -k ', download)
 
     def test_missing_curl_is_installed_before_download_on_supported_systems(self):
@@ -168,14 +188,14 @@ bash(){
         result, events = self.run_case(dependencies=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('Missing tools: curl', result.stderr)
-        self.assertEqual(events, ['packages:curl ca-certificates python3 util-linux'])
+        self.assertEqual(events, ['packages:--no-install-recommends curl ca-certificates python3 util-linux'])
 
     def test_installer_stops_when_packages_fail_or_curl_remains_unavailable(self):
         for failure in ['install', 'unavailable']:
             with self.subTest(failure=failure):
                 result, events = self.run_case(failure=failure, dependencies=True)
                 self.assertNotEqual(result.returncode, 0)
-                self.assertEqual(events, ['packages:curl ca-certificates python3 util-linux'])
+                self.assertEqual(events, ['packages:--no-install-recommends curl ca-certificates python3 util-linux'])
 
     def test_empty_bootstrap_is_not_executed(self):
         result, events = self.run_case(present=True, failure='empty', quickstart=True)
@@ -213,7 +233,7 @@ bash(){
 
 
 class PinnedInstallerTest(unittest.TestCase):
-    def run_install(self, failure='', installed=''):
+    def run_install(self, failure='', installed='', options=(), non_interactive='0'):
         import hashlib
         import re
         with tempfile.TemporaryDirectory() as folder:
@@ -225,6 +245,10 @@ class PinnedInstallerTest(unittest.TestCase):
             if failure=='syntax':payload+='if ((\n'
             source=root/'payload';source.write_text(payload)
             digest=hashlib.sha256(source.read_bytes()).hexdigest()
+            pinned_digest=digest
+            if failure=='both-replaced':
+                source.write_text(payload+'# altered alongside manifest\n')
+                digest=hashlib.sha256(source.read_bytes()).hexdigest()
             manifest=digest+'  singbox-v2.sh\n'
             if failure=='checksum':manifest='0'*64+'  singbox-v2.sh\n'
             if failure=='duplicate':manifest+=manifest
@@ -238,6 +262,7 @@ class PinnedInstallerTest(unittest.TestCase):
 MANAGER_DIR=$TEST_ROOT/lib
 MANAGER_TARGET=$MANAGER_DIR/singbox-v2.sh
 MANAGER_LOCK=$TEST_ROOT/lock
+MANAGER_SHA256=$TEST_DIGEST
 installer_root(){ :; }
 installer_dependencies(){ :; }
 flock(){ :; }
@@ -250,16 +275,32 @@ curl(){
  printf '%s\n' "$url" >> "$TEST_ROOT/urls"
  case $url in */SHA256SUMS) cp "$TEST_ROOT/manifest" "$output";; *) cp "$TEST_ROOT/payload" "$output";; esac
 }
-install_manager
+install_manager "${@:2}"
 '''
-            result=subprocess.run([BASH,'-c',code,'test',str(ROOT/'install.sh')],capture_output=True,text=True,
-                                  env={**os.environ,'TEST_ROOT':str(root)},timeout=10)
+            result=subprocess.run([BASH,'-c',code,'test',str(ROOT/'install.sh'),*options],capture_output=True,text=True,
+                                  env={**os.environ,'TEST_ROOT':str(root),'SKYBYTE_NON_INTERACTIVE':non_interactive,'TEST_DIGEST':pinned_digest},timeout=10)
             events=(root/'events').read_text() if (root/'events').exists() else ''
             contents=target.read_text() if target.exists() else ''
             self.assertFalse(list(target.parent.glob('.install.*')))
-            urls=(root/'urls').read_text().splitlines()
+            urls=(root/'urls').read_text().splitlines() if (root/'urls').exists() else []
             self.assertTrue(all('/releases/download/v'+version+'/' in u for u in urls))
             return result,events,contents,previous
+
+    def test_non_interactive_installs_verified_manager_without_menu(self):
+        for options,environment in [(('--non-interactive',),'0'),((),'1')]:
+            result,events,contents,_=self.run_install(options=options,non_interactive=environment)
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertIn('Manager installed:',result.stdout)
+            self.assertIn('SELF_CHECK',events)
+            self.assertNotIn('LAUNCH',events)
+            self.assertIn('MANAGER_VERSION=',contents)
+
+    def test_unknown_or_invalid_mode_stops_before_download(self):
+        for options,environment in [(('--invalid',),'0'),((),'yes')]:
+            result,events,contents,_=self.run_install(options=options,non_interactive=environment)
+            self.assertNotEqual(result.returncode,0)
+            self.assertEqual(events,'')
+            self.assertEqual(contents,'')
 
     def test_verified_pinned_install_and_same_version_reinstall(self):
         import re
@@ -271,7 +312,7 @@ install_manager
             self.assertIn('MANAGER_VERSION='+version,contents)
 
     def test_corrupt_ambiguous_wrong_version_or_invalid_payload_keeps_old_manager(self):
-        for failure in ('checksum','duplicate','version','syntax'):
+        for failure in ('checksum','duplicate','version','syntax','both-replaced'):
             result,events,contents,previous=self.run_install(failure,installed='2.0.0')
             self.assertNotEqual(result.returncode,0)
             self.assertEqual(events,'')

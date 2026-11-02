@@ -8,7 +8,7 @@
 set -Eeuo pipefail
 umask 077
 SCRIPT_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
-MANAGER_VERSION=2.8.26
+MANAGER_VERSION=2.8.27
 CORE_RECOMMENDED=1.14.3
 BASE=/etc/singbox-v2
 CONF=/etc/sing-box/config.json
@@ -169,7 +169,7 @@ apt_install() (
  trap 'rm -f -- "$log"' EXIT
  if DEBIAN_FRONTEND=noninteractive apt-get install -y "$@" > "$log" 2>&1;then cat "$log";return 0;else status=$?;fi
  cat "$log"
- if grep -Eq '404[[:space:]]|404[[:space:]]+Not Found|Failed to fetch' "$log";then
+ if grep -Eq '404[[:space:]]|Failed to fetch' "$log";then
   warn "$(L '安装包下载失败，刷新索引并重试一次。' 'Package download failed; refreshing indexes and retrying once.')"
   apt_refresh || return 1
   # Some archive CDN edges cache an earlier 404 even while the package exists.
@@ -659,19 +659,26 @@ initialize_server(){
  esac
  command -v apt-get >/dev/null || { err "$(L '缺少 apt-get' 'apt-get not found')"; return 1; }
  say "系统：${PRETTY_NAME:-$ID}" "System: ${PRETTY_NAME:-$ID}"
- say '本功能将更新 apt 索引、升级已安装软件、安装诊断工具。' 'This updates apt indexes, upgrades installed packages, and installs diagnostic tools.'
+ say '默认仅安装基础依赖；系统升级和运维工具可单独选择。' 'Installs base dependencies by default; system upgrades and diagnostic tools are optional.'
  say '不会自动启用 UFW、变更 SSH、修改 BBR 或重启系统。' 'Does not enable UFW, change SSH/BBR, or reboot.'
  warn "$(L '升级可能更改内核、SSH 等软件包；建议先做 VPS 快照并保留控制台。' 'Updates may change kernel/SSH; create a snapshot and retain console access.')"
- confirm "$(L '确认执行新服务器初始化？' 'Initialize this server (including system upgrade)?')" || { say '已取消' Cancelled; return 0; }
- local -a packages=(curl wget nano vim unzip zip tar openssl ca-certificates ufw iproute2 iputils-ping dnsutils traceroute mtr-tiny net-tools netcat-openbsd jq git socat lsof htop python3 bc util-linux nftables procps)
+ confirm "$(L '确认执行新服务器初始化？' 'Initialize this server?')" || { say '已取消' Cancelled; return 0; }
+ local upgrade=false
+ local -a packages=(curl tar openssl ca-certificates ufw iproute2 python3 coreutils util-linux nftables procps)
+ if confirm "$(L '同时升级已安装软件？' 'Also upgrade installed packages?')";then upgrade=true;fi
+ if confirm "$(L '额外安装运维工具（vim、git、htop、mtr 等）？' 'Install optional tools (vim, git, htop, mtr, etc.)?')";then
+  packages+=(wget nano vim unzip zip iputils-ping dnsutils traceroute mtr-tiny net-tools netcat-openbsd jq git socat lsof htop bc)
+ fi
  # Installing chrony can remove timesyncd; keep an existing active time-sync service.
  if ! systemctl is-active --quiet chrony && ! systemctl is-active --quiet systemd-timesyncd && ! systemctl is-active --quiet ntp && ! systemctl is-active --quiet ntpsec; then packages+=(chrony); fi
  say '更新软件索引...' 'Updating package indexes...'
  apt_refresh || { err "$(L '软件索引更新失败' 'Package index update failed')"; return 1; }
- say '升级已安装软件（不会自动执行 full-upgrade）...' 'Upgrading packages (not full-upgrade)...'
- DEBIAN_FRONTEND=noninteractive apt-get upgrade -y || { err "$(L '系统升级失败；请检查 apt/dpkg 状态' 'Upgrade failed; check apt/dpkg status')"; return 1; }
+ if [[ $upgrade == true ]];then
+  say '升级已安装软件（不会自动执行 full-upgrade）...' 'Upgrading packages (not full-upgrade)...'
+  DEBIAN_FRONTEND=noninteractive apt-get upgrade -y || { err "$(L '系统升级失败；请检查 apt/dpkg 状态' 'Upgrade failed; check apt/dpkg status')"; return 1; }
+ fi
  say '安装基础工具...' 'Installing essential tools...'
- apt_install "${packages[@]}" || { err "$(L '工具安装失败' 'Tool installation failed')"; return 1; }
+ apt_install --no-install-recommends "${packages[@]}" || { err "$(L '工具安装失败' 'Tool installation failed')"; return 1; }
  say '检测时间同步服务...' 'Checking time synchronization...'
  if command -v timedatectl >/dev/null 2>&1; then timedatectl status --no-pager 2>/dev/null || :; fi
  # Do not forcibly disable an existing time-sync daemon.
@@ -2088,7 +2095,7 @@ import json,sys
 sys.exit(0 if any(i.get('type') in ('vless','hysteria2') for i in json.load(open(sys.argv[1])).get('inbounds',[])) else 1)
 PY_USERS_PROTOCOLS
  then warn "$(L 'Argo 单独部署不支持配额用户；请先安装 Reality 或 HY2 直连节点。' 'Quota accounts require a direct Reality or HY2 node; standalone Argo alone is unsupported.')";return 1;fi
- warn "$(L '仅新建的受限账户执行人数、流量和到期限制。原管理员节点及 Argo 不受此配额管理。每人独立进程/端口；请放行云防火墙对应端口。' 'Limits apply only to new managed accounts. Existing admin nodes and Argo are outside these quotas. Each account uses its own process/port; allow those provider firewall ports.')"
+ warn "$(L '仅新建的受限账户执行人数、流量和到期限制。原管理员节点及 Argo 不受此配额管理。每个运行账户独立进程/端口，内存随运行账户数增加；请先用 d → 7 检查资源并放行对应端口。' 'Limits apply only to new managed accounts. Existing admin nodes and Argo are outside these quotas. Each running account uses its own process/port and adds memory overhead; inspect resources with d → 7 and allow provider firewall ports.')"
  local choice max name quota days id action port snap
  if [[ $# == 0 || $1 == --menu ]]; then
   printf '%s' "$GREEN"

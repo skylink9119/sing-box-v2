@@ -101,7 +101,7 @@ apt_install() (
  trap 'rm -f -- "$log"' EXIT
  if DEBIAN_FRONTEND=noninteractive apt-get install -y "$@" > "$log" 2>&1;then cat "$log";return 0;else status=$?;fi
  cat "$log"
- if grep -Eq '404[[:space:]]|404[[:space:]]+Not Found|Failed to fetch' "$log";then
+ if grep -Eq '404[[:space:]]|Failed to fetch' "$log";then
   warn "$(L '安装包下载失败，刷新索引并重试一次。' 'Package download failed; refreshing indexes and retrying once.')"
   apt_refresh || return 1
   # Some archive CDN edges cache an earlier 404 even while the package exists.
