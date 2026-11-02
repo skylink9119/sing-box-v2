@@ -24,21 +24,20 @@ sub_menu(){
  esac
  case $group in
   1)
+   say '【一键安装】' '[Guided installation]'
    say ' 1. 安装 Reality + Vision（TCP；端口受阻时暂不建议）' ' 1. Install Reality + Vision (TCP; avoid when the port is blocked)'
    say ' 2. 安装 Hysteria2（UDP；推荐优先尝试）' ' 2. Install Hysteria2 (UDP; recommended first try)'
-   say ' 3. 安装双协议' ' 3. Install both protocols'
-   say ' 4. 安装 Reality + Vision IPv6 节点' ' 4. Install Reality + Vision IPv6'
+   say ' 3. 安装 XHTTP（自动部署；按需下载 Xray）' ' 3. Install XHTTP (guided; on-demand Xray)'
+   say ' 4. 安装双协议（Reality + HY2）' ' 4. Install both protocols (Reality + HY2)'
+   say ' 5. 安装 IPv6 Reality + Vision' ' 5. Install IPv6 Reality + Vision'
    printf '%s' "$YELLOW"
-   say '1–4 使用自动部署向导；手动参数请选择 9。' '1–4 use guided deployment; choose 9 for manual parameters.'
+   say '1–5 使用自动部署向导；手动参数请选择 6。' '1–5 use guided deployment; choose 6 for manual parameters.'
    printf '%s' "$GREEN"
-   say ' 5. Argo 临时 / 固定隧道管理' ' 5. Argo Quick / Named Tunnel controls'
-   say ' 6. 节点参数与协议增删' ' 6. Node settings and protocol changes'
+   say '【高级安装】' '[Advanced installation]'
+   say ' 6. 自定义安装（手动填写参数）' ' 6. Custom install (manual parameters)'
    say ' 7. 受限网络部署（Argo / IPv6 / NAT）' ' 7. Restricted networks (Argo / IPv6 / NAT)'
-   say ' 8. 节点安装前检测（不安装）' ' 8. Node installation checks (no installation)'
-   say ' 9. 自定义安装（手动填写参数）' ' 9. Custom install (manual parameters)'
-   say '10. XHTTP 节点（自动下载 Xray 内核）' '10. XHTTP nodes (on-demand Xray core)'
    printf '%s' "$YELLOW"
-   say '请按实际网络选择；HY2 需放行 UDP 端口。' 'Choose for your network; allow the HY2 UDP port.'
+   say '节点与隧道管理请到主菜单 b；HY2 需放行 UDP 端口。' 'Manage nodes and tunnels in main menu b; allow the HY2 UDP port.'
    printf '%s' "$GREEN"
    ;;
   2)
@@ -50,6 +49,9 @@ sub_menu(){
    say ' 6. HTTPS 个人在线订阅' ' 6. Personal HTTPS subscriptions'
    say ' 7. 查看节点参数（注意保密）' ' 7. View node parameters (keep private)'
    say ' 8. 修改节点端口' ' 8. Change node ports'
+   say ' 9. 节点参数与协议增删' ' 9. Node settings and protocol changes'
+   say '10. Argo 临时 / 固定隧道管理' '10. Argo Quick / Named Tunnel controls'
+   say '11. XHTTP 节点管理' '11. XHTTP node management'
    ;;
   3)
    say ' 1. sing-box 状态与启停' ' 1. sing-box status and controls'
@@ -94,14 +96,11 @@ sub_menu(){
  case "$group:$choice" in
   1:1) MAIN_ACTION=install_reality;;
   1:2) MAIN_ACTION=install_hy2;;
-  1:3) MAIN_ACTION=install_dual;;
-  1:4) MAIN_ACTION=install_reality_ipv6;;
-  1:5) MAIN_ACTION=argo;;
-  1:6) MAIN_ACTION=settings;;
+  1:3) MAIN_ACTION=install_xhttp;;
+  1:4) MAIN_ACTION=install_dual;;
+  1:5) MAIN_ACTION=install_reality_ipv6;;
+  1:6) MAIN_ACTION=manual_install;;
   1:7) MAIN_ACTION=rescue;;
-  1:8) MAIN_ACTION=install_checks;;
-  1:9) MAIN_ACTION=manual_install;;
-  1:10) MAIN_ACTION=xhttp;;
   2:1) MAIN_ACTION=nodes;;
   2:2) MAIN_ACTION=subscription;;
   2:3) MAIN_ACTION=rename;;
@@ -110,6 +109,9 @@ sub_menu(){
   2:6) MAIN_ACTION=online;;
   2:7) MAIN_ACTION=node_parameters;;
   2:8) MAIN_ACTION=node_ports;;
+  2:9) MAIN_ACTION=settings;;
+  2:10) MAIN_ACTION=argo;;
+  2:11) MAIN_ACTION=xhttp;;
   3:1) MAIN_ACTION=service;;
   3:2) MAIN_ACTION=logs;;
   3:3) MAIN_ACTION=argo_status;;
@@ -146,6 +148,7 @@ dispatch_action(){
  case $action in
  install_reality) guided_install 1;; install_hy2) guided_install 2;; install_dual) guided_install 3;;
  install_reality_ipv6) guided_install 1 ipv6;;
+ install_xhttp) xhttp_guided_select;;
  manual_install) manual_install;;
  install_ipv6) ipv6_install_menu "$@";;
  node_ports) edit_node_ports;;
@@ -157,7 +160,6 @@ dispatch_action(){
  media) media_check "$@";; warp) warp_menu "$@";; relay) relay_menu "$@";; haproxy) haproxy_menu "$@";;
  ipv6) ipv6_menu "$@";;
  reality) reality_menu "$@";;
- install_checks) installation_check_menu "$@";;
  rescue) rescue_menu "$@";;
  manager_update) manager_update;; certificate) certificate_menu "$@";; resources) report_output resource_info;;
  update) core_versions "$@";; settings) node_settings "$@";; online) online_menu "$@";; acme) acme_menu "$@";; backup_tools) backup_tools "$@";; help) usage_help;; backup) backup;; restore) restore;;
@@ -208,7 +210,6 @@ navigation_action(){
   relay) run_submenu relay_menu;; haproxy) run_submenu haproxy_menu;;
   ipv6) run_submenu ipv6_menu;;
   reality) run_submenu reality_menu;;
-  install_checks) run_submenu installation_check_menu;;
   install_ipv6) run_submenu ipv6_install_menu;;
   hop) run_submenu hop;; update) run_submenu core_versions;;
   backup_tools) run_submenu backup_tools;; users) users_manager;;

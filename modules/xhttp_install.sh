@@ -6,7 +6,7 @@ install_node(){
  local flags=() apply_options=()
  choice=${1:-2}
  case $choice in 2|3);;*)return 1;;esac
- case $choice in 1) kind=vision; node_port=443;; 2) kind=xhttp-reality; node_port=443;; 3) kind=xhttp-tls; node_port=2053;; 4) run_submenu installation_check_menu;return;; 5) run_submenu ipv6_install_menu;return;; 0) return 0;; *) return 1;; esac
+ case $choice in 2) kind=xhttp-reality; node_port=443;; 3) kind=xhttp-tls; node_port=2053;; *) return 1;; esac
  if [[ $ipv6_install == ipv6 ]];then
   if ! command -v ip >/dev/null;then install_environment_check "$kind" || return 1;fi
   host=$(ipv6_install_address) || { ipv6_status=$?;[[ $ipv6_status == 2 ]] && return 0;return 1; }

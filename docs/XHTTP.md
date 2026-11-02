@@ -1,6 +1,6 @@
 # 一个项目管理 sing-box 与 XHTTP
 
-从 `sb` 进入 **a → 10**。XHTTP 是传输方式，节点使用 VLESS + XHTTP + Reality 或 TLS；不添加 Vision flow。
+从 `sb` 进入 **a → 3** 直接开始自动部署，选择 `1`（回车默认）XHTTP + Reality 或 `2` TLS/CDN。节点管理进入 **b → 11**；以下表格中的数字属于管理菜单，保留相应快捷安装入口。XHTTP 是传输方式，节点使用 VLESS + XHTTP + Reality 或 TLS；不添加 Vision flow。
 首次部署才查询并下载 [XTLS 官方最新稳定 Xray](https://github.com/XTLS/Xray-core/releases/latest)，校验 Release API SHA256 后使用。未部署 XHTTP 时不会下载、启动 Xray，也不会在打开菜单时联网查版本。
 
 | 选择 | 功能与默认参数 |
@@ -13,7 +13,7 @@
 | 8 | 查询最新稳定 Xray，再确认更新；检查配置，失败恢复原核心；现有核心不会在打开菜单时自动替换 |
 | 9 / 10 | 独立 XHTTP 私密备份 / 恢复；备份包含凭据、私钥与证书 |
 | 11 | 备份并卸载 XHTTP/Xray，保留 sing-box、未知文件和防火墙规则 |
-| 12 | 手动指定端口、连接地址、监听地址族、握手目标、路径和模式 |
+| 12（或 a → 6 → 4/5） | 手动指定端口、连接地址、监听地址族、握手目标、路径和模式 |
 
 主菜单 **b → 1 / b → 7** 同时查看两类节点/参数。新安装也可只装 XHTTP，不必先装 sing-box。
 
@@ -28,7 +28,7 @@ BBR/UFW/二维码复用公共配套模块。UFW 启用前先确认实际 SSH 监
 - XHTTP 配置/凭据/导出：`/etc/singbox-v2/xhttp`；核心：`/etc/singbox-v2/xhttp-core/xray`；服务：`skybyte-sb-xhttp.service`。
 - 安装、编辑、更新和卸载共用 sing-box 管理锁；等待菜单输入时释放锁。检查停止服务所预留的 TCP 端口，避免双内核抢占端口。
 - XHTTP URI、二维码、`client-xhttp-*.json` 和独立 Base64 导出供支持 XHTTP 的客户端使用。现有 sing-box JSON、Mihomo YAML、用户配额、个人 HTTPS 订阅与 WARP 设置仍针对 sing-box，未将 XHTTP 填进不兼容格式或声称共享计量。
-- sing-box 完整备份附带 `xhttp.tar.gz`，独立恢复用 a → 10 → 10；sing-box 恢复不会悄悄改写 XHTTP。完整卸载会备份并移除本项目管理的两类节点；XHTTP 单独卸载不会删除 sing-box。
+- sing-box 完整备份附带 `xhttp.tar.gz`，独立恢复用 b → 11 → 10；sing-box 恢复不会悄悄改写 XHTTP。完整卸载会备份并移除本项目管理的两类节点；XHTTP 单独卸载不会删除 sing-box。
 - 不自动接管已有独立 Xray 项目、`/etc/skybyte-xray` 或 `skybyte-xray.service`；它们的配置、密钥和服务均不覆盖。旧项目如占用端口，需先备份并人工停用或选择其它空闲端口。
 - 参数、链接、二维码和备份均留在 VPS；不要公开。请安装并开启防火墙，先放行 SSH 与实际端口。
 
