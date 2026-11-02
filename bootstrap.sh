@@ -22,7 +22,7 @@
  if [[ -s $installer ]] && head -n 1 "$installer" | grep -Fxq '#!/usr/bin/env bash' && bash -n "$installer";then :;else
   printf 'Invalid installer download / 安装脚本为空或格式错误，已停止执行\n' >&2;exit 1
  fi
- if ! printf '%s  %s\n' 'f02380bc3944deb6967ffb8a4c86267bf964a9708247c81b196057f146459907' "$installer" | sha256sum -c - >/dev/null;then
+ if ! printf '%s  %s\n' '57f7887880af45520449fe2ef07cb31b8e77950d6042626b31279b6e0a9c897c' "$installer" | sha256sum -c - >/dev/null;then
   printf 'Installer SHA256 mismatch / 安装脚本 SHA256 校验失败，已停止执行\n' >&2;exit 1
  fi
  bash "$installer" "$@"

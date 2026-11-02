@@ -67,8 +67,8 @@ deployment_hopping(){
  local target listeners address
  case $(protocol_mode) in 2|3) ;;*) return 2;;esac
  address=$(state ip) || return 1
- if [[ $address == *:* ]];then
-  report_output say '[跳过] 当前 HY2 节点使用 IPv6；现有端口跳跃仅支持 IPv4' '[SKIP] HY2 uses IPv6; current hopping supports IPv4 only'
+ if [[ $address == *:* || ( $(state listen) == :: && ! $address =~ ^[0-9]+[.][0-9]+[.][0-9]+[.][0-9]+$ ) ]];then
+  report_output say '[跳过] 当前 HY2 使用 IPv6 或域名地址族未确认；自动跳跃仅用于确认的 IPv4 入口' '[SKIP] HY2 uses IPv6 or an unconfirmed domain family; automatic hopping requires a confirmed IPv4 entry'
   return 2
  fi
  if [[ $(state hop) == True ]];then

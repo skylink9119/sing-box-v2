@@ -89,6 +89,12 @@ deployment_hopping""")
         result=self.shell("state(){ [[ $1 != ip ]] || echo 2606:4700::1; };hop(){ echo BAD; };deployment_hopping",ok=False)
         self.assertEqual(result.returncode,2);self.assertIn('[SKIP]',result.stdout);self.assertNotIn('BAD',result.stdout)
 
+    def test_ipv6_listener_with_hostname_does_not_get_ipv4_only_client_hopping(self):
+        self.configure('2');p=self.base/'state.json';state=json.loads(p.read_text());state.update(ip='node.example',listen='::');p.write_text(json.dumps(state))
+        result=self.shell('hop(){ echo BAD; };deployment_hopping',ok=False)
+        self.assertEqual(result.returncode,2);self.assertNotIn('BAD',result.stdout)
+        self.assertFalse(json.loads(p.read_text())['hop'])
+
     def test_existing_hopping_range_is_not_replaced(self):
         self.configure('2');p=self.base/'state.json';state=json.loads(p.read_text());state.update(hop=True,hop_start=31000,hop_end=32000);p.write_text(json.dumps(state))
         result=self.shell('hop_guard(){ :; };systemctl(){ :; };hop(){ echo BAD; };deployment_hopping')
