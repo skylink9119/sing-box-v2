@@ -111,5 +111,5 @@ run_submenu installation_check_menu'''
         self.assertIn('--target addons.mozilla.org:443 --sni addons.mozilla.org', result.stdout)
         self.assertNotIn('UNEXPECTED_', result.stdout)
         self.assertFalse((self.base/'state.json').exists())
-        result = self.shell('sub_menu 1;echo "$MAIN_ACTION"', input='7\n')
+        result = self.shell('sub_menu 1;echo "$MAIN_ACTION"', input='8\n')
         self.assertIn('install_checks', result.stdout)

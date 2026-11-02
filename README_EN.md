@@ -20,11 +20,11 @@
 
 ---
 
-# SKYBYTE Manager V2.9.0: modular source architecture
+# SKYBYTE Manager V2.9.1: modular source architecture
 
 Guided installation collects protocol, name and BBR/UFW/QR choices before applying the confirmed defaults, with hopping for IPv4 HY2. **a → 9** retains custom installation; **d → 14** configures existing nodes. [Details](docs/AUTOMATIC-SETUP.md).
 
-Read-only installation checks (**a → 7**) verify the managed configuration, systemd service, executable and actual socket owners when a UDP port is occupied. Confirmed managed HY2 is reported as already installed, with links to nodes (**b → 1**), port editing (**b → 8**) and service status (**c → 1**). Other or unverified owners remain conflicts. Installation never treats an occupied port as free or overwrites an existing node.
+Read-only installation checks (**a → 8**) verify the managed configuration, systemd service, executable and actual socket owners when a UDP port is occupied. Confirmed managed HY2 is reported as already installed, with links to nodes (**b → 1**), port editing (**b → 8**) and service status (**c → 1**). Other or unverified owners remain conflicts. Installation never treats an occupied port as free or overwrites an existing node.
 
 Installation menu **a → 1** labels Reality + Vision as TCP and advises against it when the port is blocked; **a → 2** labels Hysteria2 as UDP and recommends trying it first. Choose for your network and allow the HY2 UDP port; the recommendation does not guarantee public reachability.
 
@@ -38,7 +38,7 @@ The main menu includes the SKYBYTE ASCII logo. Menus are bold green, credential 
 
 V2.8.18 improves menu response: batch startup service/interface queries, bound local probes and certificate commands, read the atomic account snapshot without waiting for the quota worker lock, skip unchanged shortcut writes, and fix remaining TCP TIME_WAIT false positives when adding protocols or editing ports. No additional background service. Forwarding resource use depends on cores, traffic and enabled components; inspect processes, memory and load in **d → 7**. See the [audit record](docs/AUDIT-2026-10-28.md).
 
-V2.8.11 adds **installation preflight (a → 7)**, automatic checks for new installs/Reality additions, and a short HTTPS install entry.
+V2.8.11 adds **installation preflight (a → 8)**, automatic checks for new installs/Reality additions, and a short HTTPS install entry.
 
 V2.8.10 adds **node parameters (b → 7)**: inspect UUID/public key/short ID/SNI/target with privacy and firewall reminders.
 
@@ -54,7 +54,7 @@ V2.8.1 whole-source audit fixes: the installer checks ownership and atomically p
 
 ## Change node ports
 
-Open **b → 8** (the existing **a → 5 → 1** path still works). Only installed Reality TCP / HY2 UDP listeners are prompted. Current values are shown; Enter keeps them and `y` applies changes. UUIDs, keys, handshake sites, certificates and quota-managed account ports/usage remain intact. IPv6 backups update too. Unchanged or cancelled input does not restart services.
+Open **b → 8** (the existing **a → 6 → 1** path still works). Only installed Reality TCP / HY2 UDP listeners are prompted. Current values are shown; Enter keeps them and `y` applies changes. UUIDs, keys, handshake sites, certificates and quota-managed account ports/usage remain intact. IPv6 backups update too. Unchanged or cancelled input does not restart services.
 
 Port validation and collision checks precede the existing backup/transaction flow. Active UFW allows changed ports before switching listeners; UFW failure preserves node ports. Configuration, service and export failures roll back. Newly added UFW rules are retained with a warning after failure; old rules are not deleted. Update provider firewall/NAT mappings and re-import client nodes yourself.
 
@@ -62,7 +62,9 @@ TCP-only edits retain HY2 hopping. Changing the HY2 listener disables old hoppin
 
 ## Independent IPv6 node installation
 
-Open **a → 8**: `1` Reality + Vision (TCP), `2` Hysteria2 (UDP), `3` both. Select a native public IPv6, enter the ports and certificate/handshake settings, then confirm with `y`. Exported nodes use that IPv6 directly and have `IPv6` in the name; listeners are dual-stack, without automatically exporting an IPv4 address.
+**a → 4** opens guided IPv6 Reality + Vision installation: choose a name and BBR / UFW / QR options, then confirm. It uses TCP 443 and the first validated native public IPv6 without additional parameter prompts. Client IPv6 is required.
+
+Open **a → 7 → 10**: `1` Reality + Vision (TCP), `2` Hysteria2 (UDP), `3` both. Select a native public IPv6, enter the ports and certificate/handshake settings, then confirm with `y`. Exported nodes use that IPv6 directly and have `IPv6` in the name; listeners are dual-stack, without automatically exporting an IPv4 address.
 
 Checks cover local address readiness/ownership, IPv6 routing and UFW; WARP/TUN addresses are excluded. Active UFW must manage IPv6 and selected ports are allowed before applying. A failed local listener check rolls back this installation; added firewall rules remain for review. Self-signed HY2 certificates include the IPv6 address and still require secure client trust.
 
@@ -119,7 +121,7 @@ Fresh installation uses the official sing-box 1.14.3 binary tested for this mana
 
 | Menu | Category | Functions |
 | --- | --- | --- |
-| a | Install nodes | Reality / HY2 / dual; Quick / Named; node edits / protocol changes; restricted-network setup / installation checks (a → 7) |
+| a | Install nodes | Reality / HY2 / dual; Quick / Named; node edits / protocol changes; restricted-network setup / installation checks (a → 8) |
 | b | Nodes and subscriptions | Information / exports / custom names / QR codes / accounts / personal HTTPS subscriptions / node parameters (b → 7) |
 | c | Services and logs | Controls / logs / Argo status |
 | d | Server and network | Initialization / UFW / firewall / BBR / hopping / traffic / resources / media / WARP / sing-box relay / HAProxy TCP passthrough / Reality target checks |
@@ -136,9 +138,9 @@ vnStat reports **total VPS interface traffic**, never separate Reality/HY2 traff
 
 ## Installation preflight
 
-**a → 7** runs diagnostics without installing. New installs automatically check OS/architecture/systemd, Python TLS 1.3, actual APT/DPKG record locks, missing/PATH dependencies, storage, local TCP/UDP binds and firewall reminders. Reality checks DNS, TCP, TLS 1.3, certificates and HTTP/2; bounded GitHub HTTPS checks precede verified core downloads.
+**a → 8** runs diagnostics without installing. New installs automatically check OS/architecture/systemd, Python TLS 1.3, actual APT/DPKG record locks, missing/PATH dependencies, storage, local TCP/UDP binds and firewall reminders. Reality checks DNS, TCP, TLS 1.3, certificates and HTTP/2; bounded GitHub HTTPS checks precede verified core downloads.
 
-Failures stop core download and new node generation. Installing dependencies can still change system packages; standalone checks do not install packages or change firewall/configuration/services. Add Reality to existing HY2 through **a → 5 → 4**, with port/target checks before applying. These checks do not prove public inbound, provider/NAT/CDN or client connectivity.
+Failures stop core download and new node generation. Installing dependencies can still change system packages; standalone checks do not install packages or change firewall/configuration/services. Add Reality to existing HY2 through **a → 6 → 4**, with port/target checks before applying. These checks do not prove public inbound, provider/NAT/CDN or client connectivity.
 
 **https://sky9119.cc/sb.sh** redirects through Cloudflare HTTPS to the latest stable GitHub bootstrap asset. Download services can see source IP/request metadata. The command still installs missing curl and rejects failed or empty downloads.
 
@@ -156,7 +158,7 @@ Results show DNS, the connected TCP address, TLS 1.3, certificate trust / validi
 
 Checks cover **this VPS → target** only. They do not edit nodes, credentials or routes, restart services, or verify client, public node-port or CDN connectivity. Healthy targets do not need scheduled rotation; investigate or change them when a check fails.
 
-Choose **3** to replace the target (also **a → 5 → 3**): select a preset or custom SNI and a target (default `selected-host:443`). The new target must pass checks before `y` applies it; failures and cancellation retain the original files. Administrator and quota-managed Reality nodes are updated together, preserving UUIDs, keys, ports, usage and HY2 hopping. Running services briefly restart. Configuration, restart or export failures restore the original files. Client exports are refreshed; re-import nodes or update client SNI. No Reality node is installed automatically.
+Choose **3** to replace the target (also **a → 6 → 3**): select a preset or custom SNI and a target (default `selected-host:443`). The new target must pass checks before `y` applies it; failures and cancellation retain the original files. Administrator and quota-managed Reality nodes are updated together, preserving UUIDs, keys, ports, usage and HY2 hopping. Running services briefly restart. Configuration, restart or export failures restore the original files. Client exports are refreshed; re-import nodes or update client SNI. No Reality node is installed automatically.
 
 ## Hysteria2 / HY2 and verified TLS
 
@@ -236,7 +238,7 @@ For lawful networking education and server administration, subject to applicable
 
 ## Argo Quick / Named Tunnels
 
-Menu **a → 4** adds a separate VLESS + WebSocket node to an existing managed Reality/HY2 deployment. The origin listens only on loopback; existing credentials and configuration are preserved. All client exports use verified HTTPS/WSS. Cloudflare terminates outer TLS and can inspect WebSocket payloads.
+Menu **a → 5** adds a separate VLESS + WebSocket node to an existing managed Reality/HY2 deployment. The origin listens only on loopback; existing credentials and configuration are preserved. All client exports use verified HTTPS/WSS. Cloudflare terminates outer TLS and can inspect WebSocket payloads.
 
 Quick mode needs no account/domain; restart changes the hostname, requiring refreshed imports. [Cloudflare documents Quick Tunnels as testing services without uptime guarantees](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/). Named mode requires a remotely managed tunnel and published hostname configured in your account: route HTTP to `http://127.0.0.1:8080` (use your selected local port), enable WebSocket support, and avoid interactive Access login. Enter hostname and Token locally; account DNS/routes are not provisioned by this script.
 
@@ -248,10 +250,10 @@ Shadowrocket native links are additionally saved in `shadowrocket-native-nodes.t
 
 ## Restricted networks: Argo rescue, IPv6 and NAT (V2.8)
 
-Open **a → 6** for an Ubuntu/Debian host with blocked inbound access, IPv6-only connectivity, or provider-managed NAT. This cannot restore SSH, repair host networking, or recover a machine with no usable outbound path. The VPS still needs access to required downloads and outbound Cloudflare connectivity. If the host is unreachable, first use the provider console or rescue environment.
+Open **a → 7** for an Ubuntu/Debian host with blocked inbound access, IPv6-only connectivity, or provider-managed NAT. This cannot restore SSH, repair host networking, or recover a machine with no usable outbound path. The VPS still needs access to required downloads and outbound Cloudflare connectivity. If the host is unreachable, first use the provider console or rescue environment.
 
 - **1 / 2: standalone Argo Quick / Named Tunnel.** With no existing managed installation, the manager stages an empty sing-box core without public listeners, then creates a VLESS + WebSocket origin bound only to `127.0.0.1`. It provides a proxy entry while Cloudflare egress works; it does not carry HY2/QUIC. Quick Tunnels need no domain, but their hostname changes. Cloudflare classifies them for testing and provides no SLA, stable hostname or production guarantee. Named mode requires you to configure a Cloudflare Tunnel, published hostname and route to the selected loopback port; the script does not create DNS or account resources.
-- **Add a direct node after standalone Argo:** open **a → 5 → 4**, choose Reality or HY2, then enter the public client address, local bind family and port. The separate Argo tunnel remains installed. Standalone Argo alone cannot host quota-managed accounts; add a direct node before enabling account management.
+- **Add a direct node after standalone Argo:** open **a → 6 → 4**, choose Reality or HY2, then enter the public client address, local bind family and port. The separate Argo tunnel remains installed. Standalone Argo alone cannot host quota-managed accounts; add a direct node before enabling account management.
 - **3 / 4: IPv6, custom ports and NAT.** Custom deployment lets you choose local ports/bind family and the address advertised to clients. The NAT export option separates the administrator node's public mapped ports/address from its local listener ports. Your provider must create the TCP/UDP mappings and allow the ports; the script cannot configure provider NAT, security groups or routes. Quota-user ports are not included and need separate mappings. HY2 certificate identity must match the name clients use to connect.
 - **5 / 7: Cloudflare transport and reachability check.** Tunnel egress requires UDP 7844 (QUIC) or TCP 7844 (HTTP/2); HTTP/2 does not use TCP 443. The check tests only TCP 7844 reachability for the selected address family. It cannot prove UDP reachability, tunnel registration or end-to-end client connectivity. Choose the family and transport allowed by the VPS/provider egress rules.
 - **6: WARP dual-stack completion.** Import your own working WARP WireGuard profile. The manager creates a gateway for managed node traffic and lets you select global WARP or WARP for selected media/AI domains. It leaves the system default route unchanged and cannot create its own first network path. The native Peer Endpoint must be reachable over the current network; IPv6-only hosts need a reachable IPv6 Peer Endpoint. Dual-stack checks verify only the gateway's IPv4/IPv6 TCP egress and do not promise service unlocking.
@@ -334,7 +336,7 @@ Proxy egress address families are selected by the proxy; DNS-based native/proxy 
 
 ## Node editing (V2.5)
 
-Open **a → 5** for independent admin Reality/HY2 ports, server IP/DDNS, Reality handshake identity, adding/removing protocols, HY2 bandwidth/Salamander options and existing TLS certificate changes. Removing the final protocol is refused. Added HY2 can generate a self-signed certificate or use an existing/managed ACME certificate; self-signed clients still require public-certificate trust.
+Open **a → 6** for independent admin Reality/HY2 ports, server IP/DDNS, Reality handshake identity, adding/removing protocols, HY2 bandwidth/Salamander options and existing TLS certificate changes. Removing the final protocol is refused. Added HY2 can generate a self-signed certificate or use an existing/managed ACME certificate; self-signed clients still require public-certificate trust.
 
 All candidates are checked before backup, final account metering, commit and restart of previously active nodes. Failure restores the original files. Existing UUIDs/passwords, individual ports, quota/expiry and usage remain. Adding Reality generates its keypair; re-adding a removed Reality protocol may produce a new public key, requiring import refresh. Exports and active UFW rules follow actual ports; old rules remain and provider security groups need manual updates.
 
@@ -379,7 +381,7 @@ Restore retains current account policy/usage and current subscription tokens. HT
 
 ```bash
 python3 scripts/build.py --check
-python3 scripts/package_release.py --output /tmp/skybyte-release-2.9.0
+python3 scripts/package_release.py --output /tmp/skybyte-release-2.9.1
 ```
 
 Packaging includes only bootstrap.sh, install.sh, the full bundle, public rule catalog and SHA256SUMS, never runtime state or credentials.

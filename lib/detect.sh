@@ -49,7 +49,7 @@ startup_info(){
  services=$(startup_probe systemctl show --no-pager --property=Id,LoadState,ActiveState sing-box.service skybyte-argo-tunnel.service nginx.service skybyte-haproxy.service skybyte-users.service) || services=''
  printf '%s\n----------------------------------------------\n' "$YELLOW"
  say "脚本版本：SKYBYTE Manager v$MANAGER_VERSION" "Script version: SKYBYTE Manager v$MANAGER_VERSION"
- say '功能更新：受限网络部署（a → 6）、独立 Argo、IPv6/NAT、WARP 双栈、专业流媒体/回程/测速' 'Features: restricted-network deployment (a → 6), standalone Argo, IPv6/NAT, WARP dual-stack and professional media/route/speed tests'
+ say '功能更新：IPv6 Reality 自动部署（a → 4）；受限网络部署（a → 7）；安装前检测（a → 8）' 'Features: guided IPv6 Reality (a → 4); restricted networks (a → 7); installation checks (a → 8)'
  say '系统信息：' 'System information:'
  printf '  %s: %s\n' "$(L '操作系统' 'OS')" "$os" "$(L '内核' 'Kernel')" "$kernel" "$(L '处理器架构' 'Architecture')" "$arch" "$(L '虚拟化' 'Virtualization')" "$virtual"
  printf '  IPv4: %s\n  IPv6: %s\n' "${ipv4:-$(L '未检测到' 'Not detected')}" "${ipv6:-$(L '未检测到' 'Not detected')}"

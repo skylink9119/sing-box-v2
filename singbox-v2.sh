@@ -8,7 +8,7 @@
 set -Eeuo pipefail
 umask 077
 SCRIPT_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
-MANAGER_VERSION=2.9.0
+MANAGER_VERSION=2.9.1
 CORE_RECOMMENDED=1.14.3
 BASE=/etc/singbox-v2
 CONF=/etc/sing-box/config.json
@@ -325,7 +325,7 @@ startup_info(){
  services=$(startup_probe systemctl show --no-pager --property=Id,LoadState,ActiveState sing-box.service skybyte-argo-tunnel.service nginx.service skybyte-haproxy.service skybyte-users.service) || services=''
  printf '%s\n----------------------------------------------\n' "$YELLOW"
  say "脚本版本：SKYBYTE Manager v$MANAGER_VERSION" "Script version: SKYBYTE Manager v$MANAGER_VERSION"
- say '功能更新：受限网络部署（a → 6）、独立 Argo、IPv6/NAT、WARP 双栈、专业流媒体/回程/测速' 'Features: restricted-network deployment (a → 6), standalone Argo, IPv6/NAT, WARP dual-stack and professional media/route/speed tests'
+ say '功能更新：IPv6 Reality 自动部署（a → 4）；受限网络部署（a → 7）；安装前检测（a → 8）' 'Features: guided IPv6 Reality (a → 4); restricted networks (a → 7); installation checks (a → 8)'
  say '系统信息：' 'System information:'
  printf '  %s: %s\n' "$(L '操作系统' 'OS')" "$os" "$(L '内核' 'Kernel')" "$kernel" "$(L '处理器架构' 'Architecture')" "$arch" "$(L '虚拟化' 'Virtualization')" "$virtual"
  printf '  IPv4: %s\n  IPv6: %s\n' "${ipv4:-$(L '未检测到' 'Not detected')}" "${ipv6:-$(L '未检测到' 'Not detected')}"
@@ -1266,6 +1266,9 @@ install_protocol() (
  local stage="" committed=false final_bin=$BIN final_conf=$CONF final_meta=$META final_base=$BASE
  trap installation_cleanup EXIT
  need_root
+ local guided=false ipv6_install=false
+ case ${2:-} in guided|guided-ipv6) guided=true;;esac
+ case ${2:-} in ipv6|guided-ipv6) ipv6_install=true;;esac
  local mode="${1:-}" cert_mode="" vp=443 hp=443 supplied_ip='' listen_addr=''
  if [[ -z "$mode" ]]; then prompt_options '1. Reality 单协议
 2. HY2 单协议
@@ -1277,17 +1280,18 @@ install_protocol() (
  prompt_read '> ' mode || return; fi
  [[ "$mode" == 0 ]] && return 0
  [[ "$mode" =~ ^[123]$ ]] || { err "Invalid selection"; return 1; }
- if [[ ${2:-} != guided ]];then notice; confirm "$(L '同意声明并安装所选协议？' 'Accept notice and install selected protocol(s)?')" || return 0;fi
- if [[ -e $CONF || -L $CONF || -e $META || -L $META || -e $BIN || -L $BIN || -e $SYSTEMD_DIR/sing-box.service || -L $SYSTEMD_DIR/sing-box.service ]] || command -v sing-box >/dev/null; then err "$(L '发现已有配置或核心，拒绝覆盖；追加协议用 a → 5 → 4，已有节点增加 IPv6 备用用 d → 13 → 2。' 'Existing configuration or binary found; refusing to overwrite. Add a protocol through a → 5 → 4, or add IPv6 backups through d → 13 → 2.')"; return 1; fi
+ if [[ $guided != true ]];then notice; confirm "$(L '同意声明并安装所选协议？' 'Accept notice and install selected protocol(s)?')" || return 0;fi
+ if [[ -e $CONF || -L $CONF || -e $META || -L $META || -e $BIN || -L $BIN || -e $SYSTEMD_DIR/sing-box.service || -L $SYSTEMD_DIR/sing-box.service ]] || command -v sing-box >/dev/null; then err "$(L '发现已有配置或核心，拒绝覆盖；追加协议用 a → 6 → 4，已有节点增加 IPv6 备用用 d → 13 → 2。' 'Existing configuration or binary found; refusing to overwrite. Add a protocol through a → 6 → 4, or add IPv6 backups through d → 13 → 2.')"; return 1; fi
  if systemctl list-unit-files sing-box.service --no-legend 2>/dev/null | grep -q sing-box; then err "$(L '已有 sing-box 服务，拒绝覆盖' 'Existing sing-box service found; refusing to overwrite')"; return 1; fi
  install_environment_check "$mode" || return 1
- if [[ ${2:-} == ipv6 ]];then
+ if [[ $ipv6_install == true ]];then
   local ipv6_status
-  supplied_ip=$(ipv6_install_address) || { ipv6_status=$?;[[ $ipv6_status == 2 ]] && return 0;return 1; }
+  if [[ $guided == true ]];then supplied_ip=$(ipv6_install_auto_address) || return 1
+  else supplied_ip=$(ipv6_install_address) || { ipv6_status=$?;[[ $ipv6_status == 2 ]] && return 0;return 1; };fi
   listen_addr=::
   warn "$(L '使用所选 IPv6 作为节点连接地址，监听支持双栈；客户端网络必须支持 IPv6。请放行云安全组和系统防火墙的 IPv6 TCP/UDP 端口。纯 IPv6 VPS 访问 IPv4 网站需要另行配置可用出站。' 'The selected IPv6 is the client address with a dual-stack listener. Client IPv6 and provider/host IPv6 TCP/UDP rules are required. IPv6-only VPSs need a separate working egress for IPv4-only sites.')"
-  if [[ $mode != 2 ]];then prompt_read "$(L 'Reality TCP 端口 [443]：' 'Reality TCP port [443]: ')" vp || return 1;vp=${vp:-443};fi
-  if [[ $mode != 1 ]];then prompt_read "$(L 'HY2 UDP 端口 [443]：' 'HY2 UDP port [443]: ')" hp || return 1;hp=${hp:-443};fi
+  if [[ $guided != true && $mode != 2 ]];then prompt_read "$(L 'Reality TCP 端口 [443]：' 'Reality TCP port [443]: ')" vp || return 1;vp=${vp:-443};fi
+  if [[ $guided != true && $mode != 1 ]];then prompt_read "$(L 'HY2 UDP 端口 [443]：' 'HY2 UDP port [443]: ')" hp || return 1;hp=${hp:-443};fi
  fi
  if [[ ${2:-} == custom ]];then
   if [[ $mode != 2 ]];then prompt_read "$(L '本机 Reality TCP 端口 [443]：' 'Local Reality TCP port [443]: ')" vp || return 1;vp=${vp:-443};fi
@@ -1311,11 +1315,11 @@ install_protocol() (
  if [[ $mode != 2 ]];then haproxy_engine check_port "$vp" || return 1;fi
  install_port_check "$mode" "$vp" "$hp" "${listen_addr:-0.0.0.0}" || return 1
  local domain="" cert="" key="" sni="" node_name node_suffix=''
- [[ ${2:-} != ipv6 ]] || node_suffix=-IPv6
- if [[ ${2:-} == guided ]];then node_name=$WIZARD_NODE_NAME
+ [[ $ipv6_install != true ]] || node_suffix=-IPv6
+ if [[ $guided == true ]];then node_name=$WIZARD_NODE_NAME
  else node_name=$(choose_node_name "$node_suffix") || { err "$(L '节点名称无效' 'Invalid node name')"; return 1; };fi
  if [[ $mode != 1 ]]; then
-  if [[ ${2:-} == guided ]];then cert_mode=1
+  if [[ $guided == true ]];then cert_mode=1
   else
   prompt_options 'HY2证书:
 1. 无域名(自动自签名)
@@ -1341,7 +1345,7 @@ install_protocol() (
   esac
  fi
  if [[ $mode != 2 ]]; then
-  if [[ ${2:-} == guided ]];then sni=addons.mozilla.org
+  if [[ $guided == true ]];then sni=addons.mozilla.org
   else prompt_read "$(L 'Reality 握手域名 [addons.mozilla.org]：' 'Reality handshake [addons.mozilla.org]: ')" sni || return 1;fi
   sni=${sni:-addons.mozilla.org}
   [[ $sni =~ ^[a-zA-Z0-9.-]+$ ]] || { err "$(L '无效 SNI' 'Invalid SNI')"; return 1; }
@@ -1397,7 +1401,7 @@ PY_INSTALL_SAN
  chmod 600 "$CONF" "$META"
  "$BIN" check -c "$CONF" || { err "$(L '配置检查失败' 'Configuration check failed')"; return 1; }
  exports >/dev/null || return 1
- if [[ ${2:-} == ipv6 ]];then
+ if [[ $ipv6_install == true ]];then
   ipv6_engine check-install "$supplied_ip" || return 1
   if command -v ufw >/dev/null;then
    local ipv6_ufw_status
@@ -1414,15 +1418,15 @@ PY_INSTALL_SAN
  cert=$(state cert_path)
  "$BIN" check -c "$CONF" || return 1
  setup_service || return 1
- if [[ ${2:-} != ipv6 ]] && command -v ufw >/dev/null && LC_ALL=C ufw status | grep -q '^Status: active'; then if [[ $mode != 2 ]]; then ufw allow "$vp/tcp"; fi; if [[ $mode != 1 ]]; then ufw allow "$hp/udp"; fi; fi
+ if [[ $ipv6_install != true ]] && command -v ufw >/dev/null && LC_ALL=C ufw status | grep -q '^Status: active'; then if [[ $mode != 2 ]]; then ufw allow "$vp/tcp"; fi; if [[ $mode != 1 ]]; then ufw allow "$hp/udp"; fi; fi
  systemctl daemon-reload && systemctl enable --now sing-box && systemctl restart sing-box || return 1
  sleep 2; systemctl is-active --quiet sing-box || { err "$(L '服务启动失败，请查看 journalctl -u sing-box' 'Service failed; inspect journalctl -u sing-box')"; return 1; }
- [[ ${2:-} != ipv6 ]] || ipv6_engine ready || return 1
+ [[ $ipv6_install != true ]] || ipv6_engine ready || return 1
  if [[ $cert_mode == 1 ]]; then echo "$(L '自签名证书：' 'Self-signed certificate: ')$cert"; openssl x509 -in "$cert" -noout -fingerprint -sha256; say '务必将证书安全导入客户端并验证，链接本身不足以建立信任。' 'Securely import and verify certificate on client; URL alone cannot establish trust.'; fi
  exports || return 1
  committed=true
  ok "$(L '部署完成；请检查云防火墙' 'Installed; check provider firewall')"
- if [[ ${2:-} == guided ]];then
+ if [[ $guided == true ]];then
   deployment_apply_selected "$WIZARD_BBR" "$WIZARD_FIREWALL" "$WIZARD_QR" || warn "$(L '节点已安装，部分所选配置未完成，请查看上方结果。' 'Node installed; some selected setup is incomplete. Inspect the results above.')"
  else automatic_setup || warn "$(L '节点已保留，部分配套配置未完成，可通过 d → 14 重试。' 'Node retained; some optional setup is incomplete. Retry via d → 14.')"
  fi
@@ -1665,13 +1669,14 @@ wizard_selected(){
  if [[ $1 == 1 ]];then L '启用' 'Enable';else L '跳过' 'Skip';fi
 }
 guided_install() (
- local protocol_label
+ local protocol_label install_kind=guided suffix=''
+ if [[ ${2:-} == ipv6 ]];then install_kind='guided-ipv6';suffix=-IPv6;fi
  local WIZARD_PROTOCOL=${1:-} WIZARD_NODE_NAME WIZARD_BBR WIZARD_FIREWALL WIZARD_QR WIZARD_CHOICE
  if [[ -z $WIZARD_PROTOCOL ]];then
   if wizard_protocol;then :;else [[ $? == 2 ]] && return 0;return 1;fi
  fi
  [[ $WIZARD_PROTOCOL =~ ^[123]$ ]] || return 1
- WIZARD_NODE_NAME=$(choose_node_name) || return 1
+ WIZARD_NODE_NAME=$(choose_node_name "$suffix") || return 1
  wizard_toggle "$(L '是否开启 BBR + FQ（仅作用于 TCP）？' 'Enable BBR + FQ (TCP only)?')" || return 0;WIZARD_BBR=$WIZARD_CHOICE
  wizard_toggle "$(L '是否安装并开启 UFW 防火墙？' 'Install and enable UFW?')" || return 0;WIZARD_FIREWALL=$WIZARD_CHOICE
  wizard_toggle "$(L '是否安装小火箭二维码工具？' 'Install Shadowrocket QR tooling?')" || return 0;WIZARD_QR=$WIZARD_CHOICE
@@ -1681,7 +1686,9 @@ guided_install() (
  notice
  say '========== 自动部署计划 ==========' '========== Guided deployment plan =========='
  say "协议：${protocol_label}；节点：$WIZARD_NODE_NAME" "Protocol: $protocol_label; node: $WIZARD_NODE_NAME"
- say '端口：所选协议均为 443；公网地址自动识别。' 'Port: 443 for selected protocols; public address detected automatically.'
+ if [[ $install_kind == guided-ipv6 ]];then
+  say 'TCP 端口：443；自动使用首个通过检测的本机原生公网 IPv6，监听 IPv6/双栈。客户端须支持 IPv6。' 'TCP port: 443; use the first validated native public IPv6 with an IPv6/dual-stack listener. Client IPv6 required.'
+ else say '端口：所选协议均为 443；公网地址自动识别。' 'Port: 443 for selected protocols; public address detected automatically.';fi
  if [[ $WIZARD_PROTOCOL != 2 ]];then say 'Reality 握手网站：addons.mozilla.org（安装前检测）' 'Reality target: addons.mozilla.org (checked before installation)';fi
  if [[ $WIZARD_PROTOCOL != 1 ]];then say 'HY2：自动自签证书，客户端须导入并验证；IPv4 跳跃默认 20000–30000/UDP，冲突时跳过并提示。' 'HY2: self-signed certificate requiring client trust; IPv4 hopping defaults to UDP 20000–30000, with conflicts reported.';fi
  say "BBR + FQ：$(wizard_selected "$WIZARD_BBR")" "BBR + FQ: $(wizard_selected "$WIZARD_BBR")"
@@ -1690,7 +1697,7 @@ guided_install() (
  if [[ $WIZARD_FIREWALL == 1 ]];then detect_ssh_ports || return 1;fi
  say '需要修改端口、连接地址、证书或握手网站，请取消后选 a → 9 自定义安装。' 'For custom ports, address, certificates or Reality target, cancel and choose a → 9.'
  confirm "$(L '同意声明并按以上计划开始自动安装？' 'Accept the notice and install using this plan?')" || return 0
- install_protocol "$WIZARD_PROTOCOL" guided
+ install_protocol "$WIZARD_PROTOCOL" "$install_kind"
 )
 manual_install(){
  local WIZARD_PROTOCOL
@@ -4316,7 +4323,7 @@ install_port_check(){
  [[ $mode == 2 ]] || options+=(--tcp-port "$tcp")
  [[ $mode == 1 ]] || options+=(--udp-port "$udp")
  if ! report_output install_check_engine --project sing-box --language "${LANGUAGE_CHOICE:-zh_CN}" --phase ports --listen "$listen" "${options[@]}";then
-  err "$(L '需要其他端口时，可用 a → 6 → 3 自定义监听端口安装；请保留现有服务并选择空闲端口。' 'For another port, use a → 6 → 3 to install with custom ports. Retain existing services and choose a free port.')"
+  err "$(L '需要其他端口时，可用 a → 7 → 3 自定义监听端口安装；请保留现有服务并选择空闲端口。' 'For another port, use a → 7 → 3 to install with custom ports. Retain existing services and choose a free port.')"
   return 1
  fi
 }
@@ -6483,7 +6490,7 @@ rescue_menu(){
  local choice mode host vp hp directory edge
  # --menu renders only; a numeric argument executes one selected operation.
  if [[ $# == 0 || $1 == --menu ]]; then
- prompt_options $' 1. Argo 临时隧道应急部署\n 2. Argo 固定隧道部署\n 3. 自定义监听端口安装（IPv6 / NAT）\n 4. NAT 公网地址与映射端口\n 5. Argo 地址族与传输设置\n 6. WARP 双栈补全\n 7. 检查 Cloudflare 出站 TCP 7844\n 8. 使用离线官方安装包\n 9. 使用说明\n 0. 返回' $' 1. Standalone Argo Quick Tunnel\n 2. Standalone Argo Named Tunnel\n 3. Install with custom ports (IPv6/NAT)\n 4. NAT public address and mapped ports\n 5. Argo address family/transport\n 6. WARP dual-stack egress\n 7. Check Cloudflare outbound TCP 7844\n 8. Use offline official assets\n 9. Usage guide\n 0. Back'
+ prompt_options $' 1. Argo 临时隧道应急部署\n 2. Argo 固定隧道部署\n 3. 自定义监听端口安装（IPv6 / NAT）\n 4. NAT 公网地址与映射端口\n 5. Argo 地址族与传输设置\n 6. WARP 双栈补全\n 7. 检查 Cloudflare 出站 TCP 7844\n 8. 使用离线官方安装包\n 9. 使用说明\n10. 搭建 IPv6 节点（Reality / HY2 / 双协议）\n 0. 返回' $' 1. Standalone Argo Quick Tunnel\n 2. Standalone Argo Named Tunnel\n 3. Install with custom ports (IPv6/NAT)\n 4. NAT public address and mapped ports\n 5. Argo address family/transport\n 6. WARP dual-stack egress\n 7. Check Cloudflare outbound TCP 7844\n 8. Use offline official assets\n 9. Usage guide\n10. Install IPv6 nodes (Reality / HY2 / both)\n 0. Back'
  [[ ${1:-} != --menu ]] || return 0
  prompt_read '> ' choice || return 0
  else
@@ -6525,6 +6532,7 @@ rescue_menu(){
    fi
    export SKYBYTE_ASSET_DIR=$directory
    say '已为当前脚本会话启用离线目录；下次运行需要重新选择。元数据与软件包都必须来自可信来源，校验不证明元数据本身未被篡改。' 'Offline directory enabled for this session; select it again next run. Both metadata and assets must be trusted; a checksum does not authenticate altered metadata.';;
+  10) ipv6_install_menu;;
   9) rescue_help;;0) return 0;;*) return 1;;
  esac
 }
@@ -7225,6 +7233,20 @@ except (ValueError,OSError,KeyError,subprocess.SubprocessError) as error:
  print(str(error),file=sys.stderr);sys.exit(1)
 PY_IPV6
 }
+ipv6_install_auto_address(){
+ if ! command -v ip >/dev/null;then
+  [[ -z ${SKYBYTE_ASSET_DIR:-} ]] || { err 'Offline mode requires iproute2 / 离线模式需要 iproute2';return 1; }
+  apt_install --no-install-recommends iproute2 >&2 || return 1
+ fi
+ local candidates selected
+ candidates=$(ipv6_engine detect) || return 1
+ while IFS= read -r selected;do
+  [[ -n $selected ]] || continue
+  if ipv6_engine check-install "$selected" >&2;then printf '%s\n' "$selected";return 0;fi
+ done <<< "$candidates"
+ err "$(L '没有通过检测的原生公网 IPv6，未安装节点' 'No native public IPv6 passed checks; node not installed')"
+ return 1
+}
 ipv6_install_address(){
  local candidates selected
  if ! command -v ip >/dev/null;then
@@ -7770,7 +7792,7 @@ usage_help(){
  if [[ ${LANGUAGE_CHOICE:-zh_CN} == en_US ]];then cat <<'HELP_EN'
 SKYBYTE Manager — quick guide
 1. Install: main a → Reality/HY2/both. Enter defaults, allow actual TCP/UDP ports in provider firewall.
-2. Node ports: b → 8 (Enter keeps current values). Other node edits: main a → 5. Change admin ports/address/SNI or add/remove a protocol without resetting credentials/usage. TCP-only port edits retain HY2 hopping; changing HY2 ports disables hopping. Re-enable it for the current listener.
+2. Node ports: b → 8 (Enter keeps current values). Other node edits: main a → 6. Change admin ports/address/SNI or add/remove a protocol without resetting credentials/usage. TCP-only port edits retain HY2 hopping; changing HY2 ports disables hopping. Re-enable it for the current listener.
 3. Client import: main b → 1 or 4. Use Shadowrocket native links/QR, v2rayN, full Mihomo YAML or sing-box JSON. Self-signed HY2 needs explicit public-certificate trust; never share private keys.
 4. Accounts: main g. Initialize, create accounts and set quota/expiry. Share personal exports, not administrator nodes. Accounts are not actual people and may share credentials.
 5. HTTPS subscriptions: obtain a trusted certificate through main e → 6, then main b → 6. Create/rotate/revoke personal links through user menu 16. Configure provider TCP access. Tokens grant access to credentials: keep links private. Revocation does not rotate node passwords.
@@ -7783,13 +7805,13 @@ SKYBYTE Manager — quick guide
 12. HAProxy TCP passthrough: main d → 11, then 12 for help. A may run only the TCP forwarder; B runs the authenticated Reality/Trojan node. On the phone, keep B's credentials/SNI/TLS trust and change only the address/port to A. HY2/raw UDP are unsupported. User quotas belong on B. This menu has separate backup/restore/uninstall controls; full sing-box backups include a haproxy subdirectory for separate restoration.
 13. Reality target checks: main d → 12. Check configured targets or a custom hostname/port/SNI; verify DNS, TCP, TLS 1.3, certificate and HTTP/2. Read-only, with bounded network timeouts; this does not test client-to-VPS connectivity.
 14. Node parameters: main b → 7 shows UUID/public key/short ID/SNI. Important data is stored on this VPS: keep it private and install/enable a firewall through d → 2 after allowing SSH and node ports.
-15. Installation checks: main a → 7. New installs and Reality additions run preflight checks; local binds do not prove public inbound access. The short HTTPS install entry is sky9119.cc/sb.sh.
+15. Installation checks: main a → 8. New installs and Reality additions run preflight checks; local binds do not prove public inbound access. The short HTTPS install entry is sky9119.cc/sb.sh.
 CLI: --help, --self-check. Maintenance flags are used by owned systemd services.
 HELP_EN
  else cat <<'HELP_ZH'
 SKYBYTE Manager — 快速使用说明
 1. 安装：主菜单 a 选择 Reality、HY2或双协议。回车使用默认值，云安全组需放行实际 TCP/UDP 端口。
-2. 修改节点端口：b → 8（回车保留当前端口）；其它节点修改：主菜单a → 5，可改管理员端口、地址、SNI或增删协议，保留凭据与用量。仅改 TCP 端口保留 HY2 跳跃；更改 HY2 端口后请重新开启跳跃。
+2. 修改节点端口：b → 8（回车保留当前端口）；其它节点修改：主菜单a → 6，可改管理员端口、地址、SNI或增删协议，保留凭据与用量。仅改 TCP 端口保留 HY2 跳跃；更改 HY2 端口后请重新开启跳跃。
 3. 导入客户端：主菜单b → 1或4，提供小火箭专用链接/二维码、v2rayN、完整 Mihomo YAML与sing-box JSON。自签名 HY2 须信任公开证书；不要分享私钥。
 4. 用户管理：主菜单g，初始化后添加用户并设额度/有效期。只分享个人节点，不要分享管理员节点；账户数量不代表真实人数，无法阻止凭据分享。
 5. 在线订阅：主菜单e → 6获取可信证书，再通过主菜单b → 6配置HTTPS服务。用户菜单16签发、重置、撤销个人链接。云安全组需允许订阅 TCP 端口。Token可获取节点凭据，链接请保密；撤销订阅不等于更换节点密码。
@@ -7802,7 +7824,7 @@ SKYBYTE Manager — 快速使用说明
 12. HAProxy TCP 透传：主菜单d → 11，再选12查看说明。A 可只运行 TCP 转发，B 运行带认证的 Reality/Trojan 节点；手机保留 B 的认证、SNI及TLS验证，仅改连接地址和端口为 A。不支持 HY2/原生UDP。配额在 B 管理。本菜单可单独备份、恢复与卸载，完整 sing-box 备份中的 haproxy 子目录需单独恢复。
 13. Reality 握手检测：主菜单 d → 12。检测当前目标或自定义域名/端口/SNI；检查 DNS、TCP、TLS 1.3、证书和 HTTP/2。只读且有网络超时，不代表客户端到 VPS 已连通。
 14. 节点参数：主菜单 b → 7 查看 UUID、公钥、Short ID 和 SNI。重要数据保存在本 VPS，请做好保密；务必通过 d → 2 安装并启用防火墙，先放行 SSH 和实际节点端口。
-15. 安装前检测：主菜单 a → 7；新装及追加 Reality 会自动检查。端口可绑定不等于公网入站连通；短安装入口为 sky9119.cc/sb.sh。
+15. 安装前检测：主菜单 a → 8；新装及追加 Reality 会自动检查。端口可绑定不等于公网入站连通；短安装入口为 sky9119.cc/sb.sh。
 命令行：--help、--self-check。维护参数供本工具的 systemd 服务使用。
 HELP_ZH
  fi
@@ -7837,14 +7859,16 @@ sub_menu(){
    say ' 1. 安装 Reality + Vision（TCP；端口受阻时暂不建议）' ' 1. Install Reality + Vision (TCP; avoid when the port is blocked)'
    say ' 2. 安装 Hysteria2（UDP；推荐优先尝试）' ' 2. Install Hysteria2 (UDP; recommended first try)'
    say ' 3. 安装双协议' ' 3. Install both protocols'
-   say ' 4. Argo 临时 / 固定隧道管理' ' 4. Argo Quick / Named Tunnel controls'
-   say ' 5. 节点参数与协议增删' ' 5. Node settings and protocol changes'
-   say ' 6. 受限网络部署（Argo / IPv6 / NAT）' ' 6. Restricted networks (Argo / IPv6 / NAT)'
-   say ' 7. 节点安装前检测（不安装）' ' 7. Node installation checks (no installation)'
-   say ' 8. 搭建 IPv6 节点' ' 8. Install IPv6 nodes'
+   say ' 4. 安装 Reality + Vision IPv6 节点' ' 4. Install Reality + Vision IPv6'
+   printf '%s' "$YELLOW"
+   say '1–4 使用自动部署向导；手动参数请选择 9。' '1–4 use guided deployment; choose 9 for manual parameters.'
+   printf '%s' "$GREEN"
+   say ' 5. Argo 临时 / 固定隧道管理' ' 5. Argo Quick / Named Tunnel controls'
+   say ' 6. 节点参数与协议增删' ' 6. Node settings and protocol changes'
+   say ' 7. 受限网络部署（Argo / IPv6 / NAT）' ' 7. Restricted networks (Argo / IPv6 / NAT)'
+   say ' 8. 节点安装前检测（不安装）' ' 8. Node installation checks (no installation)'
    say ' 9. 自定义安装（手动填写参数）' ' 9. Custom install (manual parameters)'
    printf '%s' "$YELLOW"
-   say '1–3 使用自动部署向导；手动参数请选择 9。' '1–3 use guided deployment; choose 9 for manual parameters.'
    say '请按实际网络选择；HY2 需放行 UDP 端口。' 'Choose for your network; allow the HY2 UDP port.'
    printf '%s' "$GREEN"
    ;;
@@ -7902,11 +7926,11 @@ sub_menu(){
   1:1) MAIN_ACTION=install_reality;;
   1:2) MAIN_ACTION=install_hy2;;
   1:3) MAIN_ACTION=install_dual;;
-  1:4) MAIN_ACTION=argo;;
-  1:5) MAIN_ACTION=settings;;
-  1:6) MAIN_ACTION=rescue;;
-  1:7) MAIN_ACTION=install_checks;;
-  1:8) MAIN_ACTION=install_ipv6;;
+  1:4) MAIN_ACTION=install_reality_ipv6;;
+  1:5) MAIN_ACTION=argo;;
+  1:6) MAIN_ACTION=settings;;
+  1:7) MAIN_ACTION=rescue;;
+  1:8) MAIN_ACTION=install_checks;;
   1:9) MAIN_ACTION=manual_install;;
   2:1) MAIN_ACTION=nodes;;
   2:2) MAIN_ACTION=subscription;;
@@ -7951,6 +7975,7 @@ dispatch_action(){
  local action=$1;shift
  case $action in
  install_reality) guided_install 1;; install_hy2) guided_install 2;; install_dual) guided_install 3;;
+ install_reality_ipv6) guided_install 1 ipv6;;
  manual_install) manual_install;;
  install_ipv6) ipv6_install_menu "$@";;
  node_ports) edit_node_ports;;
@@ -7990,6 +8015,7 @@ run_submenu(){
   [[ $choice != 0 ]] || return 0
   # Enter child menus before taking a lock, so nested idle menus also release it.
   case "$handler:$choice" in
+   rescue_menu:10) run_submenu ipv6_install_menu; continue;;
    warp_menu:6) run_submenu warp_rules_menu; continue;;
    warp_menu:8) run_submenu media_check; continue;;
   esac
