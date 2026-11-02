@@ -3,8 +3,8 @@ set -Eeuo pipefail
 umask 077
 if [[ -t 2 && -z ${NO_COLOR:-} ]]; then RED=$'\033[1;31m'; RESET=$'\033[0m'; else RED=''; RESET=''; fi
 err(){ printf '%s%s%s\n' "$RED" "$*" "$RESET" >&2; }
-RELEASE_VERSION=2.10.1
-MANAGER_SHA256=b7039d3151c07ce7a8bb2511b4f1a8af24639be6172a820862de1bd343ff586d
+RELEASE_VERSION=2.10.2
+MANAGER_SHA256=3375d9410cb81e032b16341f7177298b6e5f609d95cbe9dddd705ced551355eb
 RELEASE_URL=https://github.com/skylink9119/sing-box-v2/releases/download/v$RELEASE_VERSION
 URL=$RELEASE_URL/singbox-v2.sh
 MANAGER_DIR=/usr/local/lib/singbox-v2
@@ -159,7 +159,7 @@ incoming=version(payload)
 if incoming!=tuple(map(int,sys.argv[4].split('.'))):
  raise SystemExit('Installer/payload version mismatch / 安装入口与主脚本版本不一致')
 if target.exists() and version(target)>incoming:
- raise SystemExit('Manager downgrade refused / 已安装版本较新，拒绝降级；请使用最新入口或 sb → e → 4')
+ raise SystemExit('Manager downgrade refused / 已安装版本较新，拒绝降级；请使用最新入口或 sb → f → 4')
 PY_INSTALLER_VERIFY
 }
 install_manager() (

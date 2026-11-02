@@ -50,7 +50,7 @@ incoming=version(payload)
 if incoming!=tuple(map(int,sys.argv[4].split('.'))):
  raise SystemExit('Installer/payload version mismatch / 安装入口与主脚本版本不一致')
 if target.exists() and version(target)>incoming:
- raise SystemExit('Manager downgrade refused / 已安装版本较新，拒绝降级；请使用最新入口或 sb → e → 4')
+ raise SystemExit('Manager downgrade refused / 已安装版本较新，拒绝降级；请使用最新入口或 sb → f → 4')
 PY_INSTALLER_VERIFY
 }
 install_manager() (

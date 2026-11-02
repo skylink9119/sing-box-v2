@@ -94,13 +94,15 @@ LANGUAGE_CHOICE='''+language+''';main'''
 
     def test_each_main_letter_selects_its_category_and_uppercase_works(self):
         for letter, choice, expected in [('a','1','install_reality'), ('B','1','nodes'),
-                                         ('c','2','logs'), ('D','7','resources'),
-                                         ('e','2','backup'), ('F','4','help')]:
+                                         ('e','2','logs'), ('D','7','resources'),
+                                         ('f','2','backup'), ('G','4','help'),
+                                         ('5','2','logs'), ('6','2','backup'), ('7','4','help')]:
             code=self.mocks()+'dispatch_action(){ echo "ACTION=$1"; };main'
             result=self.shell(code,input=letter+'\n'+choice+'\n0\nq\n')
             self.assertIn('ACTION='+expected,result.stdout)
-        result=self.shell(self.mocks()+'users_manager(){ echo USERS; };main',input='G\nq\n')
-        self.assertIn('USERS',result.stdout)
+        for choice in ('c','C','3'):
+            result=self.shell(self.mocks()+'users_manager(){ echo USERS; };main',input=choice+'\nq\n')
+            self.assertIn('USERS',result.stdout)
 
     def test_core_version_selection_reloads_current_version_before_execution(self):
         code=self.mocks()+'''check_owned(){ :; }

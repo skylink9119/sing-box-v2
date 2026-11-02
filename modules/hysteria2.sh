@@ -5,7 +5,7 @@ hy2_diagnostics(){
  port=$(protocol_port hysteria2) || { err "$(L '未找到 HY2 入站' 'No HY2 inbound found')"; return 1; }
  say '---------------- HY2 连接诊断 ----------------' '---------------- HY2 connection checks ----------------'
  if "$BIN" check -c "$CONF"; then ok "$(L '服务端配置检查通过' 'Server configuration check passed')"; else err "$(L '服务端配置无效' 'Server configuration invalid')"; fi
- if systemctl is-active --quiet sing-box; then ok "$(L 'sing-box 服务正在运行' 'sing-box service is active')"; else err "$(L 'sing-box 服务未运行；请查看服务与日志 → 日志（c → 2） 日志' 'sing-box is not active; inspect Services and logs > Logs (c > 2) logs')"; fi
+ if systemctl is-active --quiet sing-box; then ok "$(L 'sing-box 服务正在运行' 'sing-box service is active')"; else err "$(L 'sing-box 服务未运行；请查看运行状态与日志（e → 2）' 'sing-box is not active; inspect Status and logs (e > 2)')"; fi
  listener=$(ss -H -lun "( sport = :$port )") || return 1
  if [[ -n $listener ]]; then ok "$(L "本机 UDP $port 有监听" "Local UDP $port has a listener")"; else err "$(L "本机 UDP $port 未监听" "No local UDP $port listener")"; fi
  details=$(python3 - "$CONF" <<'PY'
