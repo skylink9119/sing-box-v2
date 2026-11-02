@@ -270,5 +270,8 @@ PY
 
 bbr(){ need_root; confirm "$(L '更改系统 TCP 拥塞控制为 BBR、默认队列为 FQ？' 'Change system TCP congestion control to BBR and default qdisc to FQ?')" || return 0; bbr_apply; }
 bbr_apply(){ modprobe tcp_bbr 2>/dev/null || :; if ! sysctl -n net.ipv4.tcp_available_congestion_control | grep -qw bbr; then err "$(L '内核不支持 BBR' 'Kernel does not support BBR')"; return 1; fi
- printf 'net.core.default_qdisc = fq\nnet.ipv4.tcp_congestion_control = bbr\n' >"$SYSCTL_FILE"
+ local candidate
+ [[ ! -L $SYSCTL_FILE ]] || return 1
+ candidate=$(mktemp "${SYSCTL_FILE}.XXXXXX") || return 1
+ if ! printf 'net.core.default_qdisc = fq\nnet.ipv4.tcp_congestion_control = bbr\n' >"$candidate" || ! mv -f -- "$candidate" "$SYSCTL_FILE";then rm -f -- "$candidate";return 1;fi
  sysctl -p "$SYSCTL_FILE" || return 1; sysctl net.ipv4.tcp_congestion_control net.core.default_qdisc; }

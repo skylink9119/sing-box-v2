@@ -63,12 +63,12 @@ hop(){
  if command -v nft >/dev/null && nft list table ip singbox_v2_hop >/dev/null 2>&1; then err "$(L '已有跳跃规则，请先关闭' 'Hopping rules exist; disable first')"; return 1; fi
  if command -v iptables >/dev/null && iptables -w 5 -t nat -S SKYBYTE_HY2_HOP >/dev/null 2>&1; then err "$(L '已有跳跃链，请先关闭，拒绝覆盖' 'Hopping chain exists; disable first; refusing overwrite')"; return 1; fi
  if [[ $backend == nftables ]]; then
- cat >"$BASE/hop.nft" <<RULES
+ cat >"$BASE/hop.nft" <<RULES || return 1
 add table ip singbox_v2_hop
 add chain ip singbox_v2_hop prerouting { type nat hook prerouting priority dstnat; policy accept; }
 add rule ip singbox_v2_hop prerouting udp dport $start-$end redirect to :$target
 RULES
- cat >"$SYSTEMD_DIR/singbox-v2-hop.service" <<UNIT
+ cat >"$SYSTEMD_DIR/singbox-v2-hop.service" <<UNIT || return 1
 [Unit]
 Description=singbox V2 HY2 IPv4 port hopping
 After=network-online.target
@@ -81,7 +81,7 @@ ExecStop=/usr/sbin/nft delete table ip singbox_v2_hop
 WantedBy=multi-user.target
 UNIT
  else
- cat >"$BASE/hop-iptables.sh" <<SCRIPT
+ cat >"$BASE/hop-iptables.sh" <<SCRIPT || return 1
 #!/usr/bin/env bash
 # SKYBYTE managed HY2 hopping
 set -Eeuo pipefail
@@ -98,8 +98,8 @@ case \${1:-} in
  *) exit 1;;
 esac
 SCRIPT
- chmod 700 "$BASE/hop-iptables.sh"
- cat >"$SYSTEMD_DIR/singbox-v2-hop.service" <<UNIT
+ chmod 700 "$BASE/hop-iptables.sh" || return 1
+ cat >"$SYSTEMD_DIR/singbox-v2-hop.service" <<UNIT || return 1
 [Unit]
 Description=singbox V2 HY2 IPv4 port hopping
 After=network-online.target
@@ -115,12 +115,12 @@ UNIT
  if ! systemctl daemon-reload || ! systemctl enable --now singbox-v2-hop.service; then
   systemctl stop singbox-v2-hop.service || :; err "$(L '跳跃规则启用失败' 'Hopping enable failed')"; return 1
  fi
- python3 - "$META" "$start" "$end" "$backend" "$target" <<'PY_HOP_ON'
+ python3 - "$META" "$start" "$end" "$backend" "$target" <<'PY_HOP_ON' || return 1
 import json,sys
 p=sys.argv[1];d=json.load(open(p));d.update(hop=True,hop_start=int(sys.argv[2]),hop_end=int(sys.argv[3]),hop_backend=sys.argv[4],hop_target=int(sys.argv[5]))
 with open(p,'w') as f:json.dump(d,f,indent=2)
 PY_HOP_ON
  if command -v ufw >/dev/null && LC_ALL=C ufw status | grep -q '^Status: active'; then ufw allow "$start:$end/udp" || return 1; fi
- exports
+ exports || return 1
  say '客户端 JSON/YAML 已加入跳跃范围；小火箭请在客户端配置跳跃范围。云安全组也必须放行此范围。' 'JSON/YAML includes hopping ranges; configure hopping manually in Shadowrocket. Allow the provider UDP range too.'
 }
