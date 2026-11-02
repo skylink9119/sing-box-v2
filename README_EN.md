@@ -20,7 +20,7 @@
 
 ---
 
-# SKYBYTE Manager V2.8.29: modular source architecture
+# SKYBYTE Manager V2.9.0: modular source architecture
 
 Guided installation collects protocol, name and BBR/UFW/QR choices before applying the confirmed defaults, with hopping for IPv4 HY2. **a → 9** retains custom installation; **d → 14** configures existing nodes. [Details](docs/AUTOMATIC-SETUP.md).
 
@@ -379,7 +379,7 @@ Restore retains current account policy/usage and current subscription tokens. HT
 
 ```bash
 python3 scripts/build.py --check
-python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.29
+python3 scripts/package_release.py --output /tmp/skybyte-release-2.9.0
 ```
 
 Packaging includes only bootstrap.sh, install.sh, the full bundle, public rule catalog and SHA256SUMS, never runtime state or credentials.
