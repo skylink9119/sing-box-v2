@@ -99,28 +99,7 @@ users_diagnostics(){
 resource_info(){
  require_cmd ps || { say '请安装 procps 后重试' 'Install procps and retry'; return 1; }
  python3 - "$BASE" "$BIN" "${LANGUAGE_CHOICE:-zh_CN}" <<'PY'
-import pathlib,subprocess,sys
-base=pathlib.Path(sys.argv[1]);binary=sys.argv[2]
-r=subprocess.run(['ps','-eo','pid=,rss=,args='],capture_output=True,text=True,check=True)
-cores=users=total=user_rss=0
-for line in r.stdout.splitlines():
- parts=line.split(None,2)
- if len(parts)!=3:continue
- pid,rss,args=parts
- if not args.startswith(binary+' run -c '):continue
- cores+=1;total+=int(rss)
- if args[len(binary+' run -c '):].startswith(str(base/'users')+'/'):
-  users+=1;user_rss+=int(rss)
-en=sys.argv[3]=='en_US'
-print(('sing-box processes / RSS: ' if en else 'sing-box 进程数 / RSS：')+f'{cores} / {total/1024:.1f} MiB')
-print(('Quota user processes / RSS: ' if en else '受限用户进程数 / RSS：')+f'{users} / {user_rss/1024:.1f} MiB')
-p=pathlib.Path('/proc/meminfo')
-if p.exists():
- m={line.split(':')[0]:int(line.split()[1]) for line in p.read_text().splitlines() if line.split()[1].isdigit()}
- print(('System available / total RAM: ' if en else '系统可用 / 总内存：')+f"{m.get('MemAvailable',0)/1024:.1f} / {m['MemTotal']/1024:.1f} MiB")
-p=pathlib.Path('/proc/loadavg')
-if p.exists():print(('Load (1/5/15 min): ' if en else '负载（1/5/15 分钟）：')+' '.join(p.read_text().split()[:3]))
-print('RSS includes shared memory; this is a snapshot, not a capacity guarantee.' if en else 'RSS 含共享内存；这是当前快照，不能保证最大承载人数。')
+# @include resources.py
 PY
 }
 certificate_info(){
