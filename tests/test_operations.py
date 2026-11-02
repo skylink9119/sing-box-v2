@@ -108,9 +108,9 @@ manager_update_apply '''+shlex.quote(str(candidate))+' '+CANDIDATE_VERSION+' '+s
 
     def test_user_management_is_available_directly_from_main_menu(self):
         self.user_setup(3);self.add_user()
-        for language,label in [('en_US','Users and quotas'),('zh_CN','用户与配额管理')]:
+        for language,label in [('en_US','Users and quotas'),('zh_CN','用户与配额')]:
             code='need_root(){ :; }; flock(){ :; }; users_manager(){ echo USER_MENU; }; LANGUAGE_CHOICE='+language+'; main'
-            r=self.shell(code,input='7\n0\n')
+            r=self.shell(code,input='3\n0\n')
             self.assertIn(label,r.stdout);self.assertIn('USER_MENU',r.stdout);self.assertIn('1/3',r.stdout)
         for group,choice,action in [('5','4','manager_update'),('5','5','certificate'),('4','7','resources'),('4','8','media'),('4','9','warp')]:
             r=self.shell('sub_menu '+group+'; echo "$MAIN_ACTION"',input=choice+'\n')
