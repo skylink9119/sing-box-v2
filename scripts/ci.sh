@@ -41,7 +41,7 @@ if [[ -n ${GH_TOKEN:-} ]];then
   command curl "$@"
  }
 fi
-download_binary 1.14.3 "$PWD/work/tools/sing-box"
+download_install_core "$PWD/work/tools/sing-box"
 if [[ -n ${GH_TOKEN:-} ]];then unset -f curl;fi
 rm -f -- "$github_config";trap - EXIT;unset GH_TOKEN
 curl -fsSL --retry 2 https://github.com/MetaCubeX/mihomo/releases/download/v1.19.32/mihomo-linux-amd64-compatible-v1.19.32.gz -o work/tools/mihomo.gz

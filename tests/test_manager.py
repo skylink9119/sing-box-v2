@@ -712,7 +712,7 @@ download_binary(){ printf '#!/bin/sh\\nexit 0\\n' > "$2"; chmod 700 "$2"; }
 setup_service(){ printf 'Description=sing-box (managed by singbox-v2)\\nExecStart=%s run -c %s\\n' "$BIN" "$CONF" > "$SYSTEMD_DIR/sing-box.service"; }
 systemctl(){ if [[ $1 == list-unit-files ]]; then return 1; fi; printf 'SYSTEMCTL %s\\n' "$*"; }
 confirm(){ return 0; }
-rescue_bootstrap_core'''
+latest(){ echo 1.14.4; };rescue_bootstrap_core'''
         result=self.shell(code)
         state=json.loads((self.base/'state.json').read_text())
         config=json.loads((self.config/'config.json').read_text())
@@ -778,7 +778,7 @@ rescue_bootstrap_core'''
         code='''need_root(){ :; }; rescue_dependencies(){ :; }
 download_binary(){ echo DOWNLOADED >&2; return 1; }
 systemctl(){ return 1; }; confirm(){ return 0; }
-rescue_bootstrap_core'''
+latest(){ echo 1.14.4; };rescue_bootstrap_core'''
         result=self.shell(code,ok=False)
         self.assertNotEqual(result.returncode,0)
         self.assertNotIn('DOWNLOADED',result.stderr)
@@ -792,7 +792,7 @@ download_binary(){ printf '#!/bin/sh\\nexit 0\\n' > "$2"; chmod 700 "$2"; }
 setup_service(){ printf 'Description=sing-box (managed by singbox-v2)\\nExecStart=%s run -c %s\\n' "$BIN" "$CONF" > "$SYSTEMD_DIR/sing-box.service"; }
 systemctl(){ if [[ $1 == list-unit-files ]]; then return 1; fi; }
 confirm(){ return 0; }
-rescue_bootstrap_core'''
+latest(){ echo 1.14.4; };rescue_bootstrap_core'''
         self.shell(code)
         self.assertEqual(self.base.stat().st_mode&0o777,0o755)
         self.assertEqual(language.read_text(),'en_US\n')

@@ -20,7 +20,7 @@
 
 ---
 
-# SKYBYTE Manager V2.9.1：模块化维护结构
+# SKYBYTE Manager V2.9.2：模块化维护结构
 
 安装向导先收集协议、节点名称和 BBR/UFW/二维码选项，再按确认的默认计划自动安装；IPv4 HY2 自动配置端口跳跃。**a → 9** 保留手动参数安装，**d → 14** 可给已有节点补配。[使用说明](docs/AUTOMATIC-SETUP.md)。
 
@@ -113,7 +113,7 @@ V2.8.1 完整源码审计修复：一键入口验证目标归属并原子替换�
 
 **Debian 11/12 安装兼容：** 安装前严格刷新 APT 索引，允许经过签名验证的 Suite 信息变化，索引失败立即停止；安装包 404 时刷新并只重试一次。Debian 11 官方源的归档修复支持 `.list` 和 `.sources`，修改前备份到 `/etc/apt/skybyte-source-backup.*`，保留原来的 HTTP/HTTPS 传输、Signed-By、第三方源和自定义镜像。只对归档条目关闭有效期检查，不关闭包签名或 HTTPS 验证。Debian 12/13 不会改成归档源。 HY2 自签证书使用独立请求配置，避免 Debian 11 的 OpenSSL 1.1.1 重复生成扩展字段；首次安装和后续添加协议均适用，保留证书验证。Debian 11 的官方 LTS 已结束，归档只帮助取得历史软件包，不能恢复安全维护。[Debian 支持周期](https://www.debian.org/releases/bullseye/)、[官方归档](https://www.debian.org/distrib/archive)。
 
-首次安装使用本版已测试的 sing-box 1.14.3 官方二进制，按 GitHub Release API 的 SHA-256 摘要检查下载，不执行远程软件包安装脚本。首次启动选择语言，保存于 `/etc/singbox-v2/language.conf`，菜单 **f → 1** 切换语言。
+在线首次安装动态查询并使用 sing-box 官方最新稳定版（不安装预发布版），查询失败则停止，不回退旧版；离线模式使用明确指定的 1.14.4 官方安装包。按 GitHub Release API 的 SHA-256 摘要检查下载，不执行远程软件包安装脚本。首次启动选择语言，保存于 `/etc/singbox-v2/language.conf`，菜单 **f → 1** 切换语言。
 
 **已有节点配置、状态、sing-box 二进制、服务或对应端口占用时，首次安装会拒绝覆盖；已有托管节点使用 1 → 5 修改。** 普通管理与更新保留 UUID、密码和配置。首次安装在私密临时目录生成并检查后才部署，失败删除本次创建的文件，保留原有文件，允许修复问题后重试。新协议部署使用 TCP 443 / UDP 443；云防火墙需另行设置。
 

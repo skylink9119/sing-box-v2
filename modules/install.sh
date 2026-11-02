@@ -157,7 +157,7 @@ install_protocol() (
  stage=$(mktemp -d "$BASE/install.XXXXXX") || return 1
  local BIN=$stage/sing-box CONF=$stage/config/config.json META=$stage/state.json BASE=$stage
  mkdir -m 700 "$stage/config"
- download_binary "$CORE_RECOMMENDED" "$BIN" || { err "$(L '官方安装失败' 'Release installation failed')"; return 1; }
+ download_install_core "$BIN" || { err "$(L '官方安装失败' 'Release installation failed')"; return 1; }
  chmod 755 "$BIN"
  local uuid pair priv="" pub="" sid="" passwd ip
  uuid=$(cat /proc/sys/kernel/random/uuid)

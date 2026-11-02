@@ -20,7 +20,7 @@
 
 ---
 
-# SKYBYTE Manager V2.9.1: modular source architecture
+# SKYBYTE Manager V2.9.2: modular source architecture
 
 Guided installation collects protocol, name and BBR/UFW/QR choices before applying the confirmed defaults, with hopping for IPv4 HY2. **a → 9** retains custom installation; **d → 14** configures existing nodes. [Details](docs/AUTOMATIC-SETUP.md).
 
@@ -113,7 +113,7 @@ After installing/updating, log in again and run **`sb`** to open the main menu. 
 
 **Debian 11/12 compatibility:** refresh APT indexes strictly, permit authenticated Suite-only changes, abort on index errors, and retry package download failures once after another refresh. Bullseye archive repair supports legacy `.list` and deb822 `.sources`, backing up originals under `/etc/apt/skybyte-source-backup.*`. Existing HTTP/HTTPS transport, Signed-By, third-party repositories and custom mirrors are preserved. Only archive entries disable metadata expiry checking; package signatures and HTTPS verification remain enabled. Debian 12/13 are not redirected to the archive. HY2 self-signed generation uses an isolated request configuration to avoid duplicate certificate extensions in OpenSSL 1.1.1 on Debian 11, for both fresh installation and protocol additions; TLS verification remains enabled. Debian 11 official LTS has ended; historical packages do not restore security maintenance. See [Debian lifecycle](https://www.debian.org/releases/bullseye/) and [official archive](https://www.debian.org/distrib/archive).
 
-Fresh installation uses the official sing-box 1.14.3 binary tested for this manager release and verifies its SHA-256 digest against GitHub Release metadata. It does not run a remote package installer. Choose a language at first launch; it is saved in `/etc/singbox-v2/language.conf`. Menu **f → 1** changes language.
+Online fresh installation resolves the latest official stable sing-box release, excludes prereleases, and stops if lookup fails without falling back to an older version. Offline mode uses the explicitly supplied official 1.14.4 package. Downloads are SHA-256 verified against GitHub Release metadata. It does not run a remote package installer. Choose a language at first launch; it is saved in `/etc/singbox-v2/language.conf`. Menu **f → 1** changes language.
 
 **Installation refuses to overwrite an existing configuration, manager state, sing-box binary, service or occupied protocol port.** Manage an existing deployment through 1 → 5. Fresh installation stages and validates files before committing; failures remove only files created by that attempt, allowing retry without replacing existing files. Management/updates preserve credentials. New deployments use TCP 443 / UDP 443. Configure the provider firewall separately.
 

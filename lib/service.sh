@@ -36,7 +36,28 @@ WantedBy=multi-user.target
 EOF
  systemctl daemon-reload; }
 # Installation requires a clean deployment; configuration generation is separately testable.
-latest(){ curl -q -fsSL --connect-timeout 10 --proto '=https' --proto-redir '=https' --max-time 25 https://api.github.com/repos/SagerNet/sing-box/releases/latest | python3 -c 'import json,sys; d=json.load(sys.stdin); assert not d.get("prerelease") and not d.get("draft"); print(d["tag_name"].lstrip("v"))'; }
+latest(){
+ curl -q -fsSL --connect-timeout 10 --proto '=https' --proto-redir '=https' --max-time 25 https://api.github.com/repos/SagerNet/sing-box/releases/latest | python3 -c '
+import json,re,sys
+d=json.load(sys.stdin)
+tag=d.get("tag_name", "")
+if d.get("prerelease") is not False or d.get("draft") is not False or not isinstance(tag,str) or not re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+",tag):
+ raise SystemExit("Invalid stable release metadata / 官方稳定版信息无效")
+print(tag[1:])'
+}
+download_install_core(){
+ local version
+ if [[ -n ${SKYBYTE_ASSET_DIR:-} ]];then
+  version=$CORE_RECOMMENDED
+  say "离线安装：使用安装包版本 ${version}，无法查询在线最新版本。" "Offline install: using package version $version; online latest is not queried."
+ else
+  say '正在查询 sing-box 官方最新稳定版……' 'Resolving the latest official stable sing-box release…'
+  version=$(latest) || { err "$(L '无法获取官方最新稳定版，停止安装；请检查 GitHub 网络后重试，不会回退旧版。' 'Cannot resolve the latest official stable release. Installation stopped; check GitHub access and retry. No older fallback is used.')";return 1; }
+ fi
+ [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { err 'Invalid core version / 内核版本号无效';return 1; }
+ say "安装 sing-box 内核：$version" "Installing sing-box core: $version"
+ download_binary "$version" "$1"
+}
 update(){
  check_owned || return 1
  local new current

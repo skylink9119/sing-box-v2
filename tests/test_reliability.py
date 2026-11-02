@@ -41,6 +41,7 @@ class ReliabilityTest(unittest.TestCase):
 install_check_engine(){ :; };reality_engine(){ :; }
 cat(){ if [[ ${1:-} == /proc/sys/kernel/random/uuid ]];then printf '%s' '''+shlex.quote(self.uuid)+''';else command cat "$@";fi; }
 curl(){ printf 8.8.8.8; }
+latest(){ echo 1.14.4; }
 download_binary(){ cp '''+shlex.quote(manager.SB)+''' "$2";chmod 755 "$2"; }
 '''+extra
  @unittest.skipUnless(manager.SB,'real engine required')
@@ -201,10 +202,10 @@ download_binary(){ cp '''+shlex.quote(manager.SB)+''' "$2";chmod 755 "$2"; }
   r=subprocess.run([manager.BASH,str(manager.ROOT/'singbox-v2.sh'),'--help'],capture_output=True,text=True);self.assertEqual(r.returncode,0);self.assertIn('SKYBYTE',r.stdout)
  def test_core_version_selector_supports_tested_latest_specific_and_cancellation(self):
   self.configure()
-  self.bin.write_text('#!/bin/sh\necho "sing-box version 1.14.3"\n');self.bin.chmod(0o700)
-  code='latest(){ echo 1.14.4; };apply_update(){ echo SWITCHED-"$1"; };core_versions'
+  self.bin.write_text('#!/bin/sh\necho "sing-box version 1.14.4"\n');self.bin.chmod(0o700)
+  code='latest(){ echo 1.14.5; };apply_update(){ echo SWITCHED-"$1"; };core_versions'
   r=self.shell(code,input='1\n');self.assertNotIn('SWITCHED',r.stdout)
-  r=self.shell(code,input='2\ny\n');self.assertIn('SWITCHED-1.14.4',r.stdout)
+  r=self.shell(code,input='2\ny\n');self.assertIn('SWITCHED-1.14.5',r.stdout)
   r=self.shell(code,input='3\n1.13.0\ny\n');self.assertIn('SWITCHED-1.13.0',r.stdout)
   r=self.shell(code,input='3\n1.13.0\nno\n',ok=False);self.assertNotIn('SWITCHED',r.stdout)
   self.assertNotEqual(self.shell(code,input='3\n1.2;evil\n',ok=False).returncode,0)
