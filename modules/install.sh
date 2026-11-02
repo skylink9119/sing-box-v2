@@ -153,7 +153,17 @@ install_protocol() (
  [[ $mode == 2 ]] || install_reality_target "$sni" || return 1
  install_download_check || return 1
  mkdir -p "$(dirname "$BIN")"
- if [[ $cert_mode == 2 ]]; then cert=$(realpath "$cert") && key=$(realpath "$key") || return 1;validate_certificate "$cert" "$key" "$domain" || return 1; fi
+ if [[ $cert_mode == 2 ]]; then
+  local absolute_paths
+  absolute_paths=$(python3 - "$cert" "$key" <<'PY_CERT_ABSOLUTE'
+import os,sys
+# Keep live renewal symlinks: abspath normalizes the location without pinning an archive generation.
+for path in sys.argv[1:]:print(os.path.abspath(path))
+PY_CERT_ABSOLUTE
+  ) || return 1
+  { IFS= read -r cert;IFS= read -r key; } <<< "$absolute_paths"
+  validate_certificate "$cert" "$key" "$domain" || return 1
+ fi
  if [[ $cert_mode == 1 ]]; then
   [[ ! -e $(dirname "$final_conf")/hy2-selfsigned.crt && ! -e $(dirname "$final_conf")/hy2-selfsigned.key ]] || { err "TLS files already exist"; return 1; }
  fi

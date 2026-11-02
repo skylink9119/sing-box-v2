@@ -102,7 +102,7 @@ elif action in ('sni','reality'):
     i['tls']['server_name']=value;i['tls']['reality']['handshake']['server']=host;s['sni']=value
     if number is not None:i['tls']['reality']['handshake']['server_port']=number
 elif action=='tls':
- domain,cert,key=args;domain=address(domain)
+ domain,cert,key=args;domain=address(domain);cert=os.path.abspath(cert);key=os.path.abspath(key)
  if 'hysteria2' not in {i['type'] for i in main['inbounds']}:raise ValueError('HY2 is not installed')
  for _,cfg,_,s in paths:
   for i in cfg['inbounds']:
@@ -155,7 +155,7 @@ elif action in ('add','remove'):
     pathlib.Path(cert).chmod(0o600);pathlib.Path(key).chmod(0o600)
     generated=[[cert,str(dest_cert)],[key,str(dest_key)]];generated_cert=(str(dest_cert),str(dest_key));cert_mode='1'
     meta['managed_certificates']=list(dict.fromkeys(meta.get('managed_certificates',[])+list(generated_cert)))
-   else:cert,key=args[3:5]
+   else:cert,key=map(os.path.abspath,args[3:5])
    meta.update(domain=domain,cert_path=generated_cert[0] if generated_cert else cert,cert_mode=cert_mode)
    template={'type':'hysteria2','tag':'hy2','listen':listen,'listen_port':value,'users':[{'name':'user1','password':meta['hy2_password']}],'tls':{'enabled':True,'server_name':domain,'certificate_path':cert,'key_path':key}}
   main['inbounds'].append(template)

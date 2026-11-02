@@ -248,4 +248,14 @@ helper(){ return 1; };xhttp_install_automatic"""
         r=self.shell('users_engine restore '+shlex.quote(str(destination)),ok=False)
         self.assertNotEqual(r.returncode,0);self.assertIn('conflicts',r.stderr);self.assertEqual(user_config.read_bytes(),before)
 
+    @unittest.skipUnless(manager.SB,'real core required')
+    def test_certificate_absolute_paths_keep_live_renewal_symlinks(self):
+        with tempfile.TemporaryDirectory(prefix='live-cert-',dir=manager.ROOT/'work') as directory:
+            target=Path(directory);(target/'live.pem').symlink_to(self.cert);(target/'live.key').symlink_to(self.key)
+            cert=os.path.relpath(target/'live.pem');key=os.path.relpath(target/'live.key')
+            self.shell(reliability.ReliabilityTest.install_mocks(self)+'install_protocol 2',input='y\n\n2\nnode.example\n'+cert+'\n'+key+'\n')
+            tls=json.loads((self.config/'config.json').read_text())['inbounds'][0]['tls']
+            self.assertEqual(tls['certificate_path'],os.path.abspath(cert));self.assertEqual(tls['key_path'],os.path.abspath(key))
+            self.assertNotEqual(tls['certificate_path'],str(self.cert))
+
 if __name__=='__main__':unittest.main()
