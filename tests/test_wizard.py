@@ -12,7 +12,7 @@ class WizardTests(unittest.TestCase):
 
     def test_front_choices_reach_installer_once_with_exact_selected_flags(self):
         code='''notice(){ :; };detect_ssh_ports(){ echo SSH_PLAN; }
-install_protocol(){ printf 'INSTALL=%s/%s NAME=%s BBR=%s FW=%s QR=%s\\n' "$1" "$2" "$WIZARD_NODE_NAME" "$WIZARD_BBR" "$WIZARD_FIREWALL" "$WIZARD_QR"; }
+installation_available(){ :; };install_protocol(){ printf 'INSTALL=%s/%s NAME=%s BBR=%s FW=%s QR=%s\\n' "$1" "$2" "$WIZARD_NODE_NAME" "$WIZARD_BBR" "$WIZARD_FIREWALL" "$WIZARD_QR"; }
 guided_install'''
         result=self.shell(code,input='2\nMy Node\ny\nn\ny\ny\n')
         self.assertIn('INSTALL=2/guided NAME=My Node BBR=1 FW=0 QR=1',result.stdout)
@@ -22,12 +22,12 @@ guided_install'''
 
     def test_final_cancellation_or_eof_makes_no_installation_changes(self):
         for inputs in ('Name\ny\ny\ny\nn\n','Name\ny\n'):
-            result=self.shell('notice(){ :; };detect_ssh_ports(){ :; };install_protocol(){ echo BAD; };guided_install 2',input=inputs)
+            result=self.shell('notice(){ :; };detect_ssh_ports(){ :; };installation_available(){ :; };install_protocol(){ echo BAD; };guided_install 2',input=inputs)
             self.assertNotIn('BAD',result.stdout)
             self.assertFalse((self.config/'config.json').exists())
 
     def test_manual_channel_keeps_custom_installation_and_existing_parameter_editing(self):
-        result=self.shell('install_protocol(){ echo "MANUAL=$*"; };manual_install',input='3\n')
+        result=self.shell('installation_available(){ :; };install_protocol(){ echo "MANUAL=$*"; };manual_install',input='3\n')
         self.assertIn('MANUAL=3 custom',result.stdout)
         result=self.shell('sub_menu 1;echo "$MAIN_ACTION"',input='6\n')
         self.assertTrue(result.stdout.rstrip().endswith('manual_install'))

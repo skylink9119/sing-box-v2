@@ -156,7 +156,7 @@ def ecs_arguments(mode, language='zh_CN'):
     if mode not in ('route', 'speed', 'full'):
         raise ValueError('Invalid benchmark mode')
     # Explicitly opt into each module; upstream default includes uploads/stress tests.
-    return ['-menu=false', '-upload=false', '-log=false', '-l', 'zh', '-dns-mode', 'system',
+    return ['-menu=false', '-upload=false', '-log=false', '-l', 'en' if language in ('en','en_US') else 'zh', '-dns-mode', 'system',
             '-basic=' + str(mode == 'full').lower(), '-ut=' + str(mode == 'full').lower(),
             '-security=' + str(mode == 'full').lower(), '-backtrace=' + str(mode != 'speed').lower(),
             '-nt3=' + str(mode != 'speed').lower(), '-speed=' + str(mode != 'route').lower(),

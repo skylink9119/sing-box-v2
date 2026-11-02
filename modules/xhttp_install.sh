@@ -2,22 +2,13 @@
 # modules/install.sh — build-time module; assembled by scripts/build.py.
 install_node(){
  local choice kind node_name node_port host sni target listen path='' mode=auto cert='' private_key='' stage
- local ipv6_install='' ipv6_status ipv6_ufw_status
- local flags=() apply_options=()
+ local flags=()
  choice=${1:-2}
  case $choice in 2|3);;*)return 1;;esac
  case $choice in 2) kind=xhttp-reality; node_port=443;; 3) kind=xhttp-tls; node_port=2053;; *) return 1;; esac
- if [[ $ipv6_install == ipv6 ]];then
-  if ! command -v ip >/dev/null;then install_environment_check "$kind" || return 1;fi
-  host=$(ipv6_install_address) || { ipv6_status=$?;[[ $ipv6_status == 2 ]] && return 0;return 1; }
-  listen=::
-  warn '使用所选 IPv6 作为节点连接地址，监听支持双栈。客户端网络必须支持 IPv6，云安全组和系统防火墙需放行 IPv6 TCP 端口。纯 IPv6 VPS 访问 IPv4 网站需要另行配置可用出站。已有同协议节点请用 l → 9 增加 IPv6 备用入口。' 'The selected IPv6 is the client address with a dual-stack listener. Client IPv6 and provider/host IPv6 TCP rules are required. IPv6-only VPSs need a separate working egress for IPv4-only sites. Use l → 9 for IPv6 backups on an existing protocol.'
- fi
  node_name=$(ask '节点名称 [SKYBYTE]：' 'Node name [SKYBYTE]: ') || return 1; node_name=${node_name:-SKYBYTE}-$kind
- [[ $ipv6_install != ipv6 ]] || node_name+=-IPv6
  node_port=$(ask "监听 TCP 端口 [$node_port]：" "TCP listen port [$node_port]: ") || return 1
- case $kind in vision|xhttp-reality) node_port=${node_port:-443};; *) node_port=${node_port:-2053};; esac
- if [[ $ipv6_install != ipv6 ]];then
+ case $kind in xhttp-reality) node_port=${node_port:-443};; *) node_port=${node_port:-2053};; esac
   listen=$(ask '监听：1 IPv4  2 双栈 IPv4+IPv6 [1]：' 'Listen: 1 IPv4  2 Dual-stack IPv4+IPv6 [1]: ') || return 1
   case ${listen:-1} in 1) listen=0.0.0.0;; 2) listen=::;; *) return 1;; esac
   while :; do
@@ -25,7 +16,6 @@ install_node(){
    [[ $host =~ [^[:space:]] ]] && break
    warn '此项没有默认值，请填写本 VPS 的公网 IP 或域名。' 'There is no default; enter this VPS public IP or domain.'
   done
- fi
  helper preflight --port "$node_port" --listen "$listen" --address "$host" --name "$node_name" --kind "$kind" || return 1
  install_environment_check "$kind" && install_port_check "$node_port" "$listen" || return 1
  if [[ $kind == xhttp-tls ]]; then
@@ -34,11 +24,9 @@ install_node(){
   private_key=$(ask '私钥文件绝对路径（不修改源文件）：' 'Absolute private-key path (source is preserved): ') || return 1
   helper tls-input --sni "$sni" --cert "$cert" --key "$private_key" || return 1
   local cdn
-  if [[ $ipv6_install != ipv6 ]];then
-   cdn=$(ask '通过 CDN 连接？[y/N]：' 'Use a CDN? [y/N]: ') || return 1
+    cdn=$(ask '通过 CDN 连接？[y/N]：' 'Use a CDN? [y/N]: ') || return 1
    if confirmed "$cdn"; then flags+=(--cdn); mode=packet-up; fi
-   warn 'CDN 的 DNS、HTTPS 端口及回源 TLS 验证须在提供商后台配置。' 'Configure CDN DNS, supported HTTPS port and verified origin TLS at your provider.'
-  fi
+  warn 'CDN 的 DNS、HTTPS 端口及回源 TLS 验证须在提供商后台配置。' 'Configure CDN DNS, supported HTTPS port and verified origin TLS at your provider.'
  else
   sni=$(choose_reality_sni) || return 1
   [[ -n $sni ]] || return 0
@@ -63,16 +51,6 @@ install_node(){
  else flags+=(--target "$target"); fi
  [[ $kind != xhttp-* ]] || flags+=(--path "$path" --mode "$mode")
  stage=$(helper prepare "${flags[@]}") || { error '节点配置准备失败，具体原因见上方提示。' 'Node configuration preparation failed; see the reason above.'; return 1; }
- apply_options=("$stage" yes)
- if [[ $ipv6_install == ipv6 ]];then
-  if ! ipv6_engine check-install "$host";then helper finalize --stage "$stage";return 1;fi
-  if ! ipv6_ufw_status=$(helper ufw-state);then helper finalize --stage "$stage";return 1;fi
-  if [[ $ipv6_ufw_status == active ]];then
-   warn '先放行新端口；后续安装失败时，新增放行规则会保留，请自行核对。' 'Allowing the new port first; added rules remain if installation later fails. Review them if needed.'
-   if ! helper firewall-allow --ports "$node_port";then helper finalize --stage "$stage";return 1;fi
-  fi
-  apply_options+=("ipv6-install:$node_port")
- fi
- apply_stage "${apply_options[@]}" || { error '安装失败，原配置已保留或回退。' 'Install failed; previous configuration retained or restored.'; return 1; }
+ apply_stage "$stage" yes || { error '安装失败，原配置已保留或回退。' 'Install failed; previous configuration retained or restored.'; return 1; }
  show_nodes
 }

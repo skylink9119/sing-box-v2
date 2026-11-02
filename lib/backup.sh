@@ -1,10 +1,12 @@
 # lib/backup.sh — build-time module; assembled by scripts/build.py.
-backup(){
+backup() (
  check_owned || return 1
- local path file
+ local path='' file completed=false
+ trap 'if [[ $completed != true && -n $path ]];then rm -rf -- "$path";fi' EXIT
  users_guard && warp_guard && acme_guard && online_guard && haproxy_guard || return 1
- path="$BACKUP/$(date +%Y%m%d-%H%M%S)-$RANDOM"
- mkdir -m 700 "$path" "$path/config" || return 1
+ path=$(mktemp -d "$BACKUP/$(date +%Y%m%d-%H%M%S).XXXXXX") || return 1
+ printf 'SKYBYTE incomplete backup\n' > "$path/.incomplete" || return 1
+ mkdir -m 700 "$path/config" || return 1
  cp "$CONF" "$path/config/config.json" || return 1
  cp "$META" "$path/state.json" || return 1
  cp "$BIN" "$path/sing-box.bin" || return 1
@@ -47,8 +49,8 @@ PY_SUB_BACKUP
  if [[ -d $BASE/haproxy ]];then haproxy_engine backup "$path/haproxy" >/dev/null || return 1;fi
  if [[ -f $BASE/xhttp/state.json ]];then xhttp_command backup "$path/xhttp.tar.gz" || return 1;fi
  backup_engine manifest "$path" || return 1
- chmod -R go-rwx "$path" || return 1; printf '%s\n' "$path"
-}
+ chmod -R go-rwx "$path" || return 1;rm -f -- "$path/.incomplete" || return 1;completed=true; printf '%s\n' "$path"
+)
 restore() (
  check_owned || return 1
  local path snap='' restore_stage='' restore_started=false restore_done=false service active enabled

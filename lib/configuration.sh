@@ -30,10 +30,10 @@ PY_INITIAL_ADMIN
  if ! configuration_engine "$stage" "$@";then rm -rf "$stage";return 1;fi
  if ! haproxy_engine check_configs "$stage";then rm -rf "$stage";return 1;fi
  snap=$(backup) || { rm -rf "$stage";return 1; }
- if [[ $1 == ports ]] && command -v ufw >/dev/null;then
+ if [[ $1 == ports || $1 == add ]] && command -v ufw >/dev/null;then
   ufw_info=$(LC_ALL=C ufw status) || { rm -rf "$stage";err "$(L '无法读取 UFW 状态，节点端口未修改。' 'Cannot inspect UFW; node ports unchanged.')";return 1; }
  fi
- if [[ $1 == ports ]] && grep -q '^Status: active' <<< "$ufw_info";then
+ if [[ $1 == ports || $1 == add ]] && grep -q '^Status: active' <<< "$ufw_info";then
   rules=$(python3 - "$CONF" "$stage/0-config.json" <<'PY_CHANGED_PORTS'
 import json,sys
 old={i['type']:i['listen_port'] for i in json.load(open(sys.argv[1]))['inbounds']}
@@ -53,22 +53,18 @@ PY_CHANGED_PORTS
  if systemctl is-active --quiet sing-box.service;then admin=true;fi
  if [[ -f $BASE/users.json ]] && systemctl is-active --quiet skybyte-users.service;then users=true;users_stop || { rm -rf "$stage";return 1; };fi
  if [[ -f $BASE/argo-state.json ]] && systemctl is-active --quiet skybyte-argo-node.service;then argo=true;fi
- if [[ $1 != reality && $1 != ipv6 && ! -f $stage/keep-hopping && $(state hop) == True ]];then
+ if [[ ! -f $stage/keep-hopping && $(state hop) == True ]];then
   hop_active=true
-  if [[ $1 == ports ]];then
-   if systemctl is-active --quiet singbox-v2-hop.service;then hop_was_active=true;fi
-   if systemctl is-enabled --quiet singbox-v2-hop.service;then hop_was_enabled=true;fi
-  else hop_disable || { warp_resume "$admin" "$argo" "$users" || :;rm -rf "$stage";return 1; };fi
+  if systemctl is-active --quiet singbox-v2-hop.service;then hop_was_active=true;fi
+  if systemctl is-enabled --quiet singbox-v2-hop.service;then hop_was_enabled=true;fi
  fi
- if ! configuration_commit "$stage" "$1" || { [[ $1 == ports && $hop_active == true ]] && ! hop_disable; } || ! configuration_resume "$first_admin" "$admin" "$argo" "$users" || { [[ $1 == ipv6 && ${2:-} != off && $admin == true ]] && ! ipv6_engine ready; } || { [[ $1 == reality || $1 == ipv6 || $1 == ports ]] && ! configuration_export_all; };then
+ if ! configuration_commit "$stage" "$1" || { [[ $hop_active == true ]] && ! hop_disable; } || ! configuration_resume "$first_admin" "$admin" "$argo" "$users" || { [[ $1 == ipv6 && ${2:-} != off && $admin == true ]] && ! ipv6_engine ready; } || ! configuration_export_all;then
   [[ $users != true ]] || users_stop || :
   [[ $first_admin != true ]] || systemctl disable --now sing-box.service || :
   configuration_rollback "$stage" || :
   if [[ $hop_active == true ]];then
-   if [[ $1 == ports ]];then
-    [[ $hop_was_enabled != true ]] || systemctl enable singbox-v2-hop.service || :
-    [[ $hop_was_active != true ]] || systemctl start singbox-v2-hop.service || :
-   else systemctl start singbox-v2-hop.service || :;fi
+   if [[ $hop_was_enabled == true ]];then systemctl enable singbox-v2-hop.service || :;else systemctl disable singbox-v2-hop.service || :;fi
+   [[ $hop_was_active != true ]] || systemctl start singbox-v2-hop.service || :
   fi
   [[ $first_admin != true ]] || admin=false
   warp_resume "$admin" "$argo" "$users" || :
@@ -79,7 +75,6 @@ PY_CHANGED_PORTS
  if [[ $1 != reality && $1 != ports ]] && command -v ufw >/dev/null && LC_ALL=C ufw status | grep -q '^Status: active';then
   firewall_allow_protocols || return 1
  fi
- if [[ $1 != reality && $1 != ipv6 && $1 != ports ]];then configuration_export_all || return 1;fi
  ok "$(L "配置已更新；备份：$snap" "Configuration updated; backup: $snap")"
  if [[ $hop_active == true ]];then warn "$(L '跳跃已关闭，请按新监听端口重新开启；旧 UFW 规则保留。' 'Hopping disabled; re-enable for the new listener. Old UFW rules remain.')";fi
 }
@@ -92,12 +87,11 @@ configuration_commit(){
 import json,os,pathlib,shutil,sys,tempfile
 stage=pathlib.Path(sys.argv[1]);plan=json.loads((stage/'plan.json').read_text());rollback=[]
 targets=[value for _,value in plan]
-if sys.argv[2] in ('reality','ipv6','ports'):
- # Include exports in the same rollback journal before any live files change.
- names=('nodes.txt','subscription-base64.txt','v2rayn-nodes.txt','v2rayn-subscription.txt','shadowrocket-nodes.txt','shadowrocket-subscription.txt','shadowrocket-native-nodes.txt','shadowrocket-native-subscription.txt','outbounds.json','sing-box-client.json','sing-box-client-ipv6.json','clash-verge.yaml','mihomo-proxies.yaml','subscription-notes.txt','hy2-client-ca.pem','hy2-client-ca.cer','hy2-client-ca.mobileconfig')
- for _,value in plan:
-  p=pathlib.Path(value)
-  if p.name=='state.json':targets.extend(str(p.parent/name) for name in names)
+# Include exports in the same rollback journal before any live files change.
+names=('nodes.txt','subscription-base64.txt','v2rayn-nodes.txt','v2rayn-subscription.txt','shadowrocket-nodes.txt','shadowrocket-subscription.txt','shadowrocket-native-nodes.txt','shadowrocket-native-subscription.txt','outbounds.json','sing-box-client.json','sing-box-client-ipv6.json','clash-verge.yaml','mihomo-proxies.yaml','subscription-notes.txt','hy2-client-ca.pem','hy2-client-ca.cer','hy2-client-ca.mobileconfig')
+for _,value in plan:
+ p=pathlib.Path(value)
+ if p.name=='state.json':targets.extend(str(p.parent/name) for name in names)
 for n,value in enumerate(dict.fromkeys(targets)):
  p=pathlib.Path(value)
  if p.is_symlink() or p.parent.is_symlink():raise ValueError('Target symlink')
@@ -198,14 +192,14 @@ node_settings(){
  case $choice in
   1) edit_node_ports;;
   2) prompt_read "$(L '公网 IP 或 DDNS 域名：' 'Public IP or DDNS domain: ')" value || return 0
-   confirm "$(L '更新所有节点的服务器地址？' 'Update server address for all nodes?')" && configuration_apply address "$value";;
+   confirm "$(L '更新所有节点的服务器地址？' 'Update server address for all nodes?')" || return 0; configuration_apply address "$value";;
   3) reality_replace;;
   4|5)
    prompt_options '1. Reality + Vision
 2. Hysteria2' '1. Reality + Vision
 2. Hysteria2';prompt_read '> ' protocol || return 0
    case $protocol in 1) protocol=vless;;2) protocol=hysteria2;;*) return 1;;esac
-   if [[ $choice == 5 ]];then confirm "$(L '移除所选协议，保留另一协议与用户额度？' 'Remove selected protocol, retaining the other and account quotas?')" && configuration_apply remove "$protocol";return;fi
+   if [[ $choice == 5 ]];then confirm "$(L '移除所选协议，保留另一协议与用户额度？' 'Remove selected protocol, retaining the other and account quotas?')" || return 0; configuration_apply remove "$protocol";return;fi
    if [[ $(python3 - "$CONF" "$META" <<'PY_INITIAL_NODE'
 import json,sys
 c=json.load(open(sys.argv[1]));s=json.load(open(sys.argv[2]));print('yes' if not c.get('inbounds') and s.get('deployment')=='argo-only' else 'no')
@@ -228,8 +222,8 @@ PY_INITIAL_NODE
    fi
    prompt_read "$(L '管理员监听端口 [443]：' 'Admin listener port [443]: ')" value || return 0;value=${value:-443}
    if [[ $protocol == vless ]];then prompt_read 'Reality SNI [addons.mozilla.org]: ' domain || return 0
-    if [[ $bootstrap == true ]];then confirm "$(L '添加直连 Reality 节点并保留独立 Argo 隧道？' 'Add a direct Reality node and retain the separate Argo tunnel?')" && configuration_apply add vless "$value" "${domain:-addons.mozilla.org}" "$public" "$listen"
-    else confirm "$(L '追加 Reality，保留现有凭据？' 'Add Reality, retaining existing credentials?')" && configuration_apply add vless "$value" "${domain:-addons.mozilla.org}";fi
+    if [[ $bootstrap == true ]];then confirm "$(L '添加直连 Reality 节点并保留独立 Argo 隧道？' 'Add a direct Reality node and retain the separate Argo tunnel?')" || return 0; configuration_apply add vless "$value" "${domain:-addons.mozilla.org}" "$public" "$listen"
+    else confirm "$(L '追加 Reality，保留现有凭据？' 'Add Reality, retaining existing credentials?')" || return 0; configuration_apply add vless "$value" "${domain:-addons.mozilla.org}";fi
    else
     prompt_options '1. 自动自签名（无域名）
 2. 已有证书 / 托管 ACME' '1. Automatic self-signed (no domain)
@@ -237,16 +231,16 @@ PY_INITIAL_NODE
     prompt_read '> ' protocol || return 0
     if [[ $protocol == 1 ]];then
      if [[ $bootstrap == true ]];then domain=$public;else domain=$(state ip) || return 1;fi
-     if [[ $bootstrap == true ]];then confirm "$(L '生成自签名证书并添加 HY2；保留独立 Argo 隧道？客户端仍需信任公开证书。' 'Generate self-signed TLS and add HY2 while retaining the separate Argo tunnel? Clients must trust the public certificate.')" && configuration_apply add hysteria2 "$value" "$domain" selfsigned "$public" "$listen"
-     else confirm "$(L '自动生成自签名证书并追加 HY2？客户端仍需信任公开证书。' 'Generate self-signed TLS and add HY2? Clients still need public-certificate trust.')" && configuration_apply add hysteria2 "$value" "$domain" selfsigned;fi
+     if [[ $bootstrap == true ]];then confirm "$(L '生成自签名证书并添加 HY2；保留独立 Argo 隧道？客户端仍需信任公开证书。' 'Generate self-signed TLS and add HY2 while retaining the separate Argo tunnel? Clients must trust the public certificate.')" || return 0; configuration_apply add hysteria2 "$value" "$domain" selfsigned "$public" "$listen"
+     else confirm "$(L '自动生成自签名证书并追加 HY2？客户端仍需信任公开证书。' 'Generate self-signed TLS and add HY2? Clients still need public-certificate trust.')" || return 0; configuration_apply add hysteria2 "$value" "$domain" selfsigned;fi
      return
     fi
     [[ $protocol == 2 ]] || return 1
     prompt_read "$(L '证书名称（域名或 IP）：' 'Certificate identity (domain or IP): ')" domain || return 0
     prompt_read 'TLS fullchain: ' cert || return 0;prompt_read 'TLS private key: ' key || return 0
     validate_certificate "$cert" "$key" "$domain" || return 1
-    if [[ $bootstrap == true ]];then confirm "$(L '添加 HY2 并保留独立 Argo 隧道？' 'Add HY2 and retain the separate Argo tunnel?')" && configuration_apply add hysteria2 "$value" "$domain" "$cert" "$key" "$public" "$listen"
-    else confirm "$(L '追加 HY2，沿用证书并保留用户用量？' 'Add HY2 with this certificate, retaining account usage?')" && configuration_apply add hysteria2 "$value" "$domain" "$cert" "$key";fi
+    if [[ $bootstrap == true ]];then confirm "$(L '添加 HY2 并保留独立 Argo 隧道？' 'Add HY2 and retain the separate Argo tunnel?')" || return 0; configuration_apply add hysteria2 "$value" "$domain" "$cert" "$key" "$public" "$listen"
+    else confirm "$(L '追加 HY2，沿用证书并保留用户用量？' 'Add HY2 with this certificate, retaining account usage?')" || return 0; configuration_apply add hysteria2 "$value" "$domain" "$cert" "$key";fi
    fi;;
   6) prompt_read "$(L '上行 Mbps [0=自动]：' 'Upload Mbps [0=auto]: ')" up || return 0;prompt_read "$(L '下行 Mbps [0=自动]：' 'Download Mbps [0=auto]: ')" down || return 0
    prompt_options '1. 按带宽设置
@@ -258,38 +252,23 @@ PY_INITIAL_NODE
 2. Salamander';prompt_read '> ' obfs || return 0
    case ${obfs:-1} in 1) obfs=none;;2) obfs=salamander;;*) return 1;;esac
    warn "$(L '混淆改动需重新导入客户端；此处不是每人跨协议硬限速。' 'Obfuscation changes require re-import; these are not cross-protocol per-account hard rate caps.')"
-   confirm "$(L '应用 HY2 参数？' 'Apply HY2 options?')" && configuration_apply hy2 "${up:-0}" "${down:-0}" "$ignore" "$obfs";;
+   confirm "$(L '应用 HY2 参数？' 'Apply HY2 options?')" || return 0; configuration_apply hy2 "${up:-0}" "${down:-0}" "$ignore" "$obfs";;
   7) prompt_read "$(L '证书名称：' 'Certificate identity: ')" domain || return 0;prompt_read 'TLS fullchain: ' cert || return 0;prompt_read 'TLS private key: ' key || return 0
    validate_certificate "$cert" "$key" "$domain" || return 1
-   confirm "$(L '替换 HY2 使用的证书路径并同步用户节点？' 'Change HY2 certificate paths and sync account nodes?')" && configuration_apply tls "$domain" "$cert" "$key";;
+   confirm "$(L '替换 HY2 使用的证书路径并同步用户节点？' 'Change HY2 certificate paths and sync account nodes?')" || return 0; configuration_apply tls "$domain" "$cert" "$key";;
   0) return 0;;*) return 1;;
  esac
 }
+managed_listener_rules(){
+ users_guard && online_guard && haproxy_guard && acme_guard || return 1
+ python3 - "$BASE" "$CONF" <<'PY_MANAGED_LISTENERS'
+# @include managed_listeners.py
+import sys
+for protocol,number in managed_public_ports(*sys.argv[1:]):print(str(number)+'/'+protocol)
+PY_MANAGED_LISTENERS
+}
 firewall_allow_protocols(){
  local rule rules
- if [[ -f $CONF && -f $META ]];then
-  rules=$(python3 - "$CONF" <<'PY_ALLOW'
-import json,sys
-for i in json.load(open(sys.argv[1]))['inbounds']:
- assert i['type'] in ('vless','hysteria2') and type(i['listen_port']) is int and 1<=i['listen_port']<=65535
- print(str(i['listen_port'])+('/tcp' if i['type']=='vless' else '/udp'))
-PY_ALLOW
-  ) || return 1
-  while IFS= read -r rule;do [[ -z $rule ]] || ufw allow "$rule" || return 1;done <<<"$rules"
- fi
- if [[ -f $BASE/subscriptions.json ]];then
-  online_guard || return 1
-  rule=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["port"])' "$BASE/subscriptions.json") || return 1;ufw allow "$rule/tcp" || return 1
- fi
- if [[ -f $BASE/acme-state.json ]];then
-  acme_guard || return 1
-  if [[ $(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["method"])' "$BASE/acme-state.json") == http ]];then ufw allow 80/tcp || return 1;fi
- fi
- local xhttp_ports xhttp_port
- xhttp_ports=$(xhttp_command ports) || return 1
- while IFS= read -r xhttp_port;do
-  [[ -n $xhttp_port ]] || continue
-  valid_port "$xhttp_port" && ufw allow "$xhttp_port/tcp" || return 1
- done <<< "$xhttp_ports"
- users_firewall_allow
+ rules=$(managed_listener_rules) || return 1
+ while IFS= read -r rule;do [[ -z $rule ]] || ufw allow "$rule" || return 1;done <<< "$rules"
 }

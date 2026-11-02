@@ -25,6 +25,7 @@ wizard_selected(){
  if [[ $1 == 1 ]];then L '启用' 'Enable';else L '跳过' 'Skip';fi
 }
 guided_install() (
+ installation_available || return 1
  local protocol_label install_kind=guided suffix=''
  if [[ ${2:-} == ipv6 ]];then install_kind='guided-ipv6';suffix=-IPv6;fi
  local WIZARD_PROTOCOL=${1:-} WIZARD_NODE_NAME WIZARD_BBR WIZARD_FIREWALL WIZARD_QR WIZARD_CHOICE

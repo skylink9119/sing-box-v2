@@ -147,14 +147,14 @@ haproxy_menu(){
   1) haproxy_add;;
   2) haproxy_engine list;prompt_read "$(L '要修改的规则 ID（重新填写该规则参数）：' 'Rule ID to edit (re-enter its parameters): ')" value || return 0;[[ $value =~ ^[a-f0-9]{12}$ ]] || { err "$(L '规则 ID 无效' 'Invalid rule ID')";return 1; };haproxy_engine check_id "$value" && haproxy_add "$value";;
   3) haproxy_engine list;[[ ! -d $BASE/haproxy ]] || systemctl --no-pager status skybyte-haproxy.service || :;;
-  4) confirm "$(L '启动并启用开机自启？' 'Start and enable at boot?')" && haproxy_install_binary && haproxy_engine start;;
-  5) confirm "$(L '停止 TCP 转发并关闭开机自启？' 'Stop TCP forwarding and disable at boot?')" && haproxy_engine stop;;
-  6) confirm "$(L '重启 TCP 转发？现有转发连接可能断开。' 'Restart TCP forwarding? Existing connections may disconnect.')" && haproxy_engine restart;;
+  4) confirm "$(L '启动并启用开机自启？' 'Start and enable at boot?')" || return 0; haproxy_install_binary && haproxy_engine start;;
+  5) confirm "$(L '停止 TCP 转发并关闭开机自启？' 'Stop TCP forwarding and disable at boot?')" || return 0; haproxy_engine stop;;
+  6) confirm "$(L '重启 TCP 转发？现有转发连接可能断开。' 'Restart TCP forwarding? Existing connections may disconnect.')" || return 0; haproxy_engine restart;;
   7) haproxy_engine probe;;
-  8) haproxy_engine list;prompt_read "$(L '要删除的规则 ID：' 'Rule ID to remove: ')" value || return 0;confirm "$(L '删除此规则？最后一条删除后服务也会移除。' 'Remove this rule? Removing the last rule also removes the service.')" && haproxy_engine remove "$value";;
+  8) haproxy_engine list;prompt_read "$(L '要删除的规则 ID：' 'Rule ID to remove: ')" value || return 0;confirm "$(L '删除此规则？最后一条删除后服务也会移除。' 'Remove this rule? Removing the last rule also removes the service.')" || return 0; haproxy_engine remove "$value";;
   9) haproxy_engine backup;;
-  10) say '填写独立备份目录，或完整备份中的 haproxy 子目录。恢复会替换现有 TCP 规则并按备份状态启停服务。' 'Supply a standalone backup directory or the haproxy subdirectory in a full backup. Restore replaces current TCP rules and restores saved service activity.';prompt_read "$(L 'HAProxy 备份目录：' 'HAProxy backup directory: ')" value || return 0;confirm "$(L '校验并恢复 HAProxy 规则？' 'Validate and restore HAProxy rules?')" && haproxy_install_binary && haproxy_engine restore "$value";;
-  11) confirm "$(L '备份并卸载本工具的 HAProxy TCP 转发？保留软件包、外部配置与防火墙规则。' 'Back up and remove managed HAProxy TCP forwarding? Keep the package, external config and firewall rules.')" && haproxy_engine purge;;
+  10) say '填写独立备份目录，或完整备份中的 haproxy 子目录。恢复会替换现有 TCP 规则并按备份状态启停服务。' 'Supply a standalone backup directory or the haproxy subdirectory in a full backup. Restore replaces current TCP rules and restores saved service activity.';prompt_read "$(L 'HAProxy 备份目录：' 'HAProxy backup directory: ')" value || return 0;confirm "$(L '校验并恢复 HAProxy 规则？' 'Validate and restore HAProxy rules?')" || return 0; haproxy_install_binary && haproxy_engine restore "$value";;
+  11) confirm "$(L '备份并卸载本工具的 HAProxy TCP 转发？保留软件包、外部配置与防火墙规则。' 'Back up and remove managed HAProxy TCP forwarding? Keep the package, external config and firewall rules.')" || return 0; haproxy_engine purge;;
   *) err "$(L '无效选项' 'Invalid choice')";return 1;;
  esac
 }

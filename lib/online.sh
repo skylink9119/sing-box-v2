@@ -95,9 +95,9 @@ online_user(){
 0. Back'
  prompt_read '> ' choice || return 0
  case $choice in
-  1) confirm "$(L '签发新 Token？旧订阅地址将立即失效。' 'Issue new token? Previous subscription URL becomes invalid.')" && { printf '%s' "$RED";online_engine issue "$id";local rc=$?;printf '%s' "$RESET";return "$rc"; };;
+  1) confirm "$(L '签发新 Token？旧订阅地址将立即失效。' 'Issue new token? Previous subscription URL becomes invalid.')" || return 0; { printf '%s' "$RED";online_engine issue "$id";local rc=$?;printf '%s' "$RESET";return "$rc"; };;
   2) printf '%s' "$RED";online_engine links "$id";local rc=$?;printf '%s' "$RESET";return "$rc";;
-  3) confirm "$(L '撤销个人在线订阅地址？节点凭据不变。' 'Revoke personal online subscription URL? Node credentials stay unchanged.')" && online_engine revoke "$id";;
+  3) confirm "$(L '撤销个人在线订阅地址？节点凭据不变。' 'Revoke personal online subscription URL? Node credentials stay unchanged.')" || return 0; online_engine revoke "$id";;
   0) return 0;;*) return 1;;
  esac
 }

@@ -296,12 +296,12 @@ warp_menu(){
    prompt_read "$(L '本机 WARP SOCKS5 端口 [40000]：' 'Local WARP SOCKS5 port [40000]: ')" port || return 0; port=${port:-40000}
    valid_port "$port" && warp_loopback "$port" && warp_verify "$port" || return 1
    udp=$(warp_proxy_capability "$port") || return 1
-   confirm "$(L '应用所选平台 WARP 分流并重启原先运行的节点？' 'Apply WARP for the selected platforms and restart previously running nodes?')" && warp_switch restricted "$port" "$udp" "$domains";;
+   confirm "$(L '应用所选平台 WARP 分流并重启原先运行的节点？' 'Apply WARP for the selected platforms and restart previously running nodes?')" || return 0; warp_switch restricted "$port" "$udp" "$domains";;
   2)
    prompt_read "$(L '已有本机 WARP SOCKS5 端口 [40000]：' 'Existing local WARP SOCKS5 port [40000]: ')" port || return 0; port=${port:-40000}
    valid_port "$port" && warp_loopback "$port" && warp_verify "$port" || return 1
    udp=$(warp_proxy_capability "$port") || return 1; domains=$(warp_engine defaults) || return 1
-   confirm "$(L '仅流媒体和 AI 域名使用此 WARP 出站？' 'Route only media/AI domains through this WARP proxy?')" && warp_switch restricted "$port" "$udp" "$domains";;
+   confirm "$(L '仅流媒体和 AI 域名使用此 WARP 出站？' 'Route only media/AI domains through this WARP proxy?')" || return 0; warp_switch restricted "$port" "$udp" "$domains";;
   5)
    port=$(warp_engine port) || return 1
    udp=$(python3 -c 'import json,sys; print(str(json.load(open(sys.argv[1]))["udp"]).lower())' "$BASE/warp-state.json") || return 1
@@ -320,7 +320,7 @@ warp_menu(){
     domains=${choice:-$domains}
    fi
    if [[ $udp != true && $mode != direct ]]; then warn "$(L '此代理未支持 UDP：对应 UDP 流量会拒绝，允许应用回退 TCP。HY2 入站传输不受影响。' 'Proxy lacks UDP support: matching UDP is rejected for TCP fallback. HY2 inbound transport is unaffected.')"; fi
-   confirm "$(L '应用出站模式并短暂重启运行中的节点？' 'Apply routing and briefly restart active nodes?')" && warp_switch "$mode" "$port" "$udp" "$domains";;
+   confirm "$(L '应用出站模式并短暂重启运行中的节点？' 'Apply routing and briefly restart active nodes?')" || return 0; warp_switch "$mode" "$port" "$udp" "$domains";;
   0) return 0;; *) return 1;;
  esac
 }
@@ -347,10 +347,10 @@ warp_rules_menu(){
  fi
  case $choice in
   1) port=$(warp_engine port) && warp_loopback "$port" && warp_verify "$port";;
-  2) confirm "$(L '从 SKYBYTE 正式 Release 下载并验证规则列表？已有自定义分流不会改变。' 'Download/digest-verify the catalog from a SKYBYTE release? Custom routing remains unchanged.')" && warp_rules_update;;
+  2) confirm "$(L '从 SKYBYTE 正式 Release 下载并验证规则列表？已有自定义分流不会改变。' 'Download/digest-verify the catalog from a SKYBYTE release? Custom routing remains unchanged.')" || return 0; warp_rules_update;;
   3) domains=$(warp_engine defaults) && port=$(warp_engine port) || return 1
    udp=$(python3 -c 'import json,sys;print(str(json.load(open(sys.argv[1]))["udp"]).lower())' "$BASE/warp-state.json") || return 1
-   confirm "$(L '替换受限域名列表并重启原先运行的节点？' 'Replace restricted suffixes and restart previously active nodes?')" && warp_switch restricted "$port" "$udp" "$domains";;
+   confirm "$(L '替换受限域名列表并重启原先运行的节点？' 'Replace restricted suffixes and restart previously active nodes?')" || return 0; warp_switch restricted "$port" "$udp" "$domains";;
   0) return 0;;*) return 1;;
  esac
 }

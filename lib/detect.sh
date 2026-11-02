@@ -49,7 +49,7 @@ startup_info(){
  services=$(startup_probe systemctl show --no-pager --property=Id,LoadState,ActiveState sing-box.service skybyte-argo-tunnel.service nginx.service skybyte-haproxy.service skybyte-users.service skybyte-sb-xhttp.service) || services=''
  printf '%s\n----------------------------------------------\n' "$YELLOW"
  say "脚本版本：SKYBYTE Manager v$MANAGER_VERSION" "Script version: SKYBYTE Manager v$MANAGER_VERSION"
- say '功能更新：XHTTP 自动部署（a → 3）；节点与隧道管理统一进入主菜单 b' 'Features: guided XHTTP installation (a → 3); node and tunnel management in main menu b'
+ say '功能更新：跳跃保留、用户故障隔离、证书与恢复修复；菜单提速' 'Features: hopping preservation, account isolation, certificate/restore fixes; faster menus'
  say '系统信息：' 'System information:'
  printf '  %s: %s\n' "$(L '操作系统' 'OS')" "$os" "$(L '内核' 'Kernel')" "$kernel" "$(L '处理器架构' 'Architecture')" "$arch" "$(L '虚拟化' 'Virtualization')" "$virtual"
  printf '  IPv4: %s\n  IPv6: %s\n' "${ipv4:-$(L '未检测到' 'Not detected')}" "${ipv6:-$(L '未检测到' 'Not detected')}"

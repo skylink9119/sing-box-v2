@@ -3,8 +3,8 @@ set -Eeuo pipefail
 umask 077
 if [[ -t 2 && -z ${NO_COLOR:-} ]]; then RED=$'\033[1;31m'; RESET=$'\033[0m'; else RED=''; RESET=''; fi
 err(){ printf '%s%s%s\n' "$RED" "$*" "$RESET" >&2; }
-RELEASE_VERSION=2.10.2
-MANAGER_SHA256=3375d9410cb81e032b16341f7177298b6e5f609d95cbe9dddd705ced551355eb
+RELEASE_VERSION=2.10.3
+MANAGER_SHA256=ea0c32bef670b6e97a7ded132a99244c7f16c365804b971271d0334f65804a21
 RELEASE_URL=https://github.com/skylink9119/sing-box-v2/releases/download/v$RELEASE_VERSION
 URL=$RELEASE_URL/singbox-v2.sh
 MANAGER_DIR=/usr/local/lib/singbox-v2
@@ -189,6 +189,7 @@ install_manager() (
   printf 'Manager installed: %s\nNo nodes were installed. Run: bash %s\n' "$MANAGER_TARGET" "$MANAGER_TARGET"
   return 0
  fi
+ rm -f -- "$temp.sha256" || return 1
  installer_launch
 )
 if [[ ${BASH_SOURCE[0]} == "$0" ]];then install_manager "$@";fi

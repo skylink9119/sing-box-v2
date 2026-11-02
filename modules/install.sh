@@ -1,3 +1,7 @@
+installation_available(){
+ if [[ -e $CONF || -L $CONF || -e $META || -L $META || -e $BIN || -L $BIN || -e $SYSTEMD_DIR/sing-box.service || -L $SYSTEMD_DIR/sing-box.service ]] || command -v sing-box >/dev/null; then err "$(L '发现已有配置或核心，拒绝覆盖；追加协议用 b → 9 → 4，已有节点增加 IPv6 备用用 d → 13 → 2。' 'Existing configuration or binary found; refusing to overwrite. Add a protocol through b → 9 → 4, or add IPv6 backups through d → 13 → 2.')"; return 1; fi
+ if systemctl list-unit-files sing-box.service --no-legend 2>/dev/null | grep -q sing-box; then err "$(L '已有 sing-box 服务，拒绝覆盖' 'Existing sing-box service found; refusing to overwrite')"; return 1; fi
+}
 # modules/install.sh — build-time module; assembled by scripts/build.py.
 choose_node_name(){
  local value
@@ -73,8 +77,7 @@ install_protocol() (
  [[ "$mode" == 0 ]] && return 0
  [[ "$mode" =~ ^[123]$ ]] || { err "Invalid selection"; return 1; }
  if [[ $guided != true ]];then notice; confirm "$(L '同意声明并安装所选协议？' 'Accept notice and install selected protocol(s)?')" || return 0;fi
- if [[ -e $CONF || -L $CONF || -e $META || -L $META || -e $BIN || -L $BIN || -e $SYSTEMD_DIR/sing-box.service || -L $SYSTEMD_DIR/sing-box.service ]] || command -v sing-box >/dev/null; then err "$(L '发现已有配置或核心，拒绝覆盖；追加协议用 b → 9 → 4，已有节点增加 IPv6 备用用 d → 13 → 2。' 'Existing configuration or binary found; refusing to overwrite. Add a protocol through b → 9 → 4, or add IPv6 backups through d → 13 → 2.')"; return 1; fi
- if systemctl list-unit-files sing-box.service --no-legend 2>/dev/null | grep -q sing-box; then err "$(L '已有 sing-box 服务，拒绝覆盖' 'Existing sing-box service found; refusing to overwrite')"; return 1; fi
+ installation_available || return 1
  install_environment_check "$mode" || return 1
  if [[ $ipv6_install == true ]];then
   local ipv6_status
@@ -140,7 +143,7 @@ install_protocol() (
   if [[ $guided == true ]];then sni=addons.mozilla.org
   else prompt_read "$(L 'Reality 握手域名 [addons.mozilla.org]：' 'Reality handshake [addons.mozilla.org]: ')" sni || return 1;fi
   sni=${sni:-addons.mozilla.org}
-  [[ $sni =~ ^[a-zA-Z0-9.-]+$ ]] || { err "$(L '无效 SNI' 'Invalid SNI')"; return 1; }
+  [[ $sni =~ ^[a-zA-Z0-9.-]+$ && $sni == *.* && $sni =~ [a-zA-Z] ]] || { err "$(L '无效 SNI' 'Invalid SNI')"; return 1; }
  fi
  if [[ -z ${SKYBYTE_ASSET_DIR:-} ]];then
   say '安装依赖...' 'Installing dependencies...'
@@ -150,7 +153,7 @@ install_protocol() (
  [[ $mode == 2 ]] || install_reality_target "$sni" || return 1
  install_download_check || return 1
  mkdir -p "$(dirname "$BIN")"
- if [[ $cert_mode == 2 ]]; then validate_certificate "$cert" "$key" "$domain" || return 1; fi
+ if [[ $cert_mode == 2 ]]; then cert=$(realpath "$cert") && key=$(realpath "$key") || return 1;validate_certificate "$cert" "$key" "$domain" || return 1; fi
  if [[ $cert_mode == 1 ]]; then
   [[ ! -e $(dirname "$final_conf")/hy2-selfsigned.crt && ! -e $(dirname "$final_conf")/hy2-selfsigned.key ]] || { err "TLS files already exist"; return 1; }
  fi
@@ -216,6 +219,7 @@ PY_INSTALL_SAN
  [[ $ipv6_install != true ]] || ipv6_engine ready || return 1
  if [[ $cert_mode == 1 ]]; then echo "$(L '自签名证书：' 'Self-signed certificate: ')$cert"; openssl x509 -in "$cert" -noout -fingerprint -sha256; say '务必将证书安全导入客户端并验证，链接本身不足以建立信任。' 'Securely import and verify certificate on client; URL alone cannot establish trust.'; fi
  exports || return 1
+ if [[ $mode != 1 ]];then certificate_record "$(openssl x509 -in "$cert" -noout -fingerprint -sha256)" || return 1;fi
  committed=true
  ok "$(L '部署完成；请检查云防火墙' 'Installed; check provider firewall')"
  if [[ $guided == true ]];then

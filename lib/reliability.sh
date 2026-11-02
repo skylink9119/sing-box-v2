@@ -62,7 +62,7 @@ core_versions(){
  [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
  [[ $version != "$current" ]] || { ok "$(L '已是所选版本' 'Already on selected version')"; return 0; }
  say '候选内核必须能检查全部托管配置；不自动重写配置。降级可能不兼容。' 'Candidate core must validate every managed config; configs are not rewritten. Downgrades may be incompatible.'
- confirm "$(L "切换内核 $current → ${version}？" "Switch core $current → $version?")" && apply_update "$version"
+ confirm "$(L "切换内核 $current → ${version}？" "Switch core $current → $version?")" || return 0; apply_update "$version"
 }
 backup_engine(){
  python3 - "$BASE" "$BACKUP" "$CONF" "$BIN" "$@" <<'PY_BACKUP'
@@ -122,7 +122,7 @@ PY_GPG_EXPORT
    unset pass;local rc=0;backup_engine import "$tmp" || rc=$?;rm -f "$tmp";return "$rc";;
   6) prompt_read "$(L '保留最新备份数量 [10]：' 'Keep newest backups [10]: ')" keep || return 0;keep=${keep:-10}
    backup_engine prune "$keep" preview || return 1
-   confirm "$(L '删除上述旧托管备份？' 'Delete the listed older managed backups?')" && backup_engine prune "$keep" apply;;
+   confirm "$(L '删除上述旧托管备份？' 'Delete the listed older managed backups?')" || return 0; backup_engine prune "$keep" apply;;
   0) return 0;; *) return 1;;
  esac
 }

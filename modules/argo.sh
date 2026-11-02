@@ -209,11 +209,17 @@ PY
 }
 argo_status(){
  [[ -f $BASE/argo-state.json ]] || { say '尚未配置 Argo 隧道。' 'Argo is not configured.'; return 0; }
- local mode domain port connected
- say "最近错误类别：$(argo_state last_error)" "Last error category: $(argo_state last_error)"
- mode=$(argo_state mode); domain=$(argo_state domain); port=$(argo_state port); connected=$(argo_state connected)
+ local mode domain port connected last_error edge transport snapshot
+ snapshot=$(python3 - "$BASE/argo-state.json" <<'PY_ARGO_SNAPSHOT'
+import json,sys
+s=json.load(open(sys.argv[1]))
+for key in ('mode','domain','port','connected','last_error','edge_ip_version','transport'):print(s.get(key,''))
+PY_ARGO_SNAPSHOT
+ ) || return 1
+ { IFS= read -r mode;IFS= read -r domain;IFS= read -r port;IFS= read -r connected;IFS= read -r last_error;IFS= read -r edge;IFS= read -r transport; } <<< "$snapshot"
+ say "最近错误类别：$last_error" "Last error category: $last_error"
  say "模式：${mode}；公开域名：${domain:-尚未分配}；本机端口：${port}；已注册：$connected" "Mode: $mode; hostname: ${domain:-not assigned}; local port: $port; registered: $connected"
- say "连接地址族：$(argo_state edge_ip_version)；隧道传输：$(argo_state transport)" "Edge IP version: $(argo_state edge_ip_version); transport: $(argo_state transport)"
+ say "连接地址族：${edge}；隧道传输：$transport" "Edge IP version: $edge; transport: $transport"
  if systemctl is-active --quiet skybyte-argo-node.service; then ok "$(L 'Argo WS 服务运行中' 'Argo WS origin active')"; else err "$(L 'Argo WS 服务未运行' 'Argo WS origin inactive')"; fi
  if systemctl is-active --quiet skybyte-argo-tunnel.service; then ok "$(L 'Argo 隧道服务运行中' 'Argo tunnel worker active')"; else err "$(L 'Argo 隧道服务未运行' 'Argo tunnel worker inactive')"; fi
  warn "$(L '服务运行不代表客户端可达；固定模式还需核对 Cloudflare 公开路由和客户端 SNI/WS 路径。' 'Active services do not prove client connectivity; verify published routes and client SNI/WS paths.')"

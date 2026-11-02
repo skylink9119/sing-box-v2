@@ -5,7 +5,7 @@ LANGUAGE_CHOICE=""
 load_language() {
   if [[ -f "$LANG_FILE" ]]; then
     local value
-    value=$(cat "$LANG_FILE")
+    IFS= read -r value < "$LANG_FILE" || [[ -n $value ]] || return 0
     case "$value" in zh_CN|en_US) LANGUAGE_CHOICE=$value;; esac
   fi
 }
@@ -25,8 +25,8 @@ prompt_read(){
  if [[ ${3:-} == secret ]]; then read -rs -p "${GREEN}$1${RESET}" "$2"
  else read -r -p "${GREEN}$1${RESET}" "$2"; fi
 }
-prompt_options(){ printf '%s%s%s\n' "$GREEN" "$(L "$1" "$2")" "$RESET"; }
-say(){ printf '%s\n' "$(L "$1" "$2")"; }
+prompt_options(){ if [[ $LANGUAGE_CHOICE == en_US ]];then printf '%s%s%s\n' "$GREEN" "$2" "$RESET";else printf '%s%s%s\n' "$GREEN" "$1" "$RESET";fi; }
+say(){ if [[ $LANGUAGE_CHOICE == en_US ]];then printf '%s\n' "$2";else printf '%s\n' "$1";fi; }
 L() { if [[ "$LANGUAGE_CHOICE" == en_US ]]; then printf '%s' "$2"; else printf '%s' "$1"; fi; }
 if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
  GREEN=$'\033[1;32m'; RED=$'\033[1;31m'; YELLOW=$'\033[1;33m'; CYAN=$'\033[1;36m'; RESET=$'\033[0m'
@@ -79,7 +79,8 @@ p={i['type'] for i in json.load(open(sys.argv[1]))['inbounds']}
 if {'vless','hysteria2'} <= p: print('3')
 elif 'vless' in p: print('1')
 elif 'hysteria2' in p: print('2')
-else: raise ValueError('No supported installed protocols')
+elif not p: print('0')
+else: raise ValueError('Unsupported installed protocols')
 PY
 }
 check_owned(){

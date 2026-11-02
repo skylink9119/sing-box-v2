@@ -30,7 +30,7 @@ edit_nodes(){
  kind=$(choose_kind) || return 0
  case $choice in
   1) value=$(ask '新的节点名称：' 'New node name: ') || return 1; stage=$(helper rename --kind "$kind" --name "$value") || return 1;;
-  2) confirm '删除该协议？重新安装会生成新凭据。' 'Remove protocol? Reinstallation generates new credentials.' || return 1
+  2) confirm '删除该协议？重新安装会生成新凭据。' 'Remove protocol? Reinstallation generates new credentials.' || return 0
      stage=$(helper remove --kind "$kind") || return 1;;
   3) [[ $kind == xhttp-tls ]] || return 1
      cert=$(ask '新的 fullchain 证书绝对路径：' 'New fullchain certificate absolute path: ') || return 1

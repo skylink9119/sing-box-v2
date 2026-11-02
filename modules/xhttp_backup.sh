@@ -9,7 +9,7 @@ make_backup(){
 restore_backup(){
  local archive stage
  archive=$(ask '可信备份文件的绝对路径：' 'Absolute path to your trusted backup: ') || return 1
- confirm '恢复配置？现有托管节点将替换为备份，外部文件保留。' 'Restore? Managed nodes will be replaced; external files preserved.' || return 1
+ confirm '恢复配置？现有托管节点将替换为备份，外部文件保留。' 'Restore? Managed nodes will be replaced; external files preserved.' || return 0
  ensure_binary || return 1
  [[ ! -f $SKYBYTE_XRAY_DIR/state.json ]] || make_backup || return 1
  stage=$(helper restore --file "$archive") || return 1

@@ -80,6 +80,7 @@ install_manager() (
   printf 'Manager installed: %s\nNo nodes were installed. Run: bash %s\n' "$MANAGER_TARGET" "$MANAGER_TARGET"
   return 0
  fi
+ rm -f -- "$temp.sha256" || return 1
  installer_launch
 )
 if [[ ${BASH_SOURCE[0]} == "$0" ]];then install_manager "$@";fi

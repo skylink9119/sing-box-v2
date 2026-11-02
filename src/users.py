@@ -19,19 +19,20 @@ def lock():
  if (base/'users.lock').is_symlink():error('锁文件异常','Invalid lock file')
  with open(base/'users.lock','a') as f:fcntl.flock(f,fcntl.LOCK_EX);yield
 
-def read():
+def read(check_files=True):
  if db.is_symlink() or root.is_symlink():error('用户目录或文件异常','Invalid user directory/file')
  d=json.loads(db.read_text());require(d['owner']=='SKYBYTE user quotas v1' and d['schema']==1)
  require(type(d['limit'])==int and 1<=d['limit']<=100 and isinstance(d['users'],list))
  identifiers=set();ports=set()
  for u in d['users']:
-  require(u['id'] not in identifiers);identifiers.add(u['id']);p=userdir(u['id'])
+  require(isinstance(u['id'],str) and len(u['id'])==16 and all(c in '0123456789abcdef' for c in u['id']))
+  require(u['id'] not in identifiers);identifiers.add(u['id']);p=userdir(u['id']) if check_files else root/u['id']
   for field in ['upload','download','quota_bytes','expires_at']:
    require(type(u[field])==int and u[field]>=0)
   for field in ['port','api_port']:
    require(type(u[field])==int and 1024<=u[field]<=65535 and u[field] not in ports);ports.add(u[field])
   for filename in GENERATED:
-   if (p/filename).is_symlink():error('用户文件是符号链接','User file is a symlink')
+   if check_files and (p/filename).is_symlink():error('用户文件是符号链接','User file is a symlink')
  return d
 
 def userdir(uid):
@@ -70,7 +71,9 @@ REASONS={
  'api_response':('控制接口返回无效数据','Invalid controller response'),
  'counter':('流量计数异常，已停止账户','Invalid traffic counters; account stopped'),
  'core_exit':('节点进程退出，请在本机检查 core.log','Core exited; inspect core.log locally'),
- 'final_sample':('停止前采样失败','Final sample failed')}
+ 'final_sample':('停止前采样失败','Final sample failed'),
+ 'files':('用户文件异常，已隔离停用；请核查本地文件归属','Unsafe user files; isolated and stopped; inspect local ownership'),
+ 'core_start':('用户实例启动失败，请检查配置和资源','User core could not start; inspect configuration and resources')}
 def failure_reason(exc):
  if isinstance(exc,urllib.error.HTTPError):return 'api_auth' if exc.code in (401,403) else 'api_response'
  if isinstance(exc,(urllib.error.URLError,TimeoutError,OSError)):return 'api_unreachable'
@@ -114,23 +117,7 @@ def cleanup():
  if root.exists() and not list(root.iterdir()):root.rmdir()
  db.unlink()
 
-def integrated_xhttp_ports(base):
-    from pathlib import Path
-    import json
-    root=Path(base)/'xhttp';state=root/'state.json';marker=root/'.owner'
-    if not root.exists() and not root.is_symlink():return set()
-    if any(p.is_symlink() for p in (root,state,marker)):raise ValueError('Unsafe XHTTP state')
-    if not marker.is_file() or marker.read_text()!='SKYBYTE-SB-XHTTP/1\n':raise ValueError('Unknown XHTTP owner')
-    if not state.exists():return set()
-    if state.stat().st_size>4*1024*1024:raise ValueError('XHTTP state too large')
-    data=json.loads(state.read_text())
-    if data.get('schema')!=1 or not isinstance(data.get('nodes'),dict):raise ValueError('Invalid XHTTP state')
-    ports=set()
-    for kind,node in data['nodes'].items():
-        p=node['port']
-        if kind not in ('xhttp-reality','xhttp-tls') or type(p)!=int or not 1<=p<=65535:raise ValueError('Invalid XHTTP port')
-        ports.add(p)
-    return ports
+from src.managed_ports import integrated_xhttp_ports
 
 class NoControllerRedirect(urllib.request.HTTPRedirectHandler):
  def redirect_request(self,*args,**kwargs):return None
@@ -156,6 +143,32 @@ def account_sample(u,generation,up,down):
  u['upload']+=up-u.get('observed_up',0);u['download']+=down-u.get('observed_down',0)
  u['observed_up']=up;u['observed_down']=down;u['sampled_at']=time.time();u['observed_monotonic']=time.monotonic()
 
+def restore_reserved_ports():
+ reserved={('tcp',number) for number in integrated_xhttp_ports(base)}
+ def load(path):
+  if path.is_symlink() or path.parent.is_symlink() or path.stat().st_size>4*1024**2:raise ValueError('Unsafe service reservation')
+  return json.loads(path.read_text())
+ for path in (pathlib.Path(conf),base/'argo-server.json',base/'warp-gateway.json'):
+  if not path.exists() and not path.is_symlink():continue
+  cfg=load(path)
+  for node in cfg.get('inbounds',[]):reserved.add(('udp' if node['type']=='hysteria2' else 'tcp',node['listen_port']))
+  controller=cfg.get('experimental',{}).get('clash_api',{}).get('external_controller')
+  if controller:reserved.add(('tcp',int(controller.rsplit(':',1)[1])))
+ for path in (base/'subscriptions.json',base/'warp-client.json'):
+  if path.exists() or path.is_symlink():reserved.add(('tcp',load(path)['port']))
+ path=base/'haproxy/state.json'
+ if path.exists() or path.is_symlink():
+  state=load(path)
+  require(state.get('owner')=='SKYBYTE HAProxy TCP v1' and state.get('schema')==1)
+  for rule in state['rules']:reserved.add(('tcp',rule['port']))
+ return reserved
+
+def user_files_safe(u):
+ try:
+  p=userdir(u['id'])
+  return p.is_dir() and all(not (p/name).is_symlink() for name in GENERATED) and (p/'server.json').is_file()
+ except (ValueError,OSError):return False
+
 def watch():
  stopping=False;children={}
  if (base/'users-worker.lock').is_symlink():error('工作锁异常','Invalid worker lock')
@@ -177,7 +190,7 @@ def watch():
  try:
   with concurrent.futures.ThreadPoolExecutor(max_workers=16) as pool:
    while not stopping:
-    with lock():d=read()
+    with lock():d=read(check_files=False)
     records={u['id']:u for u in d['users']}
     samples={};sample_started=time.monotonic()
     futures={uid:pool.submit(api,records[uid]) for uid in children if uid in records and children[uid]['proc'].poll() is None}
@@ -185,10 +198,16 @@ def watch():
      try:samples[uid]=f.result(timeout=2)
      except Exception as exc:samples[uid]=failure_reason(exc)
     with lock():
-     d=read();before=copy.deepcopy(d);records={u['id']:u for u in d['users']}
+     d=read(check_files=False);before=copy.deepcopy(d);records={u['id']:u for u in d['users']}
      for uid,child in list(children.items()):
       u=records.get(uid)
-      if child['log'].tell()>1048576:child['log'].seek(0);child['log'].truncate(0)
+      if u is not None and not user_files_safe(u):
+       block(u,'files');stop(uid);u['running']=False;continue
+      try:
+       if child['log'].tell()>1048576:child['log'].seek(0);child['log'].truncate(0)
+      except OSError:
+       if u is not None:block(u,'files');u['running']=False
+       stop(uid);continue
       if u is None:stop(uid);continue
       value=samples.get(uid)
       if child['proc'].poll() is not None:
@@ -205,11 +224,15 @@ def watch():
       uid=u['id']
       if uid in children: u['running']=children[uid]['ready'];continue
       if not eligible(u) or not d.get('supervisor_enabled',True):u['running']=False;continue
-      p=userdir(uid);logpath=p/'core.log'
-      if logpath.is_symlink() or (p/'server.json').is_symlink():error('用户配置异常','Invalid user configuration')
-      # Prevent unbounded private core logs; do not forward them to journal.
-      log=open(logpath,'w');os.chmod(logpath,0o600)
-      proc=subprocess.Popen([binary,'run','-c',str(p/'server.json')],stdout=log,stderr=log)
+      if not user_files_safe(u):block(u,'files');u['running']=False;continue
+      p=userdir(uid);logpath=p/'core.log';log=None
+      try:
+       fd=os.open(logpath,os.O_WRONLY|os.O_CREAT|os.O_TRUNC|os.O_NOFOLLOW,0o600)
+       log=os.fdopen(fd,'w');os.chmod(logpath,0o600)
+       proc=subprocess.Popen([binary,'run','-c',str(p/'server.json')],stdout=log,stderr=log)
+      except (OSError,ValueError):
+       if log is not None:log.close()
+       block(u,'core_start');u['running']=False;continue
       children[uid]={'proc':proc,'log':log,'start':time.monotonic(),'ready':False,'generation':secrets.token_hex(16)}
       u['running']=False;u['pid']=proc.pid
      if d!=before:atomic(db,d)
@@ -219,7 +242,7 @@ def watch():
  finally:
   try:
    with lock():
-    d=read()
+    d=read(check_files=False)
     with concurrent.futures.ThreadPoolExecutor(max_workers=16) as final_pool:
      list(final_pool.map(lambda u: stop(u['id'],u),d['users']))
     for u in d['users']:u['running']=False
@@ -234,7 +257,7 @@ if action=='watch':watch();sys.exit(0)
 if action=='summary':
  # The supervisor atomically replaces the ledger. This menu-only snapshot can
  # read either complete generation without waiting on quota work or core stops.
- d=read()
+ d=read(check_files=False)
  count=sum(not u.get('deleted') for u in d['users'])
  running=sum(bool(u.get('running')) and eligible(u) for u in d['users'])
  print(tr('账户：','Accounts: ')+f"{count}/{d['limit']}"+tr('；就绪：','; ready: ')+str(running))
@@ -244,7 +267,7 @@ with lock():
   limit=int(args[0]);require(1<=limit<=100)
   if db.exists() or root.exists():error('已有用户文件，拒绝覆盖','User files already exist; refusing overwrite')
   root.mkdir(mode=0o700);atomic(db,{'owner':'SKYBYTE user quotas v1','schema':1,'limit':limit,'supervisor_enabled':True,'users':[]});sys.exit(0)
- d=read()
+ d=read(check_files=action not in ('list','diagnose'))
  if action=='guard':
   pass
  elif action=='add':
@@ -333,7 +356,9 @@ with lock():
    elif action=='disable':u['enabled']=False
    elif action=='delete':u['deleted']=True;u['enabled']=False
    elif action=='reset':
-    if u.get('running'):account_sample(u,u['generation'],*api(u))
+    if u.get('running'):
+     try:account_sample(u,u['generation'],*api(u))
+     except Exception:raise SystemExit(tr('无法安全读取运行中账户用量，未清零；请先修复控制接口或停用账户后重试','Cannot safely sample the running account; usage retained. Repair the controller or disable the account before retrying.')) from None
     u['upload']=u['download']=0
    elif action=='set':u['quota_bytes']=quota(args[1]);u['expires_at']=int(time.time())+days(args[2])
    elif action=='quota':u['quota_bytes']=quota(args[1])
@@ -431,17 +456,46 @@ with lock():
   merged_ports=[u[k] for u in planned for k in ('port','api_port')]
   require(len(merged_ports)==len(set(merged_ports)))
   if len([u for u in planned if not u.get('deleted')])>100:error('恢复后用户数超过100，拒绝恢复','Restore would exceed 100 accounts; refusing')
-  root.mkdir(exist_ok=True,mode=0o700)
-  for u in new['users']:
-   p=userdir(u['id']);src=source/'users'/u['id']
-   if src.is_symlink() or not src.is_dir():error('备份用户目录异常','Invalid backed-up user directory')
-   p.mkdir(exist_ok=True,mode=0o700)
-   for f in src.iterdir():
-    if f.is_symlink() or f.name not in GENERATED or not f.is_file():error('备份用户文件异常','Invalid backed-up user file')
-    if (p/f.name).is_symlink():error('目标用户文件异常','Invalid target user file')
-    shutil.copyfile(f,p/f.name);os.chmod(p/f.name,0o600)
-   if u['id'] in latest:u.update(latest.pop(u['id']))
-   u['running']=False
+  plans=[];reserved=restore_reserved_ports()
+  with tempfile.TemporaryDirectory(prefix='users-restore.',dir=base) as tmp:
+   for u in new['users']:
+    p=userdir(u['id']);src=source/'users'/u['id'];current=latest.get(u['id'])
+    if current:u.update(current)
+    u['running']=False
+    if u.get('deleted'):
+     latest.pop(u['id'],None);continue
+    if src.is_symlink() or not src.is_dir():error('备份用户目录异常','Invalid backed-up user directory')
+    candidate=pathlib.Path(tmp)/u['id'];candidate.mkdir(mode=0o700)
+    names=[]
+    for f in src.iterdir():
+     if f.is_symlink() or f.name not in GENERATED or not f.is_file():error('备份用户文件异常','Invalid backed-up user file')
+     if (p/f.name).is_symlink():error('目标用户文件异常','Invalid target user file')
+     shutil.copyfile(f,candidate/f.name);os.chmod(candidate/f.name,0o600);names.append(f.name)
+    require('server.json' in names and 'state.json' in names)
+    cfg=json.loads((candidate/'server.json').read_text())
+    for inbound in cfg['inbounds']:inbound['listen_port']=u['port']
+    cfg.setdefault('experimental',{})['clash_api']={'external_controller':'127.0.0.1:'+str(u['api_port']),'secret':u['api_secret']}
+    requested={('tcp',u['api_port'])}|{('udp' if node['type']=='hysteria2' else 'tcp',node['listen_port']) for node in cfg['inbounds']}
+    if requested & reserved:error('恢复的用户端口与托管服务冲突，未写入用户文件','Restored user endpoint conflicts with a managed service; user files unchanged')
+    atomic(candidate/'server.json',cfg)
+    checking=copy.deepcopy(cfg)
+    for inbound in checking['inbounds']:
+     if inbound['type']=='hysteria2':
+      inbound['tls']['certificate_path']=str(candidate/'certificate.crt');inbound['tls']['key_path']=str(candidate/'private.key')
+    atomic(candidate/'check.json',checking);config_check(candidate/'check.json')
+    plans.append((p,candidate,names));latest.pop(u['id'],None)
+   # Outer restoration snapshots handle rollback on write/service failure.
+   root.mkdir(exist_ok=True,mode=0o700)
+   for p,candidate,names in plans:
+    p.mkdir(exist_ok=True,mode=0o700)
+    for name in names:
+     fd,tmpfile=tempfile.mkstemp(dir=p)
+     try:
+      with os.fdopen(fd,'wb') as f,open(candidate/name,'rb') as source_file:
+       shutil.copyfileobj(source_file,f,1024*1024);f.flush();os.fsync(f.fileno())
+      os.chmod(tmpfile,0o600);os.replace(tmpfile,p/name)
+     finally:
+      if os.path.exists(tmpfile):os.unlink(tmpfile)
   new['supervisor_enabled']=d.get('supervisor_enabled',True)
   new['users'].extend(latest.values());new['limit']=max(new['limit'],d['limit'],len([u for u in new['users'] if not u.get('deleted')]))
   atomic(db,new)

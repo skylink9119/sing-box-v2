@@ -8,7 +8,7 @@
 set -Eeuo pipefail
 umask 077
 SCRIPT_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
-MANAGER_VERSION=2.10.2
+MANAGER_VERSION=2.10.3
 CORE_RECOMMENDED=1.14.4
 BASE=/etc/singbox-v2
 CONF=/etc/sing-box/config.json
@@ -36,7 +36,7 @@ LANGUAGE_CHOICE=""
 load_language() {
   if [[ -f "$LANG_FILE" ]]; then
     local value
-    value=$(cat "$LANG_FILE")
+    IFS= read -r value < "$LANG_FILE" || [[ -n $value ]] || return 0
     case "$value" in zh_CN|en_US) LANGUAGE_CHOICE=$value;; esac
   fi
 }
@@ -56,8 +56,8 @@ prompt_read(){
  if [[ ${3:-} == secret ]]; then read -rs -p "${GREEN}$1${RESET}" "$2"
  else read -r -p "${GREEN}$1${RESET}" "$2"; fi
 }
-prompt_options(){ printf '%s%s%s\n' "$GREEN" "$(L "$1" "$2")" "$RESET"; }
-say(){ printf '%s\n' "$(L "$1" "$2")"; }
+prompt_options(){ if [[ $LANGUAGE_CHOICE == en_US ]];then printf '%s%s%s\n' "$GREEN" "$2" "$RESET";else printf '%s%s%s\n' "$GREEN" "$1" "$RESET";fi; }
+say(){ if [[ $LANGUAGE_CHOICE == en_US ]];then printf '%s\n' "$2";else printf '%s\n' "$1";fi; }
 L() { if [[ "$LANGUAGE_CHOICE" == en_US ]]; then printf '%s' "$2"; else printf '%s' "$1"; fi; }
 if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
  GREEN=$'\033[1;32m'; RED=$'\033[1;31m'; YELLOW=$'\033[1;33m'; CYAN=$'\033[1;36m'; RESET=$'\033[0m'
@@ -264,7 +264,8 @@ p={i['type'] for i in json.load(open(sys.argv[1]))['inbounds']}
 if {'vless','hysteria2'} <= p: print('3')
 elif 'vless' in p: print('1')
 elif 'hysteria2' in p: print('2')
-else: raise ValueError('No supported installed protocols')
+elif not p: print('0')
+else: raise ValueError('Unsupported installed protocols')
 PY
 }
 check_owned(){
@@ -325,7 +326,7 @@ startup_info(){
  services=$(startup_probe systemctl show --no-pager --property=Id,LoadState,ActiveState sing-box.service skybyte-argo-tunnel.service nginx.service skybyte-haproxy.service skybyte-users.service skybyte-sb-xhttp.service) || services=''
  printf '%s\n----------------------------------------------\n' "$YELLOW"
  say "脚本版本：SKYBYTE Manager v$MANAGER_VERSION" "Script version: SKYBYTE Manager v$MANAGER_VERSION"
- say '功能更新：XHTTP 自动部署（a → 3）；节点与隧道管理统一进入主菜单 b' 'Features: guided XHTTP installation (a → 3); node and tunnel management in main menu b'
+ say '功能更新：跳跃保留、用户故障隔离、证书与恢复修复；菜单提速' 'Features: hopping preservation, account isolation, certificate/restore fixes; faster menus'
  say '系统信息：' 'System information:'
  printf '  %s: %s\n' "$(L '操作系统' 'OS')" "$os" "$(L '内核' 'Kernel')" "$kernel" "$(L '处理器架构' 'Architecture')" "$arch" "$(L '虚拟化' 'Virtualization')" "$virtual"
  printf '  IPv4: %s\n  IPv6: %s\n' "${ipv4:-$(L '未检测到' 'Not detected')}" "${ipv6:-$(L '未检测到' 'Not detected')}"
@@ -359,12 +360,14 @@ print(port)
 PY
 }
 # lib/backup.sh — build-time module; assembled by scripts/build.py.
-backup(){
+backup() (
  check_owned || return 1
- local path file
+ local path='' file completed=false
+ trap 'if [[ $completed != true && -n $path ]];then rm -rf -- "$path";fi' EXIT
  users_guard && warp_guard && acme_guard && online_guard && haproxy_guard || return 1
- path="$BACKUP/$(date +%Y%m%d-%H%M%S)-$RANDOM"
- mkdir -m 700 "$path" "$path/config" || return 1
+ path=$(mktemp -d "$BACKUP/$(date +%Y%m%d-%H%M%S).XXXXXX") || return 1
+ printf 'SKYBYTE incomplete backup\n' > "$path/.incomplete" || return 1
+ mkdir -m 700 "$path/config" || return 1
  cp "$CONF" "$path/config/config.json" || return 1
  cp "$META" "$path/state.json" || return 1
  cp "$BIN" "$path/sing-box.bin" || return 1
@@ -407,8 +410,8 @@ PY_SUB_BACKUP
  if [[ -d $BASE/haproxy ]];then haproxy_engine backup "$path/haproxy" >/dev/null || return 1;fi
  if [[ -f $BASE/xhttp/state.json ]];then xhttp_command backup "$path/xhttp.tar.gz" || return 1;fi
  backup_engine manifest "$path" || return 1
- chmod -R go-rwx "$path" || return 1; printf '%s\n' "$path"
-}
+ chmod -R go-rwx "$path" || return 1;rm -f -- "$path/.incomplete" || return 1;completed=true; printf '%s\n' "$path"
+)
 restore() (
  check_owned || return 1
  local path snap='' restore_stage='' restore_started=false restore_done=false service active enabled
@@ -669,8 +672,9 @@ service_manager(){
 # lib/firewall.sh — build-time module; assembled by scripts/build.py.
 firewall_audit(){
  if command -v ufw >/dev/null; then
-  local rules hy2_port; rules=$(LC_ALL=C ufw status); printf '%s\n' "$rules"
-  if [[ -f $META && $(protocol_mode) != 1 && $rules == *'Status: active'* ]]; then
+  local rules hy2_port current_mode=0; rules=$(LC_ALL=C ufw status); printf '%s\n' "$rules"
+  if [[ -f $META ]];then current_mode=$(protocol_mode) || return 1;fi
+  if [[ ( $current_mode == 2 || $current_mode == 3 ) && $rules == *'Status: active'* ]]; then
    hy2_port=$(protocol_port hysteria2) || return 1
    grep -Eq "${hy2_port}/udp[[:space:]]+ALLOW" <<<"$rules" || warn "$(L "未检测到 UDP $hy2_port 放行，请检查规则" "UDP $hy2_port allow rule not detected; inspect rules")"
    if [[ $(state hop) == True ]]; then
@@ -779,7 +783,7 @@ firewall(){
    say '当前 SSH 监听信息（必须人工核实）：' 'SSH listener information (VERIFY manually):'
    detect_ssh_ports
    prompt_read "$(L '输入当前 SSH TCP 端口（请核实云控制台/sshd 设置）：' 'Enter verified SSH TCP port: ')" port
-   port=${port:-${SSH_PORTS:-}}
+   port=${port:-${SSH_PORTS%%$'\n'*}}
    valid_port "$port" || { err "$(L 'SSH 端口无效' 'Invalid SSH port')"; return 1; }
    warn "$(L '如果 SSH 端口判断错误，开启 UFW 可能导致远程连接断开！请保留 VPS 控制台访问。' 'Wrong SSH port may lock you out. Keep VPS console access.')"
    say '将放行 SSH 与实际节点、订阅和 HTTP证书验证端口。' 'Will allow SSH and actual node, subscription and HTTP certificate-validation ports.'
@@ -1198,16 +1202,23 @@ shadowrocket_qr(){
  fi
  exports >/dev/null || return 1
  warn "$(L '二维码包含节点凭据，请勿公开。HY2 自签名节点仍需配置信任证书。' 'QR codes contain node credentials; keep them private. Self-signed HY2 still requires certificate trust.')"
- local link name count=0
- while IFS= read -r link; do
-  [[ -n $link ]] || continue
-  name=$(printf '%s' "$link" | python3 -c 'import sys,urllib.parse; u=urllib.parse.urlsplit(sys.stdin.read()); print(urllib.parse.unquote(u.fragment) if u.fragment else dict(urllib.parse.parse_qsl(u.query)).get("remarks","Shadowrocket"))') || return 1
+ local link name rows count=0
+ rows=$(python3 - "$BASE/shadowrocket-native-nodes.txt" <<'PY_QR_ROWS'
+import sys,urllib.parse
+for link in open(sys.argv[1]):
+ link=link.strip()
+ if not link:continue
+ u=urllib.parse.urlsplit(link);name=urllib.parse.unquote(u.fragment) if u.fragment else dict(urllib.parse.parse_qsl(u.query)).get('remarks','Shadowrocket')
+ print(''.join(c for c in name if c.isprintable()));print(link)
+PY_QR_ROWS
+ ) || return 1
+ while IFS= read -r name && IFS= read -r link; do
   printf '%s\n' '----------------------------------------------'
   printf '%s%s%s\n' "$YELLOW" "$name" "$RESET"
   # Feed credentials via stdin; keep the QR high-contrast for phone cameras.
   printf '%s' "$link" | qrencode -t ANSIUTF8 -m 2 || return 1
   count=$((count+1))
- done < "$BASE/shadowrocket-native-nodes.txt"
+ done <<< "$rows"
  printf '%s\n' '----------------------------------------------'
  (( count > 0 )) || { err "$(L '没有可生成二维码的节点' 'No nodes available for QR codes')"; return 1; }
 }
@@ -1238,6 +1249,10 @@ PY_NAME_IP
  [[ $certpub == "$keypub" ]] || { err "$(L '证书和私钥不匹配' 'Certificate and private key do not match')"; return 1; }
 }
 # Download only a verified release binary; never execute a package installer on updates.
+installation_available(){
+ if [[ -e $CONF || -L $CONF || -e $META || -L $META || -e $BIN || -L $BIN || -e $SYSTEMD_DIR/sing-box.service || -L $SYSTEMD_DIR/sing-box.service ]] || command -v sing-box >/dev/null; then err "$(L '发现已有配置或核心，拒绝覆盖；追加协议用 b → 9 → 4，已有节点增加 IPv6 备用用 d → 13 → 2。' 'Existing configuration or binary found; refusing to overwrite. Add a protocol through b → 9 → 4, or add IPv6 backups through d → 13 → 2.')"; return 1; fi
+ if systemctl list-unit-files sing-box.service --no-legend 2>/dev/null | grep -q sing-box; then err "$(L '已有 sing-box 服务，拒绝覆盖' 'Existing sing-box service found; refusing to overwrite')"; return 1; fi
+}
 # modules/install.sh — build-time module; assembled by scripts/build.py.
 choose_node_name(){
  local value
@@ -1313,8 +1328,7 @@ install_protocol() (
  [[ "$mode" == 0 ]] && return 0
  [[ "$mode" =~ ^[123]$ ]] || { err "Invalid selection"; return 1; }
  if [[ $guided != true ]];then notice; confirm "$(L '同意声明并安装所选协议？' 'Accept notice and install selected protocol(s)?')" || return 0;fi
- if [[ -e $CONF || -L $CONF || -e $META || -L $META || -e $BIN || -L $BIN || -e $SYSTEMD_DIR/sing-box.service || -L $SYSTEMD_DIR/sing-box.service ]] || command -v sing-box >/dev/null; then err "$(L '发现已有配置或核心，拒绝覆盖；追加协议用 b → 9 → 4，已有节点增加 IPv6 备用用 d → 13 → 2。' 'Existing configuration or binary found; refusing to overwrite. Add a protocol through b → 9 → 4, or add IPv6 backups through d → 13 → 2.')"; return 1; fi
- if systemctl list-unit-files sing-box.service --no-legend 2>/dev/null | grep -q sing-box; then err "$(L '已有 sing-box 服务，拒绝覆盖' 'Existing sing-box service found; refusing to overwrite')"; return 1; fi
+ installation_available || return 1
  install_environment_check "$mode" || return 1
  if [[ $ipv6_install == true ]];then
   local ipv6_status
@@ -1380,7 +1394,7 @@ install_protocol() (
   if [[ $guided == true ]];then sni=addons.mozilla.org
   else prompt_read "$(L 'Reality 握手域名 [addons.mozilla.org]：' 'Reality handshake [addons.mozilla.org]: ')" sni || return 1;fi
   sni=${sni:-addons.mozilla.org}
-  [[ $sni =~ ^[a-zA-Z0-9.-]+$ ]] || { err "$(L '无效 SNI' 'Invalid SNI')"; return 1; }
+  [[ $sni =~ ^[a-zA-Z0-9.-]+$ && $sni == *.* && $sni =~ [a-zA-Z] ]] || { err "$(L '无效 SNI' 'Invalid SNI')"; return 1; }
  fi
  if [[ -z ${SKYBYTE_ASSET_DIR:-} ]];then
   say '安装依赖...' 'Installing dependencies...'
@@ -1390,7 +1404,7 @@ install_protocol() (
  [[ $mode == 2 ]] || install_reality_target "$sni" || return 1
  install_download_check || return 1
  mkdir -p "$(dirname "$BIN")"
- if [[ $cert_mode == 2 ]]; then validate_certificate "$cert" "$key" "$domain" || return 1; fi
+ if [[ $cert_mode == 2 ]]; then cert=$(realpath "$cert") && key=$(realpath "$key") || return 1;validate_certificate "$cert" "$key" "$domain" || return 1; fi
  if [[ $cert_mode == 1 ]]; then
   [[ ! -e $(dirname "$final_conf")/hy2-selfsigned.crt && ! -e $(dirname "$final_conf")/hy2-selfsigned.key ]] || { err "TLS files already exist"; return 1; }
  fi
@@ -1456,6 +1470,7 @@ PY_INSTALL_SAN
  [[ $ipv6_install != true ]] || ipv6_engine ready || return 1
  if [[ $cert_mode == 1 ]]; then echo "$(L '自签名证书：' 'Self-signed certificate: ')$cert"; openssl x509 -in "$cert" -noout -fingerprint -sha256; say '务必将证书安全导入客户端并验证，链接本身不足以建立信任。' 'Securely import and verify certificate on client; URL alone cannot establish trust.'; fi
  exports || return 1
+ if [[ $mode != 1 ]];then certificate_record "$(openssl x509 -in "$cert" -noout -fingerprint -sha256)" || return 1;fi
  committed=true
  ok "$(L '部署完成；请检查云防火墙' 'Installed; check provider firewall')"
  if [[ $guided == true ]];then
@@ -1544,28 +1559,17 @@ PY_SAVED_UFW
    deployment_firewall_gate || return 1
    # Do not silently block an existing website or other public listener.
    listeners=$(ss -H -lntu) || return 1
-   allowed=$(python3 - "$CONF" <<'PY_DEPLOYMENT_PORTS'
-import json,sys
-from pathlib import Path
-for inbound in (json.load(open(sys.argv[1]))['inbounds'] if Path(sys.argv[1]).exists() else []):
- print(('tcp' if inbound['type']=='vless' else 'udp')+':'+str(inbound['listen_port']))
-PY_DEPLOYMENT_PORTS
-   ) || return 1
-   local xhttp_ports xhttp_port
-   xhttp_ports=$(xhttp_command ports) || return 1
-   while IFS= read -r xhttp_port;do
-    [[ -n $xhttp_port ]] || continue
-    valid_port "$xhttp_port" || return 1
-    allowed+=$'\n'"tcp:$xhttp_port"
-   done <<< "$xhttp_ports"
+   allowed=$(managed_listener_rules) || return 1
    python3 - "$SSH_PORTS" "$allowed" 3< <(printf '%s\n' "$listeners") <<'PY_DEPLOYMENT_LISTENERS' || return 1
-import os,sys
-allowed={'tcp:'+port for port in sys.argv[1].split()}|set(sys.argv[2].split())
+import ipaddress,os,sys
+allowed={'tcp:'+port for port in sys.argv[1].split()}|{proto+':'+port for port,proto in (rule.split('/') for rule in sys.argv[2].split())}
 for line in os.fdopen(3):
  fields=line.split()
  if len(fields)<5:raise SystemExit('Cannot parse listeners / 无法识别监听信息')
  address,port=fields[4].rsplit(':',1)
- if address.startswith('127.') or address in ('[::1]','::1'):continue
+ try:local=ipaddress.ip_address(address.strip('[]').split('%',1)[0])
+ except ValueError:local=None
+ if local is not None and (local.is_loopback or local.is_link_local):continue
  if fields[0]+':'+port not in allowed:raise SystemExit('Other public listeners detected; inspect d → 2 first / 存在其它公开监听服务，请先通过 d → 2 手工核对')
 PY_DEPLOYMENT_LISTENERS
    ;;
@@ -1652,7 +1656,7 @@ deployment_apply_selected(){
  else check_owned || return 1;fi
  local selected_bbr=$1 selected_firewall=$2 selected_qr=$3
  [[ $selected_bbr =~ ^[01]$ && $selected_firewall =~ ^[01]$ && $selected_qr =~ ^[01]$ ]] || return 1
- local failed=0 firewall_ready=false hopping_status packages=()
+ local failed=0 firewall_ready=false hopping_status current_mode=0 packages=()
  if [[ $selected_firewall == 1 ]];then command -v ufw >/dev/null || packages+=(ufw);fi
  if [[ $selected_qr == 1 ]];then command -v qrencode >/dev/null || packages+=(qrencode);fi
  if (( ${#packages[@]} ));then
@@ -1674,7 +1678,8 @@ deployment_apply_selected(){
    report_output say '[通过] UFW 已启用，已放行 SSH 和实际节点端口' '[PASS] UFW enabled with SSH and actual node ports allowed'
   else err "$(L '[未完成] 防火墙设置未完成，请用 d → 2 核对' '[INCOMPLETE] Firewall setup incomplete; inspect d → 2')";failed=1;fi
  else report_output say '[跳过] UFW 安装与启用' '[SKIP] UFW installation and activation';fi
- if [[ $deployment_context == sing-box ]] && [[ $(protocol_mode) == 2 || $(protocol_mode) == 3 ]];then
+ if [[ $deployment_context == sing-box ]];then current_mode=$(protocol_mode) || return 1;fi
+ if [[ $current_mode == 2 || $current_mode == 3 ]];then
   if [[ $selected_firewall == 0 || $firewall_ready == true ]];then
    if deployment_hopping;then :;else
     hopping_status=$?
@@ -1711,6 +1716,7 @@ wizard_selected(){
  if [[ $1 == 1 ]];then L '启用' 'Enable';else L '跳过' 'Skip';fi
 }
 guided_install() (
+ installation_available || return 1
  local protocol_label install_kind=guided suffix=''
  if [[ ${2:-} == ipv6 ]];then install_kind='guided-ipv6';suffix=-IPv6;fi
  local WIZARD_PROTOCOL=${1:-} WIZARD_NODE_NAME WIZARD_BBR WIZARD_FIREWALL WIZARD_QR WIZARD_CHOICE
@@ -1822,7 +1828,9 @@ PY_HOP_OFF
 }
 hop(){
  check_owned && hop_guard || return 1
- [[ $(protocol_mode) != 1 ]] || { err "$(L '未安装 HY2' 'HY2 not installed')"; return 1; }
+ local current_mode
+ current_mode=$(protocol_mode) || return 1
+ [[ $current_mode == 2 || $current_mode == 3 ]] || { err "$(L '未安装 HY2' 'HY2 not installed')"; return 1; }
  local choice backend start end target
  # --menu renders only; a numeric argument executes one selected operation.
  if [[ $# == 0 || $1 == --menu ]]; then
@@ -1837,7 +1845,7 @@ hop(){
  else
   choice=$1
  fi
- if [[ $choice == 2 ]]; then confirm "$(L '关闭跳跃？' 'Disable hopping?')" && hop_disable; return; fi
+ if [[ $choice == 2 ]]; then confirm "$(L '关闭跳跃？' 'Disable hopping?')" || return 0; { hop_disable && exports; }; return; fi
  [[ $choice == 1 ]] || return 0
  if [[ ${2:-} == --automatic ]];then
   backend=nftables;start=20000;end=30000
@@ -1946,19 +1954,20 @@ def lock():
  if (base/'users.lock').is_symlink():error('锁文件异常','Invalid lock file')
  with open(base/'users.lock','a') as f:fcntl.flock(f,fcntl.LOCK_EX);yield
 
-def read():
+def read(check_files=True):
  if db.is_symlink() or root.is_symlink():error('用户目录或文件异常','Invalid user directory/file')
  d=json.loads(db.read_text());require(d['owner']=='SKYBYTE user quotas v1' and d['schema']==1)
  require(type(d['limit'])==int and 1<=d['limit']<=100 and isinstance(d['users'],list))
  identifiers=set();ports=set()
  for u in d['users']:
-  require(u['id'] not in identifiers);identifiers.add(u['id']);p=userdir(u['id'])
+  require(isinstance(u['id'],str) and len(u['id'])==16 and all(c in '0123456789abcdef' for c in u['id']))
+  require(u['id'] not in identifiers);identifiers.add(u['id']);p=userdir(u['id']) if check_files else root/u['id']
   for field in ['upload','download','quota_bytes','expires_at']:
    require(type(u[field])==int and u[field]>=0)
   for field in ['port','api_port']:
    require(type(u[field])==int and 1024<=u[field]<=65535 and u[field] not in ports);ports.add(u[field])
   for filename in GENERATED:
-   if (p/filename).is_symlink():error('用户文件是符号链接','User file is a symlink')
+   if check_files and (p/filename).is_symlink():error('用户文件是符号链接','User file is a symlink')
  return d
 
 def userdir(uid):
@@ -1997,7 +2006,9 @@ REASONS={
  'api_response':('控制接口返回无效数据','Invalid controller response'),
  'counter':('流量计数异常，已停止账户','Invalid traffic counters; account stopped'),
  'core_exit':('节点进程退出，请在本机检查 core.log','Core exited; inspect core.log locally'),
- 'final_sample':('停止前采样失败','Final sample failed')}
+ 'final_sample':('停止前采样失败','Final sample failed'),
+ 'files':('用户文件异常，已隔离停用；请核查本地文件归属','Unsafe user files; isolated and stopped; inspect local ownership'),
+ 'core_start':('用户实例启动失败，请检查配置和资源','User core could not start; inspect configuration and resources')}
 def failure_reason(exc):
  if isinstance(exc,urllib.error.HTTPError):return 'api_auth' if exc.code in (401,403) else 'api_response'
  if isinstance(exc,(urllib.error.URLError,TimeoutError,OSError)):return 'api_unreachable'
@@ -2041,6 +2052,7 @@ def cleanup():
  if root.exists() and not list(root.iterdir()):root.rmdir()
  db.unlink()
 
+"""Shared managed listener registry; included at build time, no VPS imports."""
 def integrated_xhttp_ports(base):
     from pathlib import Path
     import json
@@ -2083,6 +2095,32 @@ def account_sample(u,generation,up,down):
  u['upload']+=up-u.get('observed_up',0);u['download']+=down-u.get('observed_down',0)
  u['observed_up']=up;u['observed_down']=down;u['sampled_at']=time.time();u['observed_monotonic']=time.monotonic()
 
+def restore_reserved_ports():
+ reserved={('tcp',number) for number in integrated_xhttp_ports(base)}
+ def load(path):
+  if path.is_symlink() or path.parent.is_symlink() or path.stat().st_size>4*1024**2:raise ValueError('Unsafe service reservation')
+  return json.loads(path.read_text())
+ for path in (pathlib.Path(conf),base/'argo-server.json',base/'warp-gateway.json'):
+  if not path.exists() and not path.is_symlink():continue
+  cfg=load(path)
+  for node in cfg.get('inbounds',[]):reserved.add(('udp' if node['type']=='hysteria2' else 'tcp',node['listen_port']))
+  controller=cfg.get('experimental',{}).get('clash_api',{}).get('external_controller')
+  if controller:reserved.add(('tcp',int(controller.rsplit(':',1)[1])))
+ for path in (base/'subscriptions.json',base/'warp-client.json'):
+  if path.exists() or path.is_symlink():reserved.add(('tcp',load(path)['port']))
+ path=base/'haproxy/state.json'
+ if path.exists() or path.is_symlink():
+  state=load(path)
+  require(state.get('owner')=='SKYBYTE HAProxy TCP v1' and state.get('schema')==1)
+  for rule in state['rules']:reserved.add(('tcp',rule['port']))
+ return reserved
+
+def user_files_safe(u):
+ try:
+  p=userdir(u['id'])
+  return p.is_dir() and all(not (p/name).is_symlink() for name in GENERATED) and (p/'server.json').is_file()
+ except (ValueError,OSError):return False
+
 def watch():
  stopping=False;children={}
  if (base/'users-worker.lock').is_symlink():error('工作锁异常','Invalid worker lock')
@@ -2104,7 +2142,7 @@ def watch():
  try:
   with concurrent.futures.ThreadPoolExecutor(max_workers=16) as pool:
    while not stopping:
-    with lock():d=read()
+    with lock():d=read(check_files=False)
     records={u['id']:u for u in d['users']}
     samples={};sample_started=time.monotonic()
     futures={uid:pool.submit(api,records[uid]) for uid in children if uid in records and children[uid]['proc'].poll() is None}
@@ -2112,10 +2150,16 @@ def watch():
      try:samples[uid]=f.result(timeout=2)
      except Exception as exc:samples[uid]=failure_reason(exc)
     with lock():
-     d=read();before=copy.deepcopy(d);records={u['id']:u for u in d['users']}
+     d=read(check_files=False);before=copy.deepcopy(d);records={u['id']:u for u in d['users']}
      for uid,child in list(children.items()):
       u=records.get(uid)
-      if child['log'].tell()>1048576:child['log'].seek(0);child['log'].truncate(0)
+      if u is not None and not user_files_safe(u):
+       block(u,'files');stop(uid);u['running']=False;continue
+      try:
+       if child['log'].tell()>1048576:child['log'].seek(0);child['log'].truncate(0)
+      except OSError:
+       if u is not None:block(u,'files');u['running']=False
+       stop(uid);continue
       if u is None:stop(uid);continue
       value=samples.get(uid)
       if child['proc'].poll() is not None:
@@ -2132,11 +2176,15 @@ def watch():
       uid=u['id']
       if uid in children: u['running']=children[uid]['ready'];continue
       if not eligible(u) or not d.get('supervisor_enabled',True):u['running']=False;continue
-      p=userdir(uid);logpath=p/'core.log'
-      if logpath.is_symlink() or (p/'server.json').is_symlink():error('用户配置异常','Invalid user configuration')
-      # Prevent unbounded private core logs; do not forward them to journal.
-      log=open(logpath,'w');os.chmod(logpath,0o600)
-      proc=subprocess.Popen([binary,'run','-c',str(p/'server.json')],stdout=log,stderr=log)
+      if not user_files_safe(u):block(u,'files');u['running']=False;continue
+      p=userdir(uid);logpath=p/'core.log';log=None
+      try:
+       fd=os.open(logpath,os.O_WRONLY|os.O_CREAT|os.O_TRUNC|os.O_NOFOLLOW,0o600)
+       log=os.fdopen(fd,'w');os.chmod(logpath,0o600)
+       proc=subprocess.Popen([binary,'run','-c',str(p/'server.json')],stdout=log,stderr=log)
+      except (OSError,ValueError):
+       if log is not None:log.close()
+       block(u,'core_start');u['running']=False;continue
       children[uid]={'proc':proc,'log':log,'start':time.monotonic(),'ready':False,'generation':secrets.token_hex(16)}
       u['running']=False;u['pid']=proc.pid
      if d!=before:atomic(db,d)
@@ -2146,7 +2194,7 @@ def watch():
  finally:
   try:
    with lock():
-    d=read()
+    d=read(check_files=False)
     with concurrent.futures.ThreadPoolExecutor(max_workers=16) as final_pool:
      list(final_pool.map(lambda u: stop(u['id'],u),d['users']))
     for u in d['users']:u['running']=False
@@ -2161,7 +2209,7 @@ if action=='watch':watch();sys.exit(0)
 if action=='summary':
  # The supervisor atomically replaces the ledger. This menu-only snapshot can
  # read either complete generation without waiting on quota work or core stops.
- d=read()
+ d=read(check_files=False)
  count=sum(not u.get('deleted') for u in d['users'])
  running=sum(bool(u.get('running')) and eligible(u) for u in d['users'])
  print(tr('账户：','Accounts: ')+f"{count}/{d['limit']}"+tr('；就绪：','; ready: ')+str(running))
@@ -2171,7 +2219,7 @@ with lock():
   limit=int(args[0]);require(1<=limit<=100)
   if db.exists() or root.exists():error('已有用户文件，拒绝覆盖','User files already exist; refusing overwrite')
   root.mkdir(mode=0o700);atomic(db,{'owner':'SKYBYTE user quotas v1','schema':1,'limit':limit,'supervisor_enabled':True,'users':[]});sys.exit(0)
- d=read()
+ d=read(check_files=action not in ('list','diagnose'))
  if action=='guard':
   pass
  elif action=='add':
@@ -2260,7 +2308,9 @@ with lock():
    elif action=='disable':u['enabled']=False
    elif action=='delete':u['deleted']=True;u['enabled']=False
    elif action=='reset':
-    if u.get('running'):account_sample(u,u['generation'],*api(u))
+    if u.get('running'):
+     try:account_sample(u,u['generation'],*api(u))
+     except Exception:raise SystemExit(tr('无法安全读取运行中账户用量，未清零；请先修复控制接口或停用账户后重试','Cannot safely sample the running account; usage retained. Repair the controller or disable the account before retrying.')) from None
     u['upload']=u['download']=0
    elif action=='set':u['quota_bytes']=quota(args[1]);u['expires_at']=int(time.time())+days(args[2])
    elif action=='quota':u['quota_bytes']=quota(args[1])
@@ -2358,17 +2408,46 @@ with lock():
   merged_ports=[u[k] for u in planned for k in ('port','api_port')]
   require(len(merged_ports)==len(set(merged_ports)))
   if len([u for u in planned if not u.get('deleted')])>100:error('恢复后用户数超过100，拒绝恢复','Restore would exceed 100 accounts; refusing')
-  root.mkdir(exist_ok=True,mode=0o700)
-  for u in new['users']:
-   p=userdir(u['id']);src=source/'users'/u['id']
-   if src.is_symlink() or not src.is_dir():error('备份用户目录异常','Invalid backed-up user directory')
-   p.mkdir(exist_ok=True,mode=0o700)
-   for f in src.iterdir():
-    if f.is_symlink() or f.name not in GENERATED or not f.is_file():error('备份用户文件异常','Invalid backed-up user file')
-    if (p/f.name).is_symlink():error('目标用户文件异常','Invalid target user file')
-    shutil.copyfile(f,p/f.name);os.chmod(p/f.name,0o600)
-   if u['id'] in latest:u.update(latest.pop(u['id']))
-   u['running']=False
+  plans=[];reserved=restore_reserved_ports()
+  with tempfile.TemporaryDirectory(prefix='users-restore.',dir=base) as tmp:
+   for u in new['users']:
+    p=userdir(u['id']);src=source/'users'/u['id'];current=latest.get(u['id'])
+    if current:u.update(current)
+    u['running']=False
+    if u.get('deleted'):
+     latest.pop(u['id'],None);continue
+    if src.is_symlink() or not src.is_dir():error('备份用户目录异常','Invalid backed-up user directory')
+    candidate=pathlib.Path(tmp)/u['id'];candidate.mkdir(mode=0o700)
+    names=[]
+    for f in src.iterdir():
+     if f.is_symlink() or f.name not in GENERATED or not f.is_file():error('备份用户文件异常','Invalid backed-up user file')
+     if (p/f.name).is_symlink():error('目标用户文件异常','Invalid target user file')
+     shutil.copyfile(f,candidate/f.name);os.chmod(candidate/f.name,0o600);names.append(f.name)
+    require('server.json' in names and 'state.json' in names)
+    cfg=json.loads((candidate/'server.json').read_text())
+    for inbound in cfg['inbounds']:inbound['listen_port']=u['port']
+    cfg.setdefault('experimental',{})['clash_api']={'external_controller':'127.0.0.1:'+str(u['api_port']),'secret':u['api_secret']}
+    requested={('tcp',u['api_port'])}|{('udp' if node['type']=='hysteria2' else 'tcp',node['listen_port']) for node in cfg['inbounds']}
+    if requested & reserved:error('恢复的用户端口与托管服务冲突，未写入用户文件','Restored user endpoint conflicts with a managed service; user files unchanged')
+    atomic(candidate/'server.json',cfg)
+    checking=copy.deepcopy(cfg)
+    for inbound in checking['inbounds']:
+     if inbound['type']=='hysteria2':
+      inbound['tls']['certificate_path']=str(candidate/'certificate.crt');inbound['tls']['key_path']=str(candidate/'private.key')
+    atomic(candidate/'check.json',checking);config_check(candidate/'check.json')
+    plans.append((p,candidate,names));latest.pop(u['id'],None)
+   # Outer restoration snapshots handle rollback on write/service failure.
+   root.mkdir(exist_ok=True,mode=0o700)
+   for p,candidate,names in plans:
+    p.mkdir(exist_ok=True,mode=0o700)
+    for name in names:
+     fd,tmpfile=tempfile.mkstemp(dir=p)
+     try:
+      with os.fdopen(fd,'wb') as f,open(candidate/name,'rb') as source_file:
+       shutil.copyfileobj(source_file,f,1024*1024);f.flush();os.fsync(f.fileno())
+      os.chmod(tmpfile,0o600);os.replace(tmpfile,p/name)
+     finally:
+      if os.path.exists(tmpfile):os.unlink(tmpfile)
   new['supervisor_enabled']=d.get('supervisor_enabled',True)
   new['users'].extend(latest.values());new['limit']=max(new['limit'],d['limit'],len([u for u in new['users'] if not u.get('deleted')]))
   atomic(db,new)
@@ -2795,11 +2874,17 @@ PY
 }
 argo_status(){
  [[ -f $BASE/argo-state.json ]] || { say '尚未配置 Argo 隧道。' 'Argo is not configured.'; return 0; }
- local mode domain port connected
- say "最近错误类别：$(argo_state last_error)" "Last error category: $(argo_state last_error)"
- mode=$(argo_state mode); domain=$(argo_state domain); port=$(argo_state port); connected=$(argo_state connected)
+ local mode domain port connected last_error edge transport snapshot
+ snapshot=$(python3 - "$BASE/argo-state.json" <<'PY_ARGO_SNAPSHOT'
+import json,sys
+s=json.load(open(sys.argv[1]))
+for key in ('mode','domain','port','connected','last_error','edge_ip_version','transport'):print(s.get(key,''))
+PY_ARGO_SNAPSHOT
+ ) || return 1
+ { IFS= read -r mode;IFS= read -r domain;IFS= read -r port;IFS= read -r connected;IFS= read -r last_error;IFS= read -r edge;IFS= read -r transport; } <<< "$snapshot"
+ say "最近错误类别：$last_error" "Last error category: $last_error"
  say "模式：${mode}；公开域名：${domain:-尚未分配}；本机端口：${port}；已注册：$connected" "Mode: $mode; hostname: ${domain:-not assigned}; local port: $port; registered: $connected"
- say "连接地址族：$(argo_state edge_ip_version)；隧道传输：$(argo_state transport)" "Edge IP version: $(argo_state edge_ip_version); transport: $(argo_state transport)"
+ say "连接地址族：${edge}；隧道传输：$transport" "Edge IP version: $edge; transport: $transport"
  if systemctl is-active --quiet skybyte-argo-node.service; then ok "$(L 'Argo WS 服务运行中' 'Argo WS origin active')"; else err "$(L 'Argo WS 服务未运行' 'Argo WS origin inactive')"; fi
  if systemctl is-active --quiet skybyte-argo-tunnel.service; then ok "$(L 'Argo 隧道服务运行中' 'Argo tunnel worker active')"; else err "$(L 'Argo 隧道服务未运行' 'Argo tunnel worker inactive')"; fi
  warn "$(L '服务运行不代表客户端可达；固定模式还需核对 Cloudflare 公开路由和客户端 SNI/WS 路径。' 'Active services do not prove client connectivity; verify published routes and client SNI/WS paths.')"
@@ -2905,7 +2990,7 @@ argo_manager(){
 # lib/lifecycle.sh — build-time module; assembled by scripts/build.py.
 uninstall_manager(){
  need_root
- if [[ ! -f $META && -f $BASE/xhttp/.owner ]];then
+ if [[ ! -f $META && -f $BASE/xhttp/state.json ]];then
   xhttp_command guard || return 1
   confirm "$(L '备份后卸载本项目的 XHTTP / Xray 与管理脚本？' 'Back up and remove the managed XHTTP/Xray and manager?')" || return 0
   xhttp_command purge --confirmed || return 1
@@ -3348,7 +3433,10 @@ certificate_check(){
  { IFS= read -r cert; IFS= read -r key; IFS= read -r name; } <<<"$identity"
  validate_certificate "$cert" "$key" "$name" || return 1
  fingerprint=$(openssl x509 -in "$cert" -noout -fingerprint -sha256) || return 1
- if [[ ! -f $BASE/certificate-status.json ]]; then certificate_record "$fingerprint"; return; fi
+ if [[ ! -f $BASE/certificate-status.json ]]; then
+  if [[ $(state cert_mode) == 2 ]];then certificate_reload;else certificate_record "$fingerprint";fi
+  return
+ fi
  previous=$(python3 - "$BASE/certificate-status.json" <<'PY'
 import json,sys
 print(json.load(open(sys.argv[1]))['fingerprint'])
@@ -3379,7 +3467,7 @@ certificate_menu(){
  fi
  case $choice in
   1) report_output certificate_info;;
-  2) confirm "$(L '同步证书并重启正在运行的 HY2 服务？' 'Sync certificates and restart active HY2 services?')" && certificate_reload;;
+  2) confirm "$(L '同步证书并重启正在运行的 HY2 服务？' 'Sync certificates and restart active HY2 services?')" || return 0; certificate_reload;;
   3)
    users_guard setup || return 1
    certificate_check || return 1
@@ -3569,7 +3657,7 @@ def ecs_arguments(mode, language='zh_CN'):
     if mode not in ('route', 'speed', 'full'):
         raise ValueError('Invalid benchmark mode')
     # Explicitly opt into each module; upstream default includes uploads/stress tests.
-    return ['-menu=false', '-upload=false', '-log=false', '-l', 'zh', '-dns-mode', 'system',
+    return ['-menu=false', '-upload=false', '-log=false', '-l', 'en' if language in ('en','en_US') else 'zh', '-dns-mode', 'system',
             '-basic=' + str(mode == 'full').lower(), '-ut=' + str(mode == 'full').lower(),
             '-security=' + str(mode == 'full').lower(), '-backtrace=' + str(mode != 'speed').lower(),
             '-nt3=' + str(mode != 'speed').lower(), '-speed=' + str(mode != 'route').lower(),
@@ -3783,7 +3871,7 @@ def hostname(value):
     except ValueError:
         pass
     value = value.encode('idna').decode('ascii').lower()
-    if len(value) > 253 or not all(re.fullmatch(r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?', part)
+    if re.fullmatch(r'[0-9.]+',value) or len(value) > 253 or not all(re.fullmatch(r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?', part)
                                    for part in value.split('.')):
         raise ValueError('Invalid hostname')
     return value
@@ -5212,12 +5300,12 @@ warp_menu(){
    prompt_read "$(L '本机 WARP SOCKS5 端口 [40000]：' 'Local WARP SOCKS5 port [40000]: ')" port || return 0; port=${port:-40000}
    valid_port "$port" && warp_loopback "$port" && warp_verify "$port" || return 1
    udp=$(warp_proxy_capability "$port") || return 1
-   confirm "$(L '应用所选平台 WARP 分流并重启原先运行的节点？' 'Apply WARP for the selected platforms and restart previously running nodes?')" && warp_switch restricted "$port" "$udp" "$domains";;
+   confirm "$(L '应用所选平台 WARP 分流并重启原先运行的节点？' 'Apply WARP for the selected platforms and restart previously running nodes?')" || return 0; warp_switch restricted "$port" "$udp" "$domains";;
   2)
    prompt_read "$(L '已有本机 WARP SOCKS5 端口 [40000]：' 'Existing local WARP SOCKS5 port [40000]: ')" port || return 0; port=${port:-40000}
    valid_port "$port" && warp_loopback "$port" && warp_verify "$port" || return 1
    udp=$(warp_proxy_capability "$port") || return 1; domains=$(warp_engine defaults) || return 1
-   confirm "$(L '仅流媒体和 AI 域名使用此 WARP 出站？' 'Route only media/AI domains through this WARP proxy?')" && warp_switch restricted "$port" "$udp" "$domains";;
+   confirm "$(L '仅流媒体和 AI 域名使用此 WARP 出站？' 'Route only media/AI domains through this WARP proxy?')" || return 0; warp_switch restricted "$port" "$udp" "$domains";;
   5)
    port=$(warp_engine port) || return 1
    udp=$(python3 -c 'import json,sys; print(str(json.load(open(sys.argv[1]))["udp"]).lower())' "$BASE/warp-state.json") || return 1
@@ -5236,7 +5324,7 @@ warp_menu(){
     domains=${choice:-$domains}
    fi
    if [[ $udp != true && $mode != direct ]]; then warn "$(L '此代理未支持 UDP：对应 UDP 流量会拒绝，允许应用回退 TCP。HY2 入站传输不受影响。' 'Proxy lacks UDP support: matching UDP is rejected for TCP fallback. HY2 inbound transport is unaffected.')"; fi
-   confirm "$(L '应用出站模式并短暂重启运行中的节点？' 'Apply routing and briefly restart active nodes?')" && warp_switch "$mode" "$port" "$udp" "$domains";;
+   confirm "$(L '应用出站模式并短暂重启运行中的节点？' 'Apply routing and briefly restart active nodes?')" || return 0; warp_switch "$mode" "$port" "$udp" "$domains";;
   0) return 0;; *) return 1;;
  esac
 }
@@ -5263,10 +5351,10 @@ warp_rules_menu(){
  fi
  case $choice in
   1) port=$(warp_engine port) && warp_loopback "$port" && warp_verify "$port";;
-  2) confirm "$(L '从 SKYBYTE 正式 Release 下载并验证规则列表？已有自定义分流不会改变。' 'Download/digest-verify the catalog from a SKYBYTE release? Custom routing remains unchanged.')" && warp_rules_update;;
+  2) confirm "$(L '从 SKYBYTE 正式 Release 下载并验证规则列表？已有自定义分流不会改变。' 'Download/digest-verify the catalog from a SKYBYTE release? Custom routing remains unchanged.')" || return 0; warp_rules_update;;
   3) domains=$(warp_engine defaults) && port=$(warp_engine port) || return 1
    udp=$(python3 -c 'import json,sys;print(str(json.load(open(sys.argv[1]))["udp"]).lower())' "$BASE/warp-state.json") || return 1
-   confirm "$(L '替换受限域名列表并重启原先运行的节点？' 'Replace restricted suffixes and restart previously active nodes?')" && warp_switch restricted "$port" "$udp" "$domains";;
+   confirm "$(L '替换受限域名列表并重启原先运行的节点？' 'Replace restricted suffixes and restart previously active nodes?')" || return 0; warp_switch restricted "$port" "$udp" "$domains";;
   0) return 0;;*) return 1;;
  esac
 }
@@ -5494,9 +5582,9 @@ relay_menu() (
  if ! warp_engine relay_export "$stage/profile.json";then rm -rf "$stage";return 1;fi
  case $choice in
   2) relay_verify "$stage/profile.json" || rc=$?;;
-  3) confirm "$(L '验证并切换所有节点到住宅落地出口？当前 WARP / 中转分流将被替换。' 'Verify and route all nodes through the landing exit? Current WARP / relay routing will be replaced.')" && relay_switch global "$stage/profile.json" || rc=$?;;
-  4) confirm "$(L '恢复原始直连路由？网站将看到本 VPS 出口 IP。' 'Restore original direct routing? Destinations will see this VPS egress IP.')" && relay_switch direct "$stage/profile.json" || rc=$?;;
-  5) confirm "$(L '删除保存的落地凭据？已启用中转时须先恢复直连或切换 WARP。' 'Remove saved landing credentials? First restore direct routing or switch to WARP if relay is active.')" && warp_engine relay_forget || rc=$?;;
+  3) if confirm "$(L '验证并切换所有节点到住宅落地出口？当前 WARP / 中转分流将被替换。' 'Verify and route all nodes through the landing exit? Current WARP / relay routing will be replaced.')";then relay_switch global "$stage/profile.json" || rc=$?;fi;;
+  4) if confirm "$(L '恢复原始直连路由？网站将看到本 VPS 出口 IP。' 'Restore original direct routing? Destinations will see this VPS egress IP.')";then relay_switch direct "$stage/profile.json" || rc=$?;fi;;
+  5) if confirm "$(L '删除保存的落地凭据？已启用中转时须先恢复直连或切换 WARP。' 'Remove saved landing credentials? First restore direct routing or switch to WARP if relay is active.')";then warp_engine relay_forget || rc=$?;fi;;
   *) rc=1;;
  esac
  rm -rf "$stage";return "$rc"
@@ -5521,6 +5609,7 @@ import unicodedata
 import uuid
 
 
+"""Shared managed listener registry; included at build time, no VPS imports."""
 def integrated_xhttp_ports(base):
     from pathlib import Path
     import json
@@ -6051,14 +6140,14 @@ haproxy_menu(){
   1) haproxy_add;;
   2) haproxy_engine list;prompt_read "$(L '要修改的规则 ID（重新填写该规则参数）：' 'Rule ID to edit (re-enter its parameters): ')" value || return 0;[[ $value =~ ^[a-f0-9]{12}$ ]] || { err "$(L '规则 ID 无效' 'Invalid rule ID')";return 1; };haproxy_engine check_id "$value" && haproxy_add "$value";;
   3) haproxy_engine list;[[ ! -d $BASE/haproxy ]] || systemctl --no-pager status skybyte-haproxy.service || :;;
-  4) confirm "$(L '启动并启用开机自启？' 'Start and enable at boot?')" && haproxy_install_binary && haproxy_engine start;;
-  5) confirm "$(L '停止 TCP 转发并关闭开机自启？' 'Stop TCP forwarding and disable at boot?')" && haproxy_engine stop;;
-  6) confirm "$(L '重启 TCP 转发？现有转发连接可能断开。' 'Restart TCP forwarding? Existing connections may disconnect.')" && haproxy_engine restart;;
+  4) confirm "$(L '启动并启用开机自启？' 'Start and enable at boot?')" || return 0; haproxy_install_binary && haproxy_engine start;;
+  5) confirm "$(L '停止 TCP 转发并关闭开机自启？' 'Stop TCP forwarding and disable at boot?')" || return 0; haproxy_engine stop;;
+  6) confirm "$(L '重启 TCP 转发？现有转发连接可能断开。' 'Restart TCP forwarding? Existing connections may disconnect.')" || return 0; haproxy_engine restart;;
   7) haproxy_engine probe;;
-  8) haproxy_engine list;prompt_read "$(L '要删除的规则 ID：' 'Rule ID to remove: ')" value || return 0;confirm "$(L '删除此规则？最后一条删除后服务也会移除。' 'Remove this rule? Removing the last rule also removes the service.')" && haproxy_engine remove "$value";;
+  8) haproxy_engine list;prompt_read "$(L '要删除的规则 ID：' 'Rule ID to remove: ')" value || return 0;confirm "$(L '删除此规则？最后一条删除后服务也会移除。' 'Remove this rule? Removing the last rule also removes the service.')" || return 0; haproxy_engine remove "$value";;
   9) haproxy_engine backup;;
-  10) say '填写独立备份目录，或完整备份中的 haproxy 子目录。恢复会替换现有 TCP 规则并按备份状态启停服务。' 'Supply a standalone backup directory or the haproxy subdirectory in a full backup. Restore replaces current TCP rules and restores saved service activity.';prompt_read "$(L 'HAProxy 备份目录：' 'HAProxy backup directory: ')" value || return 0;confirm "$(L '校验并恢复 HAProxy 规则？' 'Validate and restore HAProxy rules?')" && haproxy_install_binary && haproxy_engine restore "$value";;
-  11) confirm "$(L '备份并卸载本工具的 HAProxy TCP 转发？保留软件包、外部配置与防火墙规则。' 'Back up and remove managed HAProxy TCP forwarding? Keep the package, external config and firewall rules.')" && haproxy_engine purge;;
+  10) say '填写独立备份目录，或完整备份中的 haproxy 子目录。恢复会替换现有 TCP 规则并按备份状态启停服务。' 'Supply a standalone backup directory or the haproxy subdirectory in a full backup. Restore replaces current TCP rules and restores saved service activity.';prompt_read "$(L 'HAProxy 备份目录：' 'HAProxy backup directory: ')" value || return 0;confirm "$(L '校验并恢复 HAProxy 规则？' 'Validate and restore HAProxy rules?')" || return 0; haproxy_install_binary && haproxy_engine restore "$value";;
+  11) confirm "$(L '备份并卸载本工具的 HAProxy TCP 转发？保留软件包、外部配置与防火墙规则。' 'Back up and remove managed HAProxy TCP forwarding? Keep the package, external config and firewall rules.')" || return 0; haproxy_engine purge;;
   *) err "$(L '无效选项' 'Invalid choice')";return 1;;
  esac
 }
@@ -6126,7 +6215,7 @@ core_versions(){
  [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
  [[ $version != "$current" ]] || { ok "$(L '已是所选版本' 'Already on selected version')"; return 0; }
  say '候选内核必须能检查全部托管配置；不自动重写配置。降级可能不兼容。' 'Candidate core must validate every managed config; configs are not rewritten. Downgrades may be incompatible.'
- confirm "$(L "切换内核 $current → ${version}？" "Switch core $current → $version?")" && apply_update "$version"
+ confirm "$(L "切换内核 $current → ${version}？" "Switch core $current → $version?")" || return 0; apply_update "$version"
 }
 backup_engine(){
  python3 - "$BASE" "$BACKUP" "$CONF" "$BIN" "$@" <<'PY_BACKUP'
@@ -6143,13 +6232,29 @@ def files(root):
  result={}
  for p in root.rglob('*'):
   if p.is_symlink():raise ValueError('Backup contains symlinks')
-  if p.is_file() and p.name!='backup-manifest.json':result[str(p.relative_to(root))]=p
+  if p.is_file() and p.name not in ('backup-manifest.json','.incomplete'):result[str(p.relative_to(root))]=p
  return result
+
+def file_digest(path):
+ digest=hashlib.sha256()
+ with open(path,'rb') as source:
+  for chunk in iter(lambda:source.read(1024*1024),b''):digest.update(chunk)
+ return digest.hexdigest()
+
+def replace_from_file(path,source,mode=0o600):
+ if path.is_symlink() or path.parent.is_symlink() or source.is_symlink():raise ValueError('Restore file symlink')
+ fd,tmp=tempfile.mkstemp(dir=path.parent)
+ try:
+  with os.fdopen(fd,'wb') as target,open(source,'rb') as original:
+   shutil.copyfileobj(original,target,1024*1024);target.flush();os.fsync(target.fileno())
+  os.chmod(tmp,mode);os.replace(tmp,path)
+ finally:
+  if os.path.exists(tmp):os.unlink(tmp)
 
 def manifest(root,replace=False):
  contents=files(root)
  if len(contents)>10000:raise ValueError('Too many backup files')
- d={'owner':OWNER,'schema':1,'created_at':int(time.time()),'files':{n:hashlib.sha256(p.read_bytes()).hexdigest() for n,p in contents.items()}}
+ d={'owner':OWNER,'schema':1,'created_at':int(time.time()),'files':{n:file_digest(p) for n,p in contents.items()}}
  target=root/'backup-manifest.json'
  if target.is_symlink():raise ValueError('Manifest symlink')
  if target.exists():
@@ -6161,6 +6266,7 @@ def manifest(root,replace=False):
  os.replace(tmp,target)
 
 def verify(root,required=False):
+ if (root/'.incomplete').exists() or (root/'.incomplete').is_symlink():raise ValueError('Incomplete backup; refusing restore')
  contents=files(root);p=root/'backup-manifest.json'
  if not p.exists():
   if required:raise ValueError('Archive has no integrity manifest')
@@ -6168,7 +6274,7 @@ def verify(root,required=False):
  d=json.loads(p.read_text())
  if d.get('owner')!=OWNER or d.get('schema')!=1 or set(d['files'])!=set(contents):raise ValueError('Backup manifest mismatch')
  for n,f in contents.items():
-  if hashlib.sha256(f.read_bytes()).hexdigest()!=d['files'][n]:raise ValueError('Backup integrity check failed')
+  if file_digest(f)!=d['files'][n]:raise ValueError('Backup integrity check failed')
 
 def check(root):
  verify(root)
@@ -6231,9 +6337,9 @@ def restore_plan(root,value):
   if not source.exists():continue
   if source.is_symlink() or not source.is_file() or dest.is_symlink() or dest.parent.is_symlink() or dest.exists() and not dest.is_file():raise ValueError('Unsafe restore file')
   n=len(plan);candidate=stage/('new-'+str(n));old=stage/('old-'+str(n))
-  replace_file(candidate,source.read_bytes())
+  replace_from_file(candidate,source)
   previous_mode=None
-  if dest.exists():previous_mode=dest.stat().st_mode&0o777;replace_file(old,dest.read_bytes())
+  if dest.exists():previous_mode=dest.stat().st_mode&0o777;replace_from_file(old,dest)
   plan.append({'target':str(dest),'mode':mode,'previous_mode':previous_mode,'index':n})
  replace_file(stage/'transaction.json',json.dumps(plan).encode())
 
@@ -6244,13 +6350,13 @@ def restore_files(value,rollback=False):
   if str(dest) not in allowed or item['index']!=n or dest.is_symlink() or dest.parent.is_symlink():raise ValueError('Invalid restore journal')
   if mode is None:
    if dest.exists():
-    if dest.read_bytes()!=(stage/('new-'+str(n))).read_bytes():raise ValueError('Restore target changed; retained')
+    if file_digest(dest)!=file_digest(stage/('new-'+str(n))):raise ValueError('Restore target changed; retained')
     dest.unlink()
   else:
    if type(mode) is not int or not 0<=mode<=0o777:raise ValueError('Invalid restore mode')
    source=stage/(('old-' if rollback else 'new-')+str(n))
    if source.is_symlink() or not source.is_file():raise ValueError('Invalid restore source')
-   replace_file(dest,source.read_bytes(),mode)
+   replace_from_file(dest,source,mode)
 
 if action=='manifest':manifest(pathlib.Path(args[0]))
 elif action=='reseal':manifest(contained(args[0]),True)
@@ -6343,7 +6449,7 @@ PY_GPG_EXPORT
    unset pass;local rc=0;backup_engine import "$tmp" || rc=$?;rm -f "$tmp";return "$rc";;
   6) prompt_read "$(L '保留最新备份数量 [10]：' 'Keep newest backups [10]: ')" keep || return 0;keep=${keep:-10}
    backup_engine prune "$keep" preview || return 1
-   confirm "$(L '删除上述旧托管备份？' 'Delete the listed older managed backups?')" && backup_engine prune "$keep" apply;;
+   confirm "$(L '删除上述旧托管备份？' 'Delete the listed older managed backups?')" || return 0; backup_engine prune "$keep" apply;;
   0) return 0;; *) return 1;;
  esac
 }
@@ -6591,7 +6697,7 @@ rescue_menu(){
    prompt_read "$(L '公网 Reality TCP 端口 [0=本机端口]：' 'Public Reality TCP port [0=local port]: ')" vp || return 0
    prompt_read "$(L '公网 HY2 UDP 端口 [0=本机端口]：' 'Public HY2 UDP port [0=local port]: ')" hp || return 0
    warn "$(L '只更新管理员节点导出；不会替服务商创建 NAT。受限用户端口需单独映射，HY2 证书身份保持原值，跳跃将关闭。' 'Updates admin exports only; does not create provider NAT. User ports need separate mappings; HY2 certificate identity is retained and hopping is disabled.')"
-   confirm "$(L '保存 NAT 导出设置？' 'Save NAT export settings?')" && configuration_apply nat_exports "$host" "${vp:-0}" "${hp:-0}";;
+   confirm "$(L '保存 NAT 导出设置？' 'Save NAT export settings?')" || return 0; configuration_apply nat_exports "$host" "${vp:-0}" "${hp:-0}";;
   5) argo_network_settings;;
   6) check_owned || return 1;edge=$(rescue_engine family) || return 1
    say '使用你已有的合法 WARP WireGuard 双栈配置；原生 IPv6 必须使用 IPv6 Peer Endpoint。默认 MTU 1280，无需 /dev/net/tun。' 'Use your own valid dual-stack WARP WireGuard profile. Native IPv6 needs an IPv6 Peer Endpoint. Default MTU 1280; no /dev/net/tun is required.'
@@ -6639,6 +6745,11 @@ def address(s):
  except ValueError:
   if len(s)>253 or not re.fullmatch(r'(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,63}',s):raise ValueError('Invalid address/domain')
   return s.lower()
+def reality_sni(value):
+ value=address(value)
+ try:ipaddress.ip_address(value)
+ except ValueError:return value
+ raise ValueError('Reality SNI requires a DNS name, not an IP literal')
 def port(s):
  if not s.isdecimal() or len(s)>5 or not (int(s)==443 or 1024<=int(s)<=65535):raise ValueError('Port requires 443 or 1024-65535')
  return int(s)
@@ -6655,6 +6766,7 @@ if (base/'users.json').exists():
   p=base/'users'/u['id'];paths.append((p/'server.json',load(p/'server.json'),p/'state.json',load(p/'state.json')))
 
 
+"""Shared managed listener registry; included at build time, no VPS imports."""
 def integrated_xhttp_ports(base):
     from pathlib import Path
     import json
@@ -6686,9 +6798,6 @@ def check_admin_port(value,protocol,adding=False):
    if p.exists() or p.is_symlink():
     if load(p)['port']==value:raise ValueError('Port reserved by a managed TCP service')
 
-# TCP-only port edits retain the unrelated HY2 listener and hopping rules.
-keep_hop=action in ('reality','ipv6') or (action=='ports' and len(args)==2 and args[1].isdecimal() and all(i['listen_port']==int(args[1]) for i in main['inbounds'] if i['type']=='hysteria2'))
-if not keep_hop:meta['hop']=False
 if action=='ipv6':
  value=args[0]
  if value!='off':
@@ -6735,7 +6844,7 @@ elif action=='nat_exports':
  if len(ports)!=2:raise ValueError('Two mapped ports required')
  meta['ip']=value;meta['export_ports']=dict(zip(('vless','hysteria2'),ports))
 elif action in ('sni','reality'):
- value=address(args[0])
+ value=reality_sni(args[0])
  host=address(args[1]) if action=='reality' else value
  number=int(args[2]) if action=='reality' else None
  if number is not None and not 1<=number<=65535:raise ValueError('Invalid handshake target port')
@@ -6780,14 +6889,14 @@ elif action in ('add','remove'):
    sock.bind(('::' if family==socket.AF_INET6 else '0.0.0.0',value))
   finally:sock.close()
   if protocol=='vless':
-   sni=address(args[2]);pairs=subprocess.check_output([binary,'generate','reality-keypair'],text=True);keys=dict(line.split(': ',1) for line in pairs.strip().splitlines())
+   sni=reality_sni(args[2]);pairs=subprocess.check_output([binary,'generate','reality-keypair'],text=True);keys=dict(line.split(': ',1) for line in pairs.strip().splitlines())
    meta.update(public_key=keys['PublicKey'],sid=secrets.token_hex(4),sni=sni)
    template={'type':'vless','tag':'reality','listen':listen,'listen_port':value,'users':[{'name':'user1','uuid':meta['uuid'],'flow':'xtls-rprx-vision'}],'tls':{'enabled':True,'server_name':sni,'reality':{'enabled':True,'handshake':{'server':sni,'server_port':443},'private_key':keys['PrivateKey'],'short_id':[meta['sid']]}}}
   else:
    domain=address(args[2]);cert_mode='2'
    if args[3]=='selfsigned':
     dest_cert=conf.parent/'hy2-added.crt';dest_key=conf.parent/'hy2-added.key'
-    if any(p.exists() or p.is_symlink() for p in (dest_cert,dest_key)):raise ValueError('Generated certificate paths already exist; use existing-certificate mode')
+    if any(p.is_symlink() or (p.exists() and str(p) not in old_meta.get('managed_certificates',[])) for p in (dest_cert,dest_key)):raise ValueError('Generated certificate paths are not owned; use existing-certificate mode')
     cert=str(stage/'hy2-added.crt');key=str(stage/'hy2-added.key');exe=os.environ.get('OPENSSL_BIN','openssl')
     try:ipaddress.ip_address(domain);san='IP:'+domain
     except ValueError:san='DNS:'+domain
@@ -6841,6 +6950,11 @@ def tls_check(i):
  keypub=subprocess.check_output([exe,'pkey','-in',key,'-pubout','-passin','pass:'],stderr=subprocess.DEVNULL)
  if certpub!=keypub:raise ValueError('Certificate/key mismatch')
 
+# Preserve hopping whenever the actual HY2 listener port survives this edit.
+old_hy2=[i['listen_port'] for i in original['inbounds'] if i['type']=='hysteria2']
+new_hy2=[i['listen_port'] for i in main['inbounds'] if i['type']=='hysteria2']
+keep_hop=old_hy2==new_hy2
+if not keep_hop:meta['hop']=False
 planned=list(generated)
 for n,(p,cfg,mp,s) in enumerate(paths):
  types={i['type'] for i in cfg['inbounds']};s['mode']='0' if not types else '3' if len(types)==2 else '1' if 'vless' in types else '2'
@@ -6866,7 +6980,7 @@ for n,(p,cfg,mp,s) in enumerate(paths):
  write(candidate,cfg);planned.append([str(candidate),str(p)])
  sm=stage/(str(n)+'-state.json');write(sm,s);planned.append([str(sm),str(mp)])
 write(stage/'plan.json',planned)
-if action=='ports' and keep_hop:write(stage/'keep-hopping',True)
+if keep_hop:write(stage/'keep-hopping',True)
 PY_CONFIG
 }
 configuration_apply(){
@@ -6888,10 +7002,10 @@ PY_INITIAL_ADMIN
  if ! configuration_engine "$stage" "$@";then rm -rf "$stage";return 1;fi
  if ! haproxy_engine check_configs "$stage";then rm -rf "$stage";return 1;fi
  snap=$(backup) || { rm -rf "$stage";return 1; }
- if [[ $1 == ports ]] && command -v ufw >/dev/null;then
+ if [[ $1 == ports || $1 == add ]] && command -v ufw >/dev/null;then
   ufw_info=$(LC_ALL=C ufw status) || { rm -rf "$stage";err "$(L '无法读取 UFW 状态，节点端口未修改。' 'Cannot inspect UFW; node ports unchanged.')";return 1; }
  fi
- if [[ $1 == ports ]] && grep -q '^Status: active' <<< "$ufw_info";then
+ if [[ $1 == ports || $1 == add ]] && grep -q '^Status: active' <<< "$ufw_info";then
   rules=$(python3 - "$CONF" "$stage/0-config.json" <<'PY_CHANGED_PORTS'
 import json,sys
 old={i['type']:i['listen_port'] for i in json.load(open(sys.argv[1]))['inbounds']}
@@ -6911,22 +7025,18 @@ PY_CHANGED_PORTS
  if systemctl is-active --quiet sing-box.service;then admin=true;fi
  if [[ -f $BASE/users.json ]] && systemctl is-active --quiet skybyte-users.service;then users=true;users_stop || { rm -rf "$stage";return 1; };fi
  if [[ -f $BASE/argo-state.json ]] && systemctl is-active --quiet skybyte-argo-node.service;then argo=true;fi
- if [[ $1 != reality && $1 != ipv6 && ! -f $stage/keep-hopping && $(state hop) == True ]];then
+ if [[ ! -f $stage/keep-hopping && $(state hop) == True ]];then
   hop_active=true
-  if [[ $1 == ports ]];then
-   if systemctl is-active --quiet singbox-v2-hop.service;then hop_was_active=true;fi
-   if systemctl is-enabled --quiet singbox-v2-hop.service;then hop_was_enabled=true;fi
-  else hop_disable || { warp_resume "$admin" "$argo" "$users" || :;rm -rf "$stage";return 1; };fi
+  if systemctl is-active --quiet singbox-v2-hop.service;then hop_was_active=true;fi
+  if systemctl is-enabled --quiet singbox-v2-hop.service;then hop_was_enabled=true;fi
  fi
- if ! configuration_commit "$stage" "$1" || { [[ $1 == ports && $hop_active == true ]] && ! hop_disable; } || ! configuration_resume "$first_admin" "$admin" "$argo" "$users" || { [[ $1 == ipv6 && ${2:-} != off && $admin == true ]] && ! ipv6_engine ready; } || { [[ $1 == reality || $1 == ipv6 || $1 == ports ]] && ! configuration_export_all; };then
+ if ! configuration_commit "$stage" "$1" || { [[ $hop_active == true ]] && ! hop_disable; } || ! configuration_resume "$first_admin" "$admin" "$argo" "$users" || { [[ $1 == ipv6 && ${2:-} != off && $admin == true ]] && ! ipv6_engine ready; } || ! configuration_export_all;then
   [[ $users != true ]] || users_stop || :
   [[ $first_admin != true ]] || systemctl disable --now sing-box.service || :
   configuration_rollback "$stage" || :
   if [[ $hop_active == true ]];then
-   if [[ $1 == ports ]];then
-    [[ $hop_was_enabled != true ]] || systemctl enable singbox-v2-hop.service || :
-    [[ $hop_was_active != true ]] || systemctl start singbox-v2-hop.service || :
-   else systemctl start singbox-v2-hop.service || :;fi
+   if [[ $hop_was_enabled == true ]];then systemctl enable singbox-v2-hop.service || :;else systemctl disable singbox-v2-hop.service || :;fi
+   [[ $hop_was_active != true ]] || systemctl start singbox-v2-hop.service || :
   fi
   [[ $first_admin != true ]] || admin=false
   warp_resume "$admin" "$argo" "$users" || :
@@ -6937,7 +7047,6 @@ PY_CHANGED_PORTS
  if [[ $1 != reality && $1 != ports ]] && command -v ufw >/dev/null && LC_ALL=C ufw status | grep -q '^Status: active';then
   firewall_allow_protocols || return 1
  fi
- if [[ $1 != reality && $1 != ipv6 && $1 != ports ]];then configuration_export_all || return 1;fi
  ok "$(L "配置已更新；备份：$snap" "Configuration updated; backup: $snap")"
  if [[ $hop_active == true ]];then warn "$(L '跳跃已关闭，请按新监听端口重新开启；旧 UFW 规则保留。' 'Hopping disabled; re-enable for the new listener. Old UFW rules remain.')";fi
 }
@@ -6950,12 +7059,11 @@ configuration_commit(){
 import json,os,pathlib,shutil,sys,tempfile
 stage=pathlib.Path(sys.argv[1]);plan=json.loads((stage/'plan.json').read_text());rollback=[]
 targets=[value for _,value in plan]
-if sys.argv[2] in ('reality','ipv6','ports'):
- # Include exports in the same rollback journal before any live files change.
- names=('nodes.txt','subscription-base64.txt','v2rayn-nodes.txt','v2rayn-subscription.txt','shadowrocket-nodes.txt','shadowrocket-subscription.txt','shadowrocket-native-nodes.txt','shadowrocket-native-subscription.txt','outbounds.json','sing-box-client.json','sing-box-client-ipv6.json','clash-verge.yaml','mihomo-proxies.yaml','subscription-notes.txt','hy2-client-ca.pem','hy2-client-ca.cer','hy2-client-ca.mobileconfig')
- for _,value in plan:
-  p=pathlib.Path(value)
-  if p.name=='state.json':targets.extend(str(p.parent/name) for name in names)
+# Include exports in the same rollback journal before any live files change.
+names=('nodes.txt','subscription-base64.txt','v2rayn-nodes.txt','v2rayn-subscription.txt','shadowrocket-nodes.txt','shadowrocket-subscription.txt','shadowrocket-native-nodes.txt','shadowrocket-native-subscription.txt','outbounds.json','sing-box-client.json','sing-box-client-ipv6.json','clash-verge.yaml','mihomo-proxies.yaml','subscription-notes.txt','hy2-client-ca.pem','hy2-client-ca.cer','hy2-client-ca.mobileconfig')
+for _,value in plan:
+ p=pathlib.Path(value)
+ if p.name=='state.json':targets.extend(str(p.parent/name) for name in names)
 for n,value in enumerate(dict.fromkeys(targets)):
  p=pathlib.Path(value)
  if p.is_symlink() or p.parent.is_symlink():raise ValueError('Target symlink')
@@ -7056,14 +7164,14 @@ node_settings(){
  case $choice in
   1) edit_node_ports;;
   2) prompt_read "$(L '公网 IP 或 DDNS 域名：' 'Public IP or DDNS domain: ')" value || return 0
-   confirm "$(L '更新所有节点的服务器地址？' 'Update server address for all nodes?')" && configuration_apply address "$value";;
+   confirm "$(L '更新所有节点的服务器地址？' 'Update server address for all nodes?')" || return 0; configuration_apply address "$value";;
   3) reality_replace;;
   4|5)
    prompt_options '1. Reality + Vision
 2. Hysteria2' '1. Reality + Vision
 2. Hysteria2';prompt_read '> ' protocol || return 0
    case $protocol in 1) protocol=vless;;2) protocol=hysteria2;;*) return 1;;esac
-   if [[ $choice == 5 ]];then confirm "$(L '移除所选协议，保留另一协议与用户额度？' 'Remove selected protocol, retaining the other and account quotas?')" && configuration_apply remove "$protocol";return;fi
+   if [[ $choice == 5 ]];then confirm "$(L '移除所选协议，保留另一协议与用户额度？' 'Remove selected protocol, retaining the other and account quotas?')" || return 0; configuration_apply remove "$protocol";return;fi
    if [[ $(python3 - "$CONF" "$META" <<'PY_INITIAL_NODE'
 import json,sys
 c=json.load(open(sys.argv[1]));s=json.load(open(sys.argv[2]));print('yes' if not c.get('inbounds') and s.get('deployment')=='argo-only' else 'no')
@@ -7086,8 +7194,8 @@ PY_INITIAL_NODE
    fi
    prompt_read "$(L '管理员监听端口 [443]：' 'Admin listener port [443]: ')" value || return 0;value=${value:-443}
    if [[ $protocol == vless ]];then prompt_read 'Reality SNI [addons.mozilla.org]: ' domain || return 0
-    if [[ $bootstrap == true ]];then confirm "$(L '添加直连 Reality 节点并保留独立 Argo 隧道？' 'Add a direct Reality node and retain the separate Argo tunnel?')" && configuration_apply add vless "$value" "${domain:-addons.mozilla.org}" "$public" "$listen"
-    else confirm "$(L '追加 Reality，保留现有凭据？' 'Add Reality, retaining existing credentials?')" && configuration_apply add vless "$value" "${domain:-addons.mozilla.org}";fi
+    if [[ $bootstrap == true ]];then confirm "$(L '添加直连 Reality 节点并保留独立 Argo 隧道？' 'Add a direct Reality node and retain the separate Argo tunnel?')" || return 0; configuration_apply add vless "$value" "${domain:-addons.mozilla.org}" "$public" "$listen"
+    else confirm "$(L '追加 Reality，保留现有凭据？' 'Add Reality, retaining existing credentials?')" || return 0; configuration_apply add vless "$value" "${domain:-addons.mozilla.org}";fi
    else
     prompt_options '1. 自动自签名（无域名）
 2. 已有证书 / 托管 ACME' '1. Automatic self-signed (no domain)
@@ -7095,16 +7203,16 @@ PY_INITIAL_NODE
     prompt_read '> ' protocol || return 0
     if [[ $protocol == 1 ]];then
      if [[ $bootstrap == true ]];then domain=$public;else domain=$(state ip) || return 1;fi
-     if [[ $bootstrap == true ]];then confirm "$(L '生成自签名证书并添加 HY2；保留独立 Argo 隧道？客户端仍需信任公开证书。' 'Generate self-signed TLS and add HY2 while retaining the separate Argo tunnel? Clients must trust the public certificate.')" && configuration_apply add hysteria2 "$value" "$domain" selfsigned "$public" "$listen"
-     else confirm "$(L '自动生成自签名证书并追加 HY2？客户端仍需信任公开证书。' 'Generate self-signed TLS and add HY2? Clients still need public-certificate trust.')" && configuration_apply add hysteria2 "$value" "$domain" selfsigned;fi
+     if [[ $bootstrap == true ]];then confirm "$(L '生成自签名证书并添加 HY2；保留独立 Argo 隧道？客户端仍需信任公开证书。' 'Generate self-signed TLS and add HY2 while retaining the separate Argo tunnel? Clients must trust the public certificate.')" || return 0; configuration_apply add hysteria2 "$value" "$domain" selfsigned "$public" "$listen"
+     else confirm "$(L '自动生成自签名证书并追加 HY2？客户端仍需信任公开证书。' 'Generate self-signed TLS and add HY2? Clients still need public-certificate trust.')" || return 0; configuration_apply add hysteria2 "$value" "$domain" selfsigned;fi
      return
     fi
     [[ $protocol == 2 ]] || return 1
     prompt_read "$(L '证书名称（域名或 IP）：' 'Certificate identity (domain or IP): ')" domain || return 0
     prompt_read 'TLS fullchain: ' cert || return 0;prompt_read 'TLS private key: ' key || return 0
     validate_certificate "$cert" "$key" "$domain" || return 1
-    if [[ $bootstrap == true ]];then confirm "$(L '添加 HY2 并保留独立 Argo 隧道？' 'Add HY2 and retain the separate Argo tunnel?')" && configuration_apply add hysteria2 "$value" "$domain" "$cert" "$key" "$public" "$listen"
-    else confirm "$(L '追加 HY2，沿用证书并保留用户用量？' 'Add HY2 with this certificate, retaining account usage?')" && configuration_apply add hysteria2 "$value" "$domain" "$cert" "$key";fi
+    if [[ $bootstrap == true ]];then confirm "$(L '添加 HY2 并保留独立 Argo 隧道？' 'Add HY2 and retain the separate Argo tunnel?')" || return 0; configuration_apply add hysteria2 "$value" "$domain" "$cert" "$key" "$public" "$listen"
+    else confirm "$(L '追加 HY2，沿用证书并保留用户用量？' 'Add HY2 with this certificate, retaining account usage?')" || return 0; configuration_apply add hysteria2 "$value" "$domain" "$cert" "$key";fi
    fi;;
   6) prompt_read "$(L '上行 Mbps [0=自动]：' 'Upload Mbps [0=auto]: ')" up || return 0;prompt_read "$(L '下行 Mbps [0=自动]：' 'Download Mbps [0=auto]: ')" down || return 0
    prompt_options '1. 按带宽设置
@@ -7116,40 +7224,87 @@ PY_INITIAL_NODE
 2. Salamander';prompt_read '> ' obfs || return 0
    case ${obfs:-1} in 1) obfs=none;;2) obfs=salamander;;*) return 1;;esac
    warn "$(L '混淆改动需重新导入客户端；此处不是每人跨协议硬限速。' 'Obfuscation changes require re-import; these are not cross-protocol per-account hard rate caps.')"
-   confirm "$(L '应用 HY2 参数？' 'Apply HY2 options?')" && configuration_apply hy2 "${up:-0}" "${down:-0}" "$ignore" "$obfs";;
+   confirm "$(L '应用 HY2 参数？' 'Apply HY2 options?')" || return 0; configuration_apply hy2 "${up:-0}" "${down:-0}" "$ignore" "$obfs";;
   7) prompt_read "$(L '证书名称：' 'Certificate identity: ')" domain || return 0;prompt_read 'TLS fullchain: ' cert || return 0;prompt_read 'TLS private key: ' key || return 0
    validate_certificate "$cert" "$key" "$domain" || return 1
-   confirm "$(L '替换 HY2 使用的证书路径并同步用户节点？' 'Change HY2 certificate paths and sync account nodes?')" && configuration_apply tls "$domain" "$cert" "$key";;
+   confirm "$(L '替换 HY2 使用的证书路径并同步用户节点？' 'Change HY2 certificate paths and sync account nodes?')" || return 0; configuration_apply tls "$domain" "$cert" "$key";;
   0) return 0;;*) return 1;;
  esac
 }
+managed_listener_rules(){
+ users_guard && online_guard && haproxy_guard && acme_guard || return 1
+ python3 - "$BASE" "$CONF" <<'PY_MANAGED_LISTENERS'
+"""Public managed listener inventory for firewall setup and auditing."""
+"""Shared managed listener registry; included at build time, no VPS imports."""
+def integrated_xhttp_ports(base):
+    from pathlib import Path
+    import json
+    root=Path(base)/'xhttp';state=root/'state.json';marker=root/'.owner'
+    if not root.exists() and not root.is_symlink():return set()
+    if any(p.is_symlink() for p in (root,state,marker)):raise ValueError('Unsafe XHTTP state')
+    if not marker.is_file() or marker.read_text()!='SKYBYTE-SB-XHTTP/1\n':raise ValueError('Unknown XHTTP owner')
+    if not state.exists():return set()
+    if state.stat().st_size>4*1024*1024:raise ValueError('XHTTP state too large')
+    data=json.loads(state.read_text())
+    if data.get('schema')!=1 or not isinstance(data.get('nodes'),dict):raise ValueError('Invalid XHTTP state')
+    ports=set()
+    for kind,node in data['nodes'].items():
+        p=node['port']
+        if kind not in ('xhttp-reality','xhttp-tls') or type(p)!=int or not 1<=p<=65535:raise ValueError('Invalid XHTTP port')
+        ports.add(p)
+    return ports
+
+def managed_public_ports(base, conf):
+    """Enumerate configured public node/services, including stopped reservations."""
+    from pathlib import Path
+    import json,re
+    base=Path(base);result=set()
+    if base.is_symlink():raise ValueError('Unsafe managed base')
+    def read(path):
+        if path.is_symlink() or path.parent.is_symlink() or not path.is_file() or path.stat().st_size>4*1024**2:
+            raise ValueError('Unsafe managed listener state')
+        return json.loads(path.read_text())
+    def add(protocol,number):
+        if protocol not in ('tcp','udp') or type(number)!=int or not 1<=number<=65535:raise ValueError('Invalid managed listener')
+        result.add((protocol,number))
+    def inbounds(path):
+        for node in read(path).get('inbounds',[]):
+            if node.get('type') not in ('vless','hysteria2'):raise ValueError('Unknown managed inbound')
+            add('udp' if node['type']=='hysteria2' else 'tcp',node['listen_port'])
+    if (base/'state.json').is_file() and (Path(conf).exists() or Path(conf).is_symlink()):inbounds(Path(conf))
+    ledger=base/'users.json'
+    if ledger.exists() or ledger.is_symlink():
+        data=read(ledger)
+        if data.get('owner')!='SKYBYTE user quotas v1' or data.get('schema')!=1:raise ValueError('Invalid user owner')
+        for user in data['users']:
+            if user.get('deleted'):continue
+            if not re.fullmatch('[0-9a-f]{16}',user['id']):raise ValueError('Invalid user ID')
+            inbounds(base/'users'/user['id']/'server.json')
+    subscription=base/'subscriptions.json'
+    if subscription.exists() or subscription.is_symlink():
+        data=read(subscription)
+        if data.get('owner')!='SKYBYTE HTTPS subscriptions v1' or data.get('schema')!=1:raise ValueError('Invalid subscription owner')
+        add('tcp',data['port'])
+    relay=base/'haproxy/state.json'
+    if relay.exists() or relay.is_symlink():
+        data=read(relay)
+        if data.get('owner')!='SKYBYTE HAProxy TCP v1' or data.get('schema')!=1:raise ValueError('Invalid HAProxy owner')
+        for rule in data['rules']:add('tcp',rule['port'])
+    acme=base/'acme-state.json'
+    if acme.exists() or acme.is_symlink():
+        data=read(acme)
+        if data.get('owner')!='SKYBYTE ACME v1' or data.get('schema')!=1:raise ValueError('Invalid ACME owner')
+        if data['method']=='http':add('tcp',80)
+    for number in integrated_xhttp_ports(base):add('tcp',number)
+    return sorted(result)
+import sys
+for protocol,number in managed_public_ports(*sys.argv[1:]):print(str(number)+'/'+protocol)
+PY_MANAGED_LISTENERS
+}
 firewall_allow_protocols(){
  local rule rules
- if [[ -f $CONF && -f $META ]];then
-  rules=$(python3 - "$CONF" <<'PY_ALLOW'
-import json,sys
-for i in json.load(open(sys.argv[1]))['inbounds']:
- assert i['type'] in ('vless','hysteria2') and type(i['listen_port']) is int and 1<=i['listen_port']<=65535
- print(str(i['listen_port'])+('/tcp' if i['type']=='vless' else '/udp'))
-PY_ALLOW
-  ) || return 1
-  while IFS= read -r rule;do [[ -z $rule ]] || ufw allow "$rule" || return 1;done <<<"$rules"
- fi
- if [[ -f $BASE/subscriptions.json ]];then
-  online_guard || return 1
-  rule=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["port"])' "$BASE/subscriptions.json") || return 1;ufw allow "$rule/tcp" || return 1
- fi
- if [[ -f $BASE/acme-state.json ]];then
-  acme_guard || return 1
-  if [[ $(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["method"])' "$BASE/acme-state.json") == http ]];then ufw allow 80/tcp || return 1;fi
- fi
- local xhttp_ports xhttp_port
- xhttp_ports=$(xhttp_command ports) || return 1
- while IFS= read -r xhttp_port;do
-  [[ -n $xhttp_port ]] || continue
-  valid_port "$xhttp_port" && ufw allow "$xhttp_port/tcp" || return 1
- done <<< "$xhttp_ports"
- users_firewall_allow
+ rules=$(managed_listener_rules) || return 1
+ while IFS= read -r rule;do [[ -z $rule ]] || ufw allow "$rule" || return 1;done <<< "$rules"
 }
 # shellcheck shell=bash
 ipv6_engine(){
@@ -7465,6 +7620,10 @@ acme_issue(){
  esac
  say '申请公开证书会公开域名；请阅读并同意 CA 条款 https://letsencrypt.org/repository/ 。DNS Token 需仅授权对应区域 DNS 编辑。' 'Public issuance publishes the domain. Review CA terms: https://letsencrypt.org/repository/ . Scope DNS tokens to the target zone.'
  confirm "$(L '接受 CA 条款并申请证书？' 'Accept CA terms and request certificate?')" || return 0
+ if [[ $method == cloudflare ]];then
+  prompt_read "$(L 'Cloudflare DNS API Token（隐藏）：' 'Cloudflare DNS API Token (hidden): ')" token secret || return 0;echo
+  [[ $token =~ ^[a-zA-Z0-9_-]{20,200}$ ]] || { err "$(L 'Token 格式无效，未创建申请目录，可直接重试。' 'Invalid token format; no issuance directory created. Retry directly.')";return 1; }
+ fi
  apt_install certbot || return 1
  if [[ $method == cloudflare ]];then apt_install python3-certbot-dns-cloudflare || return 1;fi
  mkdir -m 700 "$BASE/acme" || return 1
@@ -7472,8 +7631,6 @@ acme_issue(){
  acme_options
  local -a challenge=(--standalone)
  if [[ $method == cloudflare ]];then
-  prompt_read "$(L 'Cloudflare DNS API Token（隐藏）：' 'Cloudflare DNS API Token (hidden): ')" token secret || return 1;echo
-  [[ $token =~ ^[a-zA-Z0-9_-]{20,200}$ ]] || return 1
   printf 'dns_cloudflare_api_token = %s\n' "$token" > "$BASE/acme/cloudflare.ini";chmod 600 "$BASE/acme/cloudflare.ini";unset token
   challenge=(--dns-cloudflare --dns-cloudflare-credentials "$BASE/acme/cloudflare.ini" --dns-cloudflare-propagation-seconds 60)
  else
@@ -7568,7 +7725,7 @@ acme_menu(){
   1) acme_issue;;2) acme_use_hy2;;3) acme_renew;;4) acme_timer;;
   5) [[ ! -f $SYSTEMD_DIR/skybyte-acme.timer ]] || systemctl disable --now skybyte-acme.timer;;
   6) [[ ! -e $BASE/acme-state.json ]] || { err "$(L '已有成功申请，拒绝清理' 'Successful issuance exists; refusing cleanup')";return 1; }
-   confirm "$(L '删除本工具未完成的 ACME 申请目录后重试？' 'Delete the incomplete managed ACME attempt for retry?')" && rm -rf "$BASE/acme";;
+   confirm "$(L '删除本工具未完成的 ACME 申请目录后重试？' 'Delete the incomplete managed ACME attempt for retry?')" || return 0; rm -rf "$BASE/acme";;
   0) return 0;;*) return 1;;
  esac
 }
@@ -7655,10 +7812,10 @@ def handler(base,manager,exporter=None):
     path=urllib.parse.urlsplit(self.path)
     match=re.fullmatch(r'/s/([A-Za-z0-9_-]{43})/(shadowrocket|v2rayn|clash|singbox)',path.path)
     if not match or path.query or path.fragment:return self.reply(404)
-    if not self.server.allow(self.client_address[0]):return self.reply(429)
     token,kind=match.groups();auth=authorize(base,token)
     if not auth:return self.reply(404)
     uid,_=auth
+    if not self.server.allow(self.client_address[0],uid):return self.reply(429)
     if self.command!='HEAD':export(uid)
     auth=authorize(base,token)
     if not auth or auth[0]!=uid:return self.reply(404)
@@ -7685,7 +7842,9 @@ class Server(socketserver.ThreadingMixIn,http.server.HTTPServer):
   try:super().process_request_thread(request,address)
   finally:self.slots.release()
  def handle_error(self,*_):pass
- def allow(self,ip):
+ def allow(self,ip,identity=None):
+  # Only authenticated account identities enter this table in the HTTP handler.
+  ip="account:"+identity if identity is not None else ip
   with self.rate_lock:
    now=time.monotonic()
    self.rates={k:v for k,v in self.rates.items() if now-v[0]<60}
@@ -7693,7 +7852,8 @@ class Server(socketserver.ThreadingMixIn,http.server.HTTPServer):
    start,count=self.rates.get(ip,(now,0));self.rates[ip]=(start,count+1);return count<60
  def get_request(self):
   request,address=self.socket.accept();request.settimeout(10)
-  return (self.context.wrap_socket(request,server_side=True,do_handshake_on_connect=False),address) if hasattr(self,'context') else (request,address)
+  try:return (self.context.wrap_socket(request,server_side=True,do_handshake_on_connect=False),address) if hasattr(self,'context') else (request,address)
+  except BaseException:request.close();raise
 
 class DualServer(Server):
  address_family=socket.AF_INET6
@@ -7815,9 +7975,9 @@ online_user(){
 0. Back'
  prompt_read '> ' choice || return 0
  case $choice in
-  1) confirm "$(L '签发新 Token？旧订阅地址将立即失效。' 'Issue new token? Previous subscription URL becomes invalid.')" && { printf '%s' "$RED";online_engine issue "$id";local rc=$?;printf '%s' "$RESET";return "$rc"; };;
+  1) confirm "$(L '签发新 Token？旧订阅地址将立即失效。' 'Issue new token? Previous subscription URL becomes invalid.')" || return 0; { printf '%s' "$RED";online_engine issue "$id";local rc=$?;printf '%s' "$RESET";return "$rc"; };;
   2) printf '%s' "$RED";online_engine links "$id";local rc=$?;printf '%s' "$RESET";return "$rc";;
-  3) confirm "$(L '撤销个人在线订阅地址？节点凭据不变。' 'Revoke personal online subscription URL? Node credentials stay unchanged.')" && online_engine revoke "$id";;
+  3) confirm "$(L '撤销个人在线订阅地址？节点凭据不变。' 'Revoke personal online subscription URL? Node credentials stay unchanged.')" || return 0; online_engine revoke "$id";;
   0) return 0;;*) return 1;;
  esac
 }
@@ -7903,7 +8063,7 @@ XHTTP: a → 3 starts guided deployment; a → 6 selects manual parameters; b �
 1. Install: main a → Reality/HY2/both. Enter defaults, allow actual TCP/UDP ports in provider firewall.
 2. Node ports: b → 8 (Enter keeps current values). Other node edits: main b → 9. Change admin ports/address/SNI or add/remove a protocol without resetting credentials/usage. TCP-only port edits retain HY2 hopping; changing HY2 ports disables hopping. Re-enable it for the current listener.
 3. Client import: main b → 1 or 4. Use Shadowrocket native links/QR, v2rayN, full Mihomo YAML or sing-box JSON. Self-signed HY2 needs explicit public-certificate trust; never share private keys.
-4. Accounts: main g. Initialize, create accounts and set quota/expiry. Share personal exports, not administrator nodes. Accounts are not actual people and may share credentials.
+4. Accounts: main c. Initialize, create accounts and set quota/expiry. Share personal exports, not administrator nodes. Accounts are not actual people and may share credentials.
 5. HTTPS subscriptions: obtain a trusted certificate through main f → 6, then main b → 6. Create/rotate/revoke personal links through user menu 16. Configure provider TCP access. Tokens grant access to credentials: keep links private. Revocation does not rotate node passwords.
 6. Certificates: main f → 6 issues isolated ACME/Certbot certificates using HTTP-01 or Cloudflare DNS-01; auto-renew is opt-in. HTTP requires public TCP80. DNS tokens remain private. Existing websites/certificates are preserved.
 7. WARP/media: main d → 9 / 8. WARP defaults to selected media/AI domains. It cannot guarantee location or unlocking. Anonymous tests do not verify playback. WARP menu 6 maintains catalogs; applying them is a separate confirmation.
@@ -8025,9 +8185,10 @@ def json_text(value):
 
 # Reused from SKYBYTE Xray Manager v0.1.34; see docs/XHTTP.md.
 def domain(value):
+    if not isinstance(value,str) or any(ord(c)<32 or ord(c)==127 for c in value):raise ValueError("Invalid domain / 域名无效")
     value = value.strip().rstrip(".").lower()
     value = value.encode("idna").decode("ascii")
-    if len(value) > 253 or not all(re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", x)
+    if re.fullmatch(r"[0-9.]+", value) or (value != "localhost" and ("." not in value or not re.fullmatch(r"[a-z][a-z0-9-]{1,62}", value.rsplit(".",1)[-1]))) or len(value) > 253 or not all(re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", x)
                                     for x in value.split(".")):
         raise ValueError("Invalid domain / 域名无效")
     return value
@@ -10034,7 +10195,7 @@ update_core() (
  ensure_binary || return 1
  local tag candidate asset active=no accepted=0 replaced=0
  tag=$(ask "官方稳定版本 [$CORE_VERSION]：" "Official stable version [$CORE_VERSION]: ") || return 1; tag=${tag:-$CORE_VERSION}
- confirm '校验并更新核心？运行中的节点会短暂重启。' 'Verify and update core? Active nodes will briefly restart.' || return 1
+ confirm '校验并更新核心？运行中的节点会短暂重启。' 'Verify and update core? Active nodes will briefly restart.' || return 0
  [[ ! -e $SKYBYTE_XRAY_LIB/.old-core && ! -e $SKYBYTE_XRAY_LIB/.update-active ]] || return 1
  candidate=$(mktemp "$SKYBYTE_XRAY_LIB/.update.XXXXXX") || return 1
  # shellcheck disable=SC2317,SC2329 # EXIT trap invocation is indirect; rollback tests exercise this function.
@@ -10097,7 +10258,7 @@ edit_nodes(){
  kind=$(choose_kind) || return 0
  case $choice in
   1) value=$(ask '新的节点名称：' 'New node name: ') || return 1; stage=$(helper rename --kind "$kind" --name "$value") || return 1;;
-  2) confirm '删除该协议？重新安装会生成新凭据。' 'Remove protocol? Reinstallation generates new credentials.' || return 1
+  2) confirm '删除该协议？重新安装会生成新凭据。' 'Remove protocol? Reinstallation generates new credentials.' || return 0
      stage=$(helper remove --kind "$kind") || return 1;;
   3) [[ $kind == xhttp-tls ]] || return 1
      cert=$(ask '新的 fullchain 证书绝对路径：' 'New fullchain certificate absolute path: ') || return 1
@@ -10181,7 +10342,7 @@ show_nodes(){
 qr_nodes(){
  helper guard || return 1
  if ! command -v qrencode >/dev/null; then
-  confirm '安装本地二维码工具？' 'Install local QR utility?' || return 1
+  confirm '安装本地二维码工具？' 'Install local QR utility?' || return 0
   apt_refresh && apt-get install -y qrencode || return 1
  fi
  local uri
@@ -10199,7 +10360,7 @@ make_backup(){
 restore_backup(){
  local archive stage
  archive=$(ask '可信备份文件的绝对路径：' 'Absolute path to your trusted backup: ') || return 1
- confirm '恢复配置？现有托管节点将替换为备份，外部文件保留。' 'Restore? Managed nodes will be replaced; external files preserved.' || return 1
+ confirm '恢复配置？现有托管节点将替换为备份，外部文件保留。' 'Restore? Managed nodes will be replaced; external files preserved.' || return 0
  ensure_binary || return 1
  [[ ! -f $SKYBYTE_XRAY_DIR/state.json ]] || make_backup || return 1
  stage=$(helper restore --file "$archive") || return 1
@@ -10237,22 +10398,13 @@ choose_reality_sni(){
 # modules/install.sh — build-time module; assembled by scripts/build.py.
 install_node(){
  local choice kind node_name node_port host sni target listen path='' mode=auto cert='' private_key='' stage
- local ipv6_install='' ipv6_status ipv6_ufw_status
- local flags=() apply_options=()
+ local flags=()
  choice=${1:-2}
  case $choice in 2|3);;*)return 1;;esac
  case $choice in 2) kind=xhttp-reality; node_port=443;; 3) kind=xhttp-tls; node_port=2053;; *) return 1;; esac
- if [[ $ipv6_install == ipv6 ]];then
-  if ! command -v ip >/dev/null;then install_environment_check "$kind" || return 1;fi
-  host=$(ipv6_install_address) || { ipv6_status=$?;[[ $ipv6_status == 2 ]] && return 0;return 1; }
-  listen=::
-  warn '使用所选 IPv6 作为节点连接地址，监听支持双栈。客户端网络必须支持 IPv6，云安全组和系统防火墙需放行 IPv6 TCP 端口。纯 IPv6 VPS 访问 IPv4 网站需要另行配置可用出站。已有同协议节点请用 l → 9 增加 IPv6 备用入口。' 'The selected IPv6 is the client address with a dual-stack listener. Client IPv6 and provider/host IPv6 TCP rules are required. IPv6-only VPSs need a separate working egress for IPv4-only sites. Use l → 9 for IPv6 backups on an existing protocol.'
- fi
  node_name=$(ask '节点名称 [SKYBYTE]：' 'Node name [SKYBYTE]: ') || return 1; node_name=${node_name:-SKYBYTE}-$kind
- [[ $ipv6_install != ipv6 ]] || node_name+=-IPv6
  node_port=$(ask "监听 TCP 端口 [$node_port]：" "TCP listen port [$node_port]: ") || return 1
- case $kind in vision|xhttp-reality) node_port=${node_port:-443};; *) node_port=${node_port:-2053};; esac
- if [[ $ipv6_install != ipv6 ]];then
+ case $kind in xhttp-reality) node_port=${node_port:-443};; *) node_port=${node_port:-2053};; esac
   listen=$(ask '监听：1 IPv4  2 双栈 IPv4+IPv6 [1]：' 'Listen: 1 IPv4  2 Dual-stack IPv4+IPv6 [1]: ') || return 1
   case ${listen:-1} in 1) listen=0.0.0.0;; 2) listen=::;; *) return 1;; esac
   while :; do
@@ -10260,7 +10412,6 @@ install_node(){
    [[ $host =~ [^[:space:]] ]] && break
    warn '此项没有默认值，请填写本 VPS 的公网 IP 或域名。' 'There is no default; enter this VPS public IP or domain.'
   done
- fi
  helper preflight --port "$node_port" --listen "$listen" --address "$host" --name "$node_name" --kind "$kind" || return 1
  install_environment_check "$kind" && install_port_check "$node_port" "$listen" || return 1
  if [[ $kind == xhttp-tls ]]; then
@@ -10269,11 +10420,9 @@ install_node(){
   private_key=$(ask '私钥文件绝对路径（不修改源文件）：' 'Absolute private-key path (source is preserved): ') || return 1
   helper tls-input --sni "$sni" --cert "$cert" --key "$private_key" || return 1
   local cdn
-  if [[ $ipv6_install != ipv6 ]];then
-   cdn=$(ask '通过 CDN 连接？[y/N]：' 'Use a CDN? [y/N]: ') || return 1
+    cdn=$(ask '通过 CDN 连接？[y/N]：' 'Use a CDN? [y/N]: ') || return 1
    if confirmed "$cdn"; then flags+=(--cdn); mode=packet-up; fi
-   warn 'CDN 的 DNS、HTTPS 端口及回源 TLS 验证须在提供商后台配置。' 'Configure CDN DNS, supported HTTPS port and verified origin TLS at your provider.'
-  fi
+  warn 'CDN 的 DNS、HTTPS 端口及回源 TLS 验证须在提供商后台配置。' 'Configure CDN DNS, supported HTTPS port and verified origin TLS at your provider.'
  else
   sni=$(choose_reality_sni) || return 1
   [[ -n $sni ]] || return 0
@@ -10298,22 +10447,13 @@ install_node(){
  else flags+=(--target "$target"); fi
  [[ $kind != xhttp-* ]] || flags+=(--path "$path" --mode "$mode")
  stage=$(helper prepare "${flags[@]}") || { error '节点配置准备失败，具体原因见上方提示。' 'Node configuration preparation failed; see the reason above.'; return 1; }
- apply_options=("$stage" yes)
- if [[ $ipv6_install == ipv6 ]];then
-  if ! ipv6_engine check-install "$host";then helper finalize --stage "$stage";return 1;fi
-  if ! ipv6_ufw_status=$(helper ufw-state);then helper finalize --stage "$stage";return 1;fi
-  if [[ $ipv6_ufw_status == active ]];then
-   warn '先放行新端口；后续安装失败时，新增放行规则会保留，请自行核对。' 'Allowing the new port first; added rules remain if installation later fails. Review them if needed.'
-   if ! helper firewall-allow --ports "$node_port";then helper finalize --stage "$stage";return 1;fi
-  fi
-  apply_options+=("ipv6-install:$node_port")
- fi
- apply_stage "${apply_options[@]}" || { error '安装失败，原配置已保留或回退。' 'Install failed; previous configuration retained or restored.'; return 1; }
+ apply_stage "$stage" yes || { error '安装失败，原配置已保留或回退。' 'Install failed; previous configuration retained or restored.'; return 1; }
  show_nodes
 }
 # Runs inside xhttp_command's isolated shell; all inputs were already confirmed.
 xhttp_install_automatic(){
  local kind=$XHTTP_KIND host listen=0.0.0.0 port=443 stage
+ command -v curl >/dev/null || apt_install --no-install-recommends curl ca-certificates || return 1
  local flags=(--kind "$kind" --name "$XHTTP_NAME" --sni "$XHTTP_SNI")
  if [[ $kind == xhttp-tls && $XHTTP_CDN == 1 ]];then host=$XHTTP_SNI
  else host=$(curl -q -4fsS --noproxy '*' --max-time 12 https://api.ipify.org) || host=$(curl -q -6fsS --noproxy '*' --max-time 12 https://api64.ipify.org) || return 1;fi
@@ -10495,7 +10635,10 @@ xhttp_custom_menu(){
 xhttp_guided_install() (
  local XHTTP_KIND=${1:-xhttp-reality} XHTTP_NAME XHTTP_SNI=addons.mozilla.org
  local XHTTP_CERT='' XHTTP_KEY='' XHTTP_CDN=0 WIZARD_CHOICE
- local selected_bbr selected_firewall selected_qr
+ local selected_bbr selected_firewall selected_qr installed_kinds
+ installed_kinds=''
+ if [[ -f $BASE/xhttp/state.json || -L $BASE/xhttp/state.json ]];then installed_kinds=$(xhttp_backend node-kinds) || return 1;fi
+ if grep -Fxq "$XHTTP_KIND" <<< "$installed_kinds";then err "$(L '所选 XHTTP 协议已经安装，请使用 b → 11 管理。' 'This XHTTP protocol is installed; manage it through b → 11.')";return 1;fi
  case $XHTTP_KIND in xhttp-reality|xhttp-tls);;*)return 1;;esac
  XHTTP_NAME=$(choose_node_name) || return 1
  if [[ $XHTTP_KIND == xhttp-tls ]];then
@@ -10812,7 +10955,7 @@ LOGO
   else sub_menu "$group" || return 0; [[ $MENU_BACK != 1 ]] || { group='';continue; };fi
   [[ -n $MAIN_ACTION ]] || continue
   navigation_action "$MAIN_ACTION"
-  if [[ $MAIN_ACTION == uninstall && $MENU_ACTION_STATUS == 0 && ! -e $META ]]; then return 0; fi
+  if [[ $MAIN_ACTION == uninstall && $MENU_ACTION_STATUS == 0 && ! -e $META && ! -f $BASE/xhttp/state.json && ! -f $MANAGER_LIB && ! -f $MANAGER_BIN ]]; then return 0; fi
   if [[ $MAIN_ACTION == manager_update && $MENU_ACTION_STATUS == 0 && -f $MANAGER_LIB ]] && ! grep -Fxq "MANAGER_VERSION=$MANAGER_VERSION" "$MANAGER_LIB"; then rm -f -- "$SKYBYTE_SESSION_FILE";exec 9>&-; exec bash "$MANAGER_LIB"; fi
  done
 )
