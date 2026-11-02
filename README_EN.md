@@ -20,9 +20,9 @@
 
 ---
 
-# SKYBYTE Manager V2.8.28: modular source architecture
+# SKYBYTE Manager V2.9.0: modular source architecture
 
-The resource page now reports running accounts, PSS, effective memory headroom and a conservative capacity estimate, retaining independent quotas and the hardened installation chain. [说明 / Details](docs/INSTALL-SECURITY.md)。
+Guided installation collects protocol, name and BBR/UFW/QR choices before applying the confirmed defaults, with hopping for IPv4 HY2. **a → 9** retains custom installation; **d → 14** configures existing nodes. [Details](docs/AUTOMATIC-SETUP.md).
 
 Read-only installation checks (**a → 7**) verify the managed configuration, systemd service, executable and actual socket owners when a UDP port is occupied. Confirmed managed HY2 is reported as already installed, with links to nodes (**b → 1**), port editing (**b → 8**) and service status (**c → 1**). Other or unverified owners remain conflicts. Installation never treats an occupied port as free or overwrites an existing node.
 
@@ -379,7 +379,7 @@ Restore retains current account policy/usage and current subscription tokens. HT
 
 ```bash
 python3 scripts/build.py --check
-python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.28
+python3 scripts/package_release.py --output /tmp/skybyte-release-2.9.0
 ```
 
 Packaging includes only bootstrap.sh, install.sh, the full bundle, public rule catalog and SHA256SUMS, never runtime state or credentials.

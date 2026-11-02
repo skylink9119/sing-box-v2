@@ -74,3 +74,7 @@ backends as well as stale Bash payloads. The generated Python entry point remain
 available for development/tests; the VPS receives the same standalone Bash layout.
 
 资源与容量报告：`src/resources.py` 负责只读进程快照、PSS、可见 cgroup 限制和保守容量估算，由 `lib/operations.sh` 调用；不改变账号进程或配额策略。
+
+自动配套部署：`modules/deployment.sh` 编排二维码工具、BBR、UFW 与 HY2 跳跃；`src/deployment_checks.py` 只读检查既有规则。新安装在节点事务提交后再进入此可选流程，失败不撤销已安装节点。
+
+前置安装向导：`modules/wizard.sh` 只收集协议、名称和配套选项并显示默认计划；确认前不安装、不写节点文件。确认后调用既有安装事务，提交后由 `deployment_apply_selected` 执行所选步骤。手动安装通过 a → 9 保留。

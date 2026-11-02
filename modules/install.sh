@@ -69,7 +69,7 @@ install_protocol() (
  prompt_read '> ' mode || return; fi
  [[ "$mode" == 0 ]] && return 0
  [[ "$mode" =~ ^[123]$ ]] || { err "Invalid selection"; return 1; }
- notice; confirm "$(L '同意声明并安装所选协议？' 'Accept notice and install selected protocol(s)?')" || return 0
+ if [[ ${2:-} != guided ]];then notice; confirm "$(L '同意声明并安装所选协议？' 'Accept notice and install selected protocol(s)?')" || return 0;fi
  if [[ -e $CONF || -L $CONF || -e $META || -L $META || -e $BIN || -L $BIN || -e $SYSTEMD_DIR/sing-box.service || -L $SYSTEMD_DIR/sing-box.service ]] || command -v sing-box >/dev/null; then err "$(L '发现已有配置或核心，拒绝覆盖；追加协议用 a → 5 → 4，已有节点增加 IPv6 备用用 d → 13 → 2。' 'Existing configuration or binary found; refusing to overwrite. Add a protocol through a → 5 → 4, or add IPv6 backups through d → 13 → 2.')"; return 1; fi
  if systemctl list-unit-files sing-box.service --no-legend 2>/dev/null | grep -q sing-box; then err "$(L '已有 sing-box 服务，拒绝覆盖' 'Existing sing-box service found; refusing to overwrite')"; return 1; fi
  install_environment_check "$mode" || return 1
@@ -104,8 +104,11 @@ install_protocol() (
  install_port_check "$mode" "$vp" "$hp" "${listen_addr:-0.0.0.0}" || return 1
  local domain="" cert="" key="" sni="" node_name node_suffix=''
  [[ ${2:-} != ipv6 ]] || node_suffix=-IPv6
- node_name=$(choose_node_name "$node_suffix") || { err "$(L '节点名称无效' 'Invalid node name')"; return 1; }
+ if [[ ${2:-} == guided ]];then node_name=$WIZARD_NODE_NAME
+ else node_name=$(choose_node_name "$node_suffix") || { err "$(L '节点名称无效' 'Invalid node name')"; return 1; };fi
  if [[ $mode != 1 ]]; then
+  if [[ ${2:-} == guided ]];then cert_mode=1
+  else
   prompt_options 'HY2证书:
 1. 无域名(自动自签名)
 2. 已有证书
@@ -114,6 +117,7 @@ install_protocol() (
 2. Existing certificate
 3. Managed ACME'
   prompt_read '> ' cert_mode
+  fi
   case "$cert_mode" in
    1) say '需要客户端安全地导入证书并启用验证。' 'Client must securely import and verify the certificate.';;
    2) prompt_read "$(L '证书域名：' 'Certificate domain: ')" domain
@@ -129,7 +133,8 @@ install_protocol() (
   esac
  fi
  if [[ $mode != 2 ]]; then
-  prompt_read "$(L 'Reality 握手域名 [addons.mozilla.org]：' 'Reality handshake [addons.mozilla.org]: ')" sni
+  if [[ ${2:-} == guided ]];then sni=addons.mozilla.org
+  else prompt_read "$(L 'Reality 握手域名 [addons.mozilla.org]：' 'Reality handshake [addons.mozilla.org]: ')" sni || return 1;fi
   sni=${sni:-addons.mozilla.org}
   [[ $sni =~ ^[a-zA-Z0-9.-]+$ ]] || { err "$(L '无效 SNI' 'Invalid SNI')"; return 1; }
  fi
@@ -209,4 +214,8 @@ PY_INSTALL_SAN
  exports || return 1
  committed=true
  ok "$(L '部署完成；请检查云防火墙' 'Installed; check provider firewall')"
+ if [[ ${2:-} == guided ]];then
+  deployment_apply_selected "$WIZARD_BBR" "$WIZARD_FIREWALL" "$WIZARD_QR" || warn "$(L '节点已安装，部分所选配置未完成，请查看上方结果。' 'Node installed; some selected setup is incomplete. Inspect the results above.')"
+ else automatic_setup || warn "$(L '节点已保留，部分配套配置未完成，可通过 d → 14 重试。' 'Node retained; some optional setup is incomplete. Retry via d → 14.')"
+ fi
 )

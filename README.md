@@ -20,9 +20,9 @@
 
 ---
 
-# SKYBYTE Manager V2.8.28：模块化维护结构
+# SKYBYTE Manager V2.9.0：模块化维护结构
 
-本版资源页增加运行账号数、PSS、有效内存余量与保守容量参考；保持独立配额。安装链固定哈希与非交互安装沿用上一版改进。 [说明 / Details](docs/INSTALL-SECURITY.md)。
+安装向导先收集协议、节点名称和 BBR/UFW/二维码选项，再按确认的默认计划自动安装；IPv4 HY2 自动配置端口跳跃。**a → 9** 保留手动参数安装，**d → 14** 可给已有节点补配。[使用说明](docs/AUTOMATIC-SETUP.md)。
 
 安装前检测 **a → 7** 遇到 UDP 端口占用时，会核对本脚本配置、systemd 服务、核心进程和实际监听归属。确认是已安装 HY2 后提示“已安装，无需重复安装”，并提供查看节点 **b → 1**、修改端口 **b → 8** 和服务状态 **c → 1** 入口；其他或无法确认的占用仍报冲突。此识别仅用于只读检测，不把占用端口当作空闲端口，不覆盖已有节点。
 
@@ -379,7 +379,7 @@ HY2 支持上下行 Mbps、`ignore_client_bandwidth` 与 Salamander 混淆，服
 
 ```bash
 python3 scripts/build.py --check
-python3 scripts/package_release.py --output /tmp/skybyte-release-2.8.28
+python3 scripts/package_release.py --output /tmp/skybyte-release-2.9.0
 ```
 
 打包只包含 `bootstrap.sh` 启动命令、安装入口、完整脚本、公开规则列表及SHA256SUMS，不发布运行时配置或凭据。
