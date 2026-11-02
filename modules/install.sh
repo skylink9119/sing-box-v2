@@ -58,6 +58,9 @@ install_protocol() (
  local stage="" committed=false final_bin=$BIN final_conf=$CONF final_meta=$META final_base=$BASE
  trap installation_cleanup EXIT
  need_root
+ local guided=false ipv6_install=false
+ case ${2:-} in guided|guided-ipv6) guided=true;;esac
+ case ${2:-} in ipv6|guided-ipv6) ipv6_install=true;;esac
  local mode="${1:-}" cert_mode="" vp=443 hp=443 supplied_ip='' listen_addr=''
  if [[ -z "$mode" ]]; then prompt_options '1. Reality 单协议
 2. HY2 单协议
@@ -69,17 +72,18 @@ install_protocol() (
  prompt_read '> ' mode || return; fi
  [[ "$mode" == 0 ]] && return 0
  [[ "$mode" =~ ^[123]$ ]] || { err "Invalid selection"; return 1; }
- if [[ ${2:-} != guided ]];then notice; confirm "$(L '同意声明并安装所选协议？' 'Accept notice and install selected protocol(s)?')" || return 0;fi
- if [[ -e $CONF || -L $CONF || -e $META || -L $META || -e $BIN || -L $BIN || -e $SYSTEMD_DIR/sing-box.service || -L $SYSTEMD_DIR/sing-box.service ]] || command -v sing-box >/dev/null; then err "$(L '发现已有配置或核心，拒绝覆盖；追加协议用 a → 5 → 4，已有节点增加 IPv6 备用用 d → 13 → 2。' 'Existing configuration or binary found; refusing to overwrite. Add a protocol through a → 5 → 4, or add IPv6 backups through d → 13 → 2.')"; return 1; fi
+ if [[ $guided != true ]];then notice; confirm "$(L '同意声明并安装所选协议？' 'Accept notice and install selected protocol(s)?')" || return 0;fi
+ if [[ -e $CONF || -L $CONF || -e $META || -L $META || -e $BIN || -L $BIN || -e $SYSTEMD_DIR/sing-box.service || -L $SYSTEMD_DIR/sing-box.service ]] || command -v sing-box >/dev/null; then err "$(L '发现已有配置或核心，拒绝覆盖；追加协议用 a → 6 → 4，已有节点增加 IPv6 备用用 d → 13 → 2。' 'Existing configuration or binary found; refusing to overwrite. Add a protocol through a → 6 → 4, or add IPv6 backups through d → 13 → 2.')"; return 1; fi
  if systemctl list-unit-files sing-box.service --no-legend 2>/dev/null | grep -q sing-box; then err "$(L '已有 sing-box 服务，拒绝覆盖' 'Existing sing-box service found; refusing to overwrite')"; return 1; fi
  install_environment_check "$mode" || return 1
- if [[ ${2:-} == ipv6 ]];then
+ if [[ $ipv6_install == true ]];then
   local ipv6_status
-  supplied_ip=$(ipv6_install_address) || { ipv6_status=$?;[[ $ipv6_status == 2 ]] && return 0;return 1; }
+  if [[ $guided == true ]];then supplied_ip=$(ipv6_install_auto_address) || return 1
+  else supplied_ip=$(ipv6_install_address) || { ipv6_status=$?;[[ $ipv6_status == 2 ]] && return 0;return 1; };fi
   listen_addr=::
   warn "$(L '使用所选 IPv6 作为节点连接地址，监听支持双栈；客户端网络必须支持 IPv6。请放行云安全组和系统防火墙的 IPv6 TCP/UDP 端口。纯 IPv6 VPS 访问 IPv4 网站需要另行配置可用出站。' 'The selected IPv6 is the client address with a dual-stack listener. Client IPv6 and provider/host IPv6 TCP/UDP rules are required. IPv6-only VPSs need a separate working egress for IPv4-only sites.')"
-  if [[ $mode != 2 ]];then prompt_read "$(L 'Reality TCP 端口 [443]：' 'Reality TCP port [443]: ')" vp || return 1;vp=${vp:-443};fi
-  if [[ $mode != 1 ]];then prompt_read "$(L 'HY2 UDP 端口 [443]：' 'HY2 UDP port [443]: ')" hp || return 1;hp=${hp:-443};fi
+  if [[ $guided != true && $mode != 2 ]];then prompt_read "$(L 'Reality TCP 端口 [443]：' 'Reality TCP port [443]: ')" vp || return 1;vp=${vp:-443};fi
+  if [[ $guided != true && $mode != 1 ]];then prompt_read "$(L 'HY2 UDP 端口 [443]：' 'HY2 UDP port [443]: ')" hp || return 1;hp=${hp:-443};fi
  fi
  if [[ ${2:-} == custom ]];then
   if [[ $mode != 2 ]];then prompt_read "$(L '本机 Reality TCP 端口 [443]：' 'Local Reality TCP port [443]: ')" vp || return 1;vp=${vp:-443};fi
@@ -103,11 +107,11 @@ install_protocol() (
  if [[ $mode != 2 ]];then haproxy_engine check_port "$vp" || return 1;fi
  install_port_check "$mode" "$vp" "$hp" "${listen_addr:-0.0.0.0}" || return 1
  local domain="" cert="" key="" sni="" node_name node_suffix=''
- [[ ${2:-} != ipv6 ]] || node_suffix=-IPv6
- if [[ ${2:-} == guided ]];then node_name=$WIZARD_NODE_NAME
+ [[ $ipv6_install != true ]] || node_suffix=-IPv6
+ if [[ $guided == true ]];then node_name=$WIZARD_NODE_NAME
  else node_name=$(choose_node_name "$node_suffix") || { err "$(L '节点名称无效' 'Invalid node name')"; return 1; };fi
  if [[ $mode != 1 ]]; then
-  if [[ ${2:-} == guided ]];then cert_mode=1
+  if [[ $guided == true ]];then cert_mode=1
   else
   prompt_options 'HY2证书:
 1. 无域名(自动自签名)
@@ -133,7 +137,7 @@ install_protocol() (
   esac
  fi
  if [[ $mode != 2 ]]; then
-  if [[ ${2:-} == guided ]];then sni=addons.mozilla.org
+  if [[ $guided == true ]];then sni=addons.mozilla.org
   else prompt_read "$(L 'Reality 握手域名 [addons.mozilla.org]：' 'Reality handshake [addons.mozilla.org]: ')" sni || return 1;fi
   sni=${sni:-addons.mozilla.org}
   [[ $sni =~ ^[a-zA-Z0-9.-]+$ ]] || { err "$(L '无效 SNI' 'Invalid SNI')"; return 1; }
@@ -189,7 +193,7 @@ PY_INSTALL_SAN
  chmod 600 "$CONF" "$META"
  "$BIN" check -c "$CONF" || { err "$(L '配置检查失败' 'Configuration check failed')"; return 1; }
  exports >/dev/null || return 1
- if [[ ${2:-} == ipv6 ]];then
+ if [[ $ipv6_install == true ]];then
   ipv6_engine check-install "$supplied_ip" || return 1
   if command -v ufw >/dev/null;then
    local ipv6_ufw_status
@@ -206,15 +210,15 @@ PY_INSTALL_SAN
  cert=$(state cert_path)
  "$BIN" check -c "$CONF" || return 1
  setup_service || return 1
- if [[ ${2:-} != ipv6 ]] && command -v ufw >/dev/null && LC_ALL=C ufw status | grep -q '^Status: active'; then if [[ $mode != 2 ]]; then ufw allow "$vp/tcp"; fi; if [[ $mode != 1 ]]; then ufw allow "$hp/udp"; fi; fi
+ if [[ $ipv6_install != true ]] && command -v ufw >/dev/null && LC_ALL=C ufw status | grep -q '^Status: active'; then if [[ $mode != 2 ]]; then ufw allow "$vp/tcp"; fi; if [[ $mode != 1 ]]; then ufw allow "$hp/udp"; fi; fi
  systemctl daemon-reload && systemctl enable --now sing-box && systemctl restart sing-box || return 1
  sleep 2; systemctl is-active --quiet sing-box || { err "$(L '服务启动失败，请查看 journalctl -u sing-box' 'Service failed; inspect journalctl -u sing-box')"; return 1; }
- [[ ${2:-} != ipv6 ]] || ipv6_engine ready || return 1
+ [[ $ipv6_install != true ]] || ipv6_engine ready || return 1
  if [[ $cert_mode == 1 ]]; then echo "$(L '自签名证书：' 'Self-signed certificate: ')$cert"; openssl x509 -in "$cert" -noout -fingerprint -sha256; say '务必将证书安全导入客户端并验证，链接本身不足以建立信任。' 'Securely import and verify certificate on client; URL alone cannot establish trust.'; fi
  exports || return 1
  committed=true
  ok "$(L '部署完成；请检查云防火墙' 'Installed; check provider firewall')"
- if [[ ${2:-} == guided ]];then
+ if [[ $guided == true ]];then
   deployment_apply_selected "$WIZARD_BBR" "$WIZARD_FIREWALL" "$WIZARD_QR" || warn "$(L '节点已安装，部分所选配置未完成，请查看上方结果。' 'Node installed; some selected setup is incomplete. Inspect the results above.')"
  else automatic_setup || warn "$(L '节点已保留，部分配套配置未完成，可通过 d → 14 重试。' 'Node retained; some optional setup is incomplete. Retry via d → 14.')"
  fi

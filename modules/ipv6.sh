@@ -8,6 +8,20 @@ except (ValueError,OSError,KeyError,subprocess.SubprocessError) as error:
  print(str(error),file=sys.stderr);sys.exit(1)
 PY_IPV6
 }
+ipv6_install_auto_address(){
+ if ! command -v ip >/dev/null;then
+  [[ -z ${SKYBYTE_ASSET_DIR:-} ]] || { err 'Offline mode requires iproute2 / 离线模式需要 iproute2';return 1; }
+  apt_install --no-install-recommends iproute2 >&2 || return 1
+ fi
+ local candidates selected
+ candidates=$(ipv6_engine detect) || return 1
+ while IFS= read -r selected;do
+  [[ -n $selected ]] || continue
+  if ipv6_engine check-install "$selected" >&2;then printf '%s\n' "$selected";return 0;fi
+ done <<< "$candidates"
+ err "$(L '没有通过检测的原生公网 IPv6，未安装节点' 'No native public IPv6 passed checks; node not installed')"
+ return 1
+}
 ipv6_install_address(){
  local candidates selected
  if ! command -v ip >/dev/null;then

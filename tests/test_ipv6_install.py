@@ -27,7 +27,7 @@ curl(){ echo UNEXPECTED_IP_QUERY >&2;return 1; }
   code=navigation.NavigationTests.mocks(self)+'''install_protocol(){ echo "INSTALL $*"; }
 main'''
   for lang in ('zh_CN','en_US'):
-   r=self.shell('LANGUAGE_CHOICE='+lang+';'+code,input='a\n8\n2\n1\n0\n0\nq\n')
+   r=self.shell('LANGUAGE_CHOICE='+lang+';'+code,input='a\n7\n10\n2\n1\n0\n0\n0\nq\n')
    self.assertIn('INSTALL 2 ipv6',r.stdout);self.assertIn('INSTALL 1 ipv6',r.stdout)
    self.assertNotIn('SELECT_LOCK=1',r.stdout)
    self.assertEqual(r.stdout.count('SKYBYTE Manager v'),2)
@@ -86,3 +86,26 @@ ipv6_engine(){ case $1 in detect)echo '''+shlex.quote(PUBLIC)+''';;check-install
 ipv6_install_address'''
   r=self.shell(code,input='\n');self.assertEqual(r.stdout.strip(),PUBLIC)
   self.assertIn('INSTALLED_IPROUTE2',r.stderr);self.assertIn('FIREWALL_NOTE',r.stderr)
+ def test_automatic_address_selects_first_verified_candidate_without_prompts(self):
+  code='''ip(){ :; }
+ipv6_engine(){ case $1 in detect)printf '%s\\n' '2001:4860:4860::8844' '''+shlex.quote(PUBLIC)+''';;check-install)[[ $2 == '''+shlex.quote(PUBLIC)+''' ]];;esac; }
+ipv6_install_auto_address'''
+  r=self.shell(code);self.assertEqual(r.stdout.strip(),PUBLIC)
+ def test_automatic_address_fails_when_no_candidate_passes(self):
+  for candidates in ('',PUBLIC):
+   code='ip(){ :; };ipv6_engine(){ case $1 in detect)echo '+shlex.quote(candidates)+';;*)return 1;;esac; };ipv6_install_auto_address'
+   r=self.shell(code,ok=False);self.assertNotEqual(r.returncode,0)
+   self.assertFalse((self.base/'state.json').exists())
+ @unittest.skipUnless(manager.SB,'Real sing-box required')
+ def test_guided_ipv6_reality_uses_validated_address_and_no_extra_prompts(self):
+  code=self.install_mocks()+self.network()+'''deployment_apply_selected(){ echo "APPLIED=$*"; }
+notice(){ :; };guided_install 1 ipv6'''
+  r=self.shell(code,input='IPv6 Node\nn\nn\nn\ny\n')
+  state=json.loads((self.base/'state.json').read_text())
+  cfg=json.loads((self.config/'config.json').read_text())
+  self.assertEqual(state['ip'],PUBLIC);self.assertEqual(state['listen'],'::')
+  self.assertEqual(state['node_name'],'IPv6 Node-IPv6')
+  self.assertEqual(state['mode'],'1');self.assertEqual(state['sni'],'addons.mozilla.org')
+  self.assertEqual(cfg['inbounds'][0]['listen_port'],443)
+  self.assertIn('APPLIED=0 0 0',r.stdout);self.assertIn('IPV6_READY',r.stdout)
+  self.assertNotIn('UNEXPECTED_IP_QUERY',r.stdout+r.stderr)

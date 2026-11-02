@@ -13,7 +13,7 @@ install_port_check(){
  [[ $mode == 2 ]] || options+=(--tcp-port "$tcp")
  [[ $mode == 1 ]] || options+=(--udp-port "$udp")
  if ! report_output install_check_engine --project sing-box --language "${LANGUAGE_CHOICE:-zh_CN}" --phase ports --listen "$listen" "${options[@]}";then
-  err "$(L '需要其他端口时，可用 a → 6 → 3 自定义监听端口安装；请保留现有服务并选择空闲端口。' 'For another port, use a → 6 → 3 to install with custom ports. Retain existing services and choose a free port.')"
+  err "$(L '需要其他端口时，可用 a → 7 → 3 自定义监听端口安装；请保留现有服务并选择空闲端口。' 'For another port, use a → 7 → 3 to install with custom ports. Retain existing services and choose a free port.')"
   return 1
  fi
 }
