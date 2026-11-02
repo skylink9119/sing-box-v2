@@ -72,3 +72,5 @@ Do not add runtime imports of repository fragments or perform work at include ti
 The builder compiles the assembled Python before writing it. `--check` detects stale
 backends as well as stale Bash payloads. The generated Python entry point remains
 available for development/tests; the VPS receives the same standalone Bash layout.
+
+资源与容量报告：`src/resources.py` 负责只读进程快照、PSS、可见 cgroup 限制和保守容量估算，由 `lib/operations.sh` 调用；不改变账号进程或配额策略。
