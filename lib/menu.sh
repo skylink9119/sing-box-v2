@@ -17,10 +17,10 @@ sub_menu(){
  case $group in
   1) say '【节点安装】' '[Install nodes]';;
   2) say '【节点与订阅】' '[Nodes and subscriptions]';;
-  3) say '【服务与日志】' '[Services and logs]';;
+  3) say '【运行状态与日志】' '[Status and logs]';;
   4) say '【服务器与网络】' '[Server and network]';;
   5) say '【更新与备份】' '[Updates and backups]';;
-  6) say '【设置与卸载】' '[Settings and uninstall]';;
+  6) say '【脚本设置与卸载】' '[Script settings and uninstall]';;
  esac
  case $group in
   1)
@@ -239,25 +239,27 @@ main() (
                 Reality · Hysteria2 · VPS
 LOGO
   printf '==============================================%s\n' "$RESET"
-  printf '%s' "$GREEN"
-  say ' a. 节点安装' ' a. Install nodes'
-  say ' b. 节点与订阅' ' b. Nodes and subscriptions'
-  say ' c. 服务与日志' ' c. Services and logs'
-  say ' d. 服务器与网络' ' d. Server and network'
-  say ' e. 更新与备份' ' e. Updates and backups'
-  say ' f. 设置与卸载' ' f. Settings and uninstall'
-  say ' g. 用户与配额管理' ' g. Users and quotas'
   report_output users_summary
   printf '%s' "$GREEN"
+  say '【节点管理】' '[Node management]'
+  say ' a. 节点安装' ' a. Install nodes'
+  say ' b. 节点与订阅' ' b. Nodes and subscriptions'
+  say ' c. 用户与配额' ' c. Users and quotas'
+  say '【服务器运维】' '[Server operations]'
+  say ' d. 服务器与网络' ' d. Server and network'
+  say ' e. 运行状态与日志' ' e. Status and logs'
+  say '【维护设置】' '[Maintenance and settings]'
+  say ' f. 更新与备份' ' f. Updates and backups'
+  say ' g. 脚本设置与卸载' ' g. Script settings and uninstall'
   say ' q. 退出' ' q. Exit'
   printf '%s' "$RESET"
   printf '%sYouTube: %s%s\n' "$CYAN" "$YOUTUBE" "$RESET"
   printf '%s%s%s\n' "$CYAN" "$(L '如果这个脚本对你有帮助，欢迎订阅我的 YouTube 频道，支持 SKYBYTE 持续更新！' "If you find this script helpful, please subscribe to my YouTube channel and support SKYBYTE's continued development!")" "$RESET"
   prompt_read "$(L '请选择（字母）：' 'Select (letter): ')" selected || return 0
-  # Numeric aliases retain compatibility with previous releases.
+  # Numeric aliases follow the displayed category order.
   case $selected in
-   a|A|1) group=1;; b|B|2) group=2;; c|C|3) group=3;; d|D|4) group=4;;
-   e|E|5) group=5;; f|F|6) group=6;; g|G|7) group=7;;
+   a|A|1) group=1;; b|B|2) group=2;; c|C|3) group=7;; d|D|4) group=4;;
+   e|E|5) group=3;; f|F|6) group=5;; g|G|7) group=6;;
    q|Q|0) return 0;; *) err "$(L '无效选项' 'Invalid choice')";continue;;
   esac
  fi

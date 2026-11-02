@@ -20,7 +20,7 @@
 
 ---
 
-# SKYBYTE Manager V2.10.1: modular source architecture
+# SKYBYTE Manager V2.10.2: modular source architecture
 
 **a → 3 installs XHTTP automatically; b → 11 manages XHTTP**: on-demand latest stable Xray, guided XHTTP + Reality / TLS-CDN deployment, with separate configuration, service, exports and backups under one manager. Source remains modular; no second manager is downloaded. [XHTTP architecture and usage](docs/XHTTP.md).
 
@@ -114,7 +114,7 @@ After installing/updating, log in again and run **`sb`** to open the main menu. 
 
 **Debian 11/12 compatibility:** refresh APT indexes strictly, permit authenticated Suite-only changes, abort on index errors, and retry package download failures once after another refresh. Bullseye archive repair supports legacy `.list` and deb822 `.sources`, backing up originals under `/etc/apt/skybyte-source-backup.*`. Existing HTTP/HTTPS transport, Signed-By, third-party repositories and custom mirrors are preserved. Only archive entries disable metadata expiry checking; package signatures and HTTPS verification remain enabled. Debian 12/13 are not redirected to the archive. HY2 self-signed generation uses an isolated request configuration to avoid duplicate certificate extensions in OpenSSL 1.1.1 on Debian 11, for both fresh installation and protocol additions; TLS verification remains enabled. Debian 11 official LTS has ended; historical packages do not restore security maintenance. See [Debian lifecycle](https://www.debian.org/releases/bullseye/) and [official archive](https://www.debian.org/distrib/archive).
 
-Online fresh installation resolves the latest official stable sing-box release, excludes prereleases, and stops if lookup fails without falling back to an older version. Offline mode uses the explicitly supplied official 1.14.4 package. Downloads are SHA-256 verified against GitHub Release metadata. It does not run a remote package installer. Choose a language at first launch; it is saved in `/etc/singbox-v2/language.conf`. Menu **f → 1** changes language.
+Online fresh installation resolves the latest official stable sing-box release, excludes prereleases, and stops if lookup fails without falling back to an older version. Offline mode uses the explicitly supplied official 1.14.4 package. Downloads are SHA-256 verified against GitHub Release metadata. It does not run a remote package installer. Choose a language at first launch; it is saved in `/etc/singbox-v2/language.conf`. Menu **g → 1** changes language.
 
 **Installation refuses to overwrite an existing configuration, manager state, sing-box binary, service or occupied protocol port.** Manage an existing deployment through 1 → 5. Fresh installation stages and validates files before committing; failures remove only files created by that attempt, allowing retry without replacing existing files. Management/updates preserve credentials. New deployments use TCP 443 / UDP 443. Configure the provider firewall separately.
 
@@ -124,11 +124,11 @@ Online fresh installation resolves the latest official stable sing-box release, 
 | --- | --- | --- |
 | a | Install nodes | 1–5: Reality / HY2 / XHTTP / dual / IPv6; 6: manual parameters; 7: restricted networks |
 | b | Nodes and subscriptions | Information / exports / custom names / QR codes / accounts / personal HTTPS subscriptions / node parameters (b → 7) |
-| c | Services and logs | Controls / logs / Argo status |
+| c | Users and quotas | Accounts / usage / quota / expiry / diagnostics / resources |
 | d | Server and network | Initialization / UFW / firewall / BBR / hopping / traffic / resources / media / WARP / sing-box relay / HAProxy TCP passthrough / Reality target checks |
-| e | Updates and backups | Core versions / backup / restore / manager updates / certificates / ACME / encrypted backups |
-| f | Settings and uninstall | Language / privacy / uninstall / guide |
-| g | Users and quotas | Accounts / usage / quota / expiry / diagnostics / resources |
+| e | Status and logs | Controls / logs / Argo status |
+| f | Updates and backups | Core versions / backup / restore / manager updates / certificates / ACME / encrypted backups |
+| g | Script settings and uninstall | Language / privacy / uninstall / guide |
 | q | Exit | |
 
 Initialization updates apt indexes, upgrades packages, installs administration tools and checks time synchronization, DNS, HTTPS, SSH and UFW. It preserves an active time-sync service and does not enable UFW, change SSH, configure BBR or reboot. Package upgrades may restart services; retain console access.
@@ -212,9 +212,9 @@ New backups use separate `config/`, `state.json` and `sing-box.bin` paths, inclu
 
 ## Validation
 
-Menu **f → 3** requires case-insensitive `y` confirmation and first backs up configuration, certificates and the binary. Backup failure cancels removal. It stops automatic updates, managed hopping and sing-box, then removes owned units, the binary, node configuration, generated certificates/exports and identifiable manager executable copies. Changed unit ownership/start paths or symlinked key files cause refusal. Successful uninstall exits the menu.
+Menu **g → 3** requires case-insensitive `y` confirmation and first backs up configuration, certificates and the binary. Backup failure cancels removal. It stops automatic updates, managed hopping and sing-box, then removes owned units, the binary, node configuration, generated certificates/exports and identifiable manager executable copies. Changed unit ownership/start paths or symlinked key files cause refusal. Successful uninstall exits the menu.
 
-Backups, external certificates, unknown user files, reports, UFW allow rules, BBR/FQ settings and system packages such as vnStat remain. It does not reset the firewall or delete unrelated nftables tables. Backups contain private keys; protect permissions and disk space. To restore after uninstall, deploy again and restore the retained backup through menu e → 3.
+Backups, external certificates, unknown user files, reports, UFW allow rules, BBR/FQ settings and system packages such as vnStat remain. It does not reset the firewall or delete unrelated nftables tables. Backups contain private keys; protect permissions and disk space. To restore after uninstall, deploy again and restore the retained backup through menu f → 3.
 
 ```bash
 for file in bootstrap.sh install.sh singbox-v2.sh src/*.sh lib/*.sh modules/*.sh tests/*.sh; do bash -n "$file"; done
@@ -266,7 +266,7 @@ Interactive startup and language changes show a bold green version/system summar
 
 ## Account limits, traffic quotas and expiry
 
-Open **main menu g** (legacy **b → 5** remains), initialize management (default 10 accounts, configurable 1–100), then add accounts with a name, total upload-plus-download quota in GiB and validity days. Controls include per-account upload/download/total usage, quota/validity edits, enable/disable, deletion, explicit usage reset, personal exports and Shadowrocket QR codes. Expired or exhausted accounts lose their listeners and existing connections. Renewal does not reset usage automatically.
+Open **main menu c** (legacy **b → 5** remains), initialize management (default 10 accounts, configurable 1–100), then add accounts with a name, total upload-plus-download quota in GiB and validity days. Controls include per-account upload/download/total usage, quota/validity edits, enable/disable, deletion, explicit usage reset, personal exports and Shadowrocket QR codes. Expired or exhausted accounts lose their listeners and existing connections. Renewal does not reset usage automatically.
 
 The limit counts undeleted accounts, including disabled/expired ones; it does not count actual people or prevent credential sharing. Quota edits retain expiry; validity edits retain quota and usage. Validity starts at creation or validity edit and is displayed in UTC. There is no automatic billing-cycle reset; `1 GiB = 1024³ bytes`.
 
@@ -284,11 +284,11 @@ Backups include policies, usage, configurations and certificates. Restore retain
 
 ## Manager operations (V2.3)
 
-- **e → 1** updates the sing-box core; **e → 4** checks/updates SKYBYTE Manager itself. Manager updates use the latest stable GitHub Release asset, verify its SHA256, Bash/embedded Python syntax and version, and atomically replace owned script copies. Configurations, credentials and usage are retained. Script backups live in `/etc/singbox-v2/manager-backups/`. Previously active user supervisors, Argo tunnels and HTTPS subscription services briefly restart; failure rolls script copies back. Successful updates reopen the new menu. Development versions are not downgraded.
+- **f → 1** updates the sing-box core; **f → 4** checks/updates SKYBYTE Manager itself. Manager updates use the latest stable GitHub Release asset, verify its SHA256, Bash/embedded Python syntax and version, and atomically replace owned script copies. Configurations, credentials and usage are retained. Script backups live in `/etc/singbox-v2/manager-backups/`. Previously active user supervisors, Argo tunnels and HTTPS subscription services briefly restart; failure rolls script copies back. Successful updates reopen the new menu. Development versions are not downgraded.
 - **Main menu g** opens user management; the main menu shows account count/limit, ready accounts and supervisor status. **User menu 4** changes quota only, retaining expiry and usage. **13** changes validity from now only, retaining quota and usage. Resulting expiry is displayed in UTC.
 - **User menu 14** reports safe failure categories, timestamps, exit codes, configuration checks and local log paths, without API secrets or raw logs. Authentication, timeout, invalid response, counter or core-exit failures stop the affected account. Repair the cause and explicitly enable it; enabling validates the core/controller configuration and does not bypass expiry or quota exhaustion.
 - **d → 7** or **user menu 15** shows managed core/process counts, RSS memory, available system memory and load. RSS includes shared memory; this snapshot cannot guarantee account capacity.
-- Startup shows HY2 certificate days remaining and warns within 30 days. **e → 5** checks expiry, synchronizes renewed certificates to user nodes and reloads previously active services, or enables/disables daily monitoring. Expired certificates and mismatched keys/identities are rejected.
+- Startup shows HY2 certificate days remaining and warns within 30 days. **f → 5** checks expiry, synchronizes renewed certificates to user nodes and reloads previously active services, or enables/disables daily monitoring. Expired certificates and mismatched keys/identities are rejected.
 - Daily monitoring is **off by default**, uses `skybyte-certificate.timer` and logs to systemd. It does not issue or renew certificates. A valid changed domain certificate at the configured paths is synchronized/reloaded. Renewal tools can call `/bin/bash /usr/local/sbin/singbox-v2 --certificate-reload` as a deploy hook. The first check establishes a fingerprint baseline; manually reload once if renewal happened before that baseline. Changed self-signed certificates require manual reload and updated client trust; TLS verification remains enabled.
 
 ## Source modules and build
@@ -347,7 +347,7 @@ HY2 options include upload/download Mbps, `ignore_client_bandwidth` and Salamand
 
 ## ACME certificates (V2.5)
 
-Open **e → 6**, or select managed ACME during fresh HY2 installation. Distribution Certbot packages use isolated config/work/log directories under `/etc/singbox-v2/acme/`; no remote issuance scripts run and `/etc/letsencrypt/`/existing websites remain untouched.
+Open **f → 6**, or select managed ACME during fresh HY2 installation. Distribution Certbot packages use isolated config/work/log directories under `/etc/singbox-v2/acme/`; no remote issuance scripts run and `/etc/letsencrypt/`/existing websites remain untouched.
 
 - HTTP-01 needs correct A/AAAA records and public TCP80. Occupied port80 is rejected without stopping an existing site. Active UFW permits TCP80; provider rules remain manual.
 - Cloudflare DNS-01 uses the packaged Certbot plugin. A scoped DNS token is entered hidden and saved mode600, excluded from command arguments, client exports and GitHub. Follow the [plugin permission guidance](https://certbot-dns-cloudflare.readthedocs.io/en/stable/).
@@ -368,17 +368,17 @@ Only personal client exports are accessible: no directory listing, admin nodes, 
 
 ## Versions, backups and rule maintenance (V2.5)
 
-**e → 1** selects tested 1.14.3, latest stable, or a specified stable version/downgrade. Official releases are digest-verified and must validate every admin/account/Argo/native-WARP configuration. Configurations are not silently regenerated; startup failure rolls the core back. Weekly automatic updates remain removed.
+**f → 1** selects tested 1.14.3, latest stable, or a specified stable version/downgrade. Official releases are digest-verified and must validate every admin/account/Argo/native-WARP configuration. Configurations are not silently regenerated; startup failure rolls the core back. Weekly automatic updates remain removed.
 
-**e → 7** lists/creates/preflights backups, exports/imports GnuPG AES256 passphrase-encrypted archives and explicitly prunes older managed backups. New snapshots include SHA256 manifests. Preflight uses the currently trusted engine, never the executable inside an imported archive. Import only your own trusted backups. Hidden passphrases use file descriptors, not process arguments; forgotten passphrases cannot be recovered.
+**f → 7** lists/creates/preflights backups, exports/imports GnuPG AES256 passphrase-encrypted archives and explicitly prunes older managed backups. New snapshots include SHA256 manifests. Preflight uses the currently trusted engine, never the executable inside an imported archive. Import only your own trusted backups. Hidden passphrases use file descriptors, not process arguments; forgotten passphrases cannot be recovered.
 
-Import rejects traversal, duplicate/oversized entries and symbolic/hard links. Restoration still requires separate confirmation through **e → 3**. Retention only affects backups with this manager's manifest; unknown/legacy directories remain and no automatic deletion occurs. Digests detect changes, not the authenticity of an unknown source. Backups contain private keys, DNS tokens and subscription tokens: protect files/passphrases.
+Import rejects traversal, duplicate/oversized entries and symbolic/hard links. Restoration still requires separate confirmation through **f → 3**. Retention only affects backups with this manager's manifest; unknown/legacy directories remain and no automatic deletion occurs. Digests detect changes, not the authenticity of an unknown source. Backups contain private keys, DNS tokens and subscription tokens: protect files/passphrases.
 
 Restore retains current account policy/usage and current subscription tokens. HTTPS certificate snapshots are saved separately; missing subscription/ACME state is filled only when absent, with rollback on failure and explicit renewal re-enabling. External TLS is restored as private config-directory snapshots; re-associate current ACME paths through the certificate menu to resume using those renewal paths. Uninstall first backs up, then removes owned HTTPS services, ACME tasks and private ACME directories, preserving external certificates/packages/backups.
 
 **WARP menu6** verifies current egress, manually downloads a stable release's digest-verified catalog, and separately applies it. Failure keeps the previous list; downloading does not replace custom live routing. Releases must include the public `data/warp-rules.json` asset. Catalog version/source are visible, without an unlocking guarantee.
 
-**f → 4** or `bash singbox-v2.sh --help` provides a bilingual quick guide. An idle main menu releases the operation lock so background renewal can run; active management operations remain exclusive.
+**g → 4** or `bash singbox-v2.sh --help` provides a bilingual quick guide. An idle main menu releases the operation lock so background renewal can run; active management operations remain exclusive.
 
 ```bash
 python3 scripts/build.py --check

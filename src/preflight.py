@@ -205,8 +205,8 @@ def ports(report, listen, tcp=None, udp=None, managed=None):
             occupied = error.errno == errno.EADDRINUSE
             if occupied and protocol == 'UDP' and managed and managed_hy2_listener(number, listen, *managed):
                 report.add('warn', label, label,
-                           '本脚本已安装的 HY2 正在使用此端口，无需重复安装。查看节点 b → 1；修改端口 b → 8；服务状态 c → 1。此端口并非空闲。',
-                           'Already installed: this manager’s HY2 uses this port. Do not reinstall. Nodes: b → 1; change port: b → 8; service: c → 1. The port is not free.')
+                           '本脚本已安装的 HY2 正在使用此端口，无需重复安装。查看节点 b → 1；修改端口 b → 8；服务状态 e → 1。此端口并非空闲。',
+                           'Already installed: this manager’s HY2 uses this port. Do not reinstall. Nodes: b → 1; change port: b → 8; service: e → 1. The port is not free.')
                 continue
             report.add('fail', label, label,
                        '已被占用，请选择其他空闲端口；TCP 与 UDP 分别检查。' if occupied else '无法绑定该地址族/端口，请检查 IPv4/IPv6 与系统权限。',
