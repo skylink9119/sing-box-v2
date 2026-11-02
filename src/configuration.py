@@ -24,11 +24,31 @@ if (base/'users.json').exists():
   if not re.fullmatch('[0-9a-f]{16}',u['id']):raise ValueError('Invalid user ID')
   p=base/'users'/u['id'];paths.append((p/'server.json',load(p/'server.json'),p/'state.json',load(p/'state.json')))
 
+
+def integrated_xhttp_ports(base):
+    from pathlib import Path
+    import json
+    root=Path(base)/'xhttp';state=root/'state.json';marker=root/'.owner'
+    if not root.exists() and not root.is_symlink():return set()
+    if any(p.is_symlink() for p in (root,state,marker)):raise ValueError('Unsafe XHTTP state')
+    if not marker.is_file() or marker.read_text()!='SKYBYTE-SB-XHTTP/1\n':raise ValueError('Unknown XHTTP owner')
+    if not state.exists():return set()
+    if state.stat().st_size>4*1024*1024:raise ValueError('XHTTP state too large')
+    data=json.loads(state.read_text())
+    if data.get('schema')!=1 or not isinstance(data.get('nodes'),dict):raise ValueError('Invalid XHTTP state')
+    ports=set()
+    for kind,node in data['nodes'].items():
+        p=node['port']
+        if kind not in ('xhttp-reality','xhttp-tls') or type(p)!=int or not 1<=p<=65535:raise ValueError('Invalid XHTTP port')
+        ports.add(p)
+    return ports
+
 def check_admin_port(value,protocol,adding=False):
  for _,cfg,_,_ in paths[1:]:
   if any(i['listen_port']==value and (adding or i['type']==protocol) for i in cfg['inbounds']):raise ValueError('Port overlaps an account')
   if protocol=='vless' and int(cfg.get('experimental',{}).get('clash_api',{}).get('external_controller','127.0.0.1:0').rsplit(':',1)[1])==value:raise ValueError('Port overlaps an account controller')
  if protocol=='vless':
+  if value in integrated_xhttp_ports(base):raise ValueError('TCP port reserved by XHTTP / TCP 端口已被 XHTTP 预留')
   for p in (base/'argo-server.json',base/'warp-gateway.json'):
    if p.exists() or p.is_symlink():
     if any(i.get('type')!='hysteria2' and i.get('listen_port')==value for i in load(p).get('inbounds',[])):raise ValueError('Port reserved by a managed TCP service')

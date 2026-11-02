@@ -20,7 +20,9 @@
 
 ---
 
-# SKYBYTE Manager V2.9.2: modular source architecture
+# SKYBYTE Manager V2.10.0: modular source architecture
+
+New **a → 10 XHTTP**: on-demand latest stable Xray, guided XHTTP + Reality / TLS-CDN deployment, with separate configuration, service, exports and backups under one manager. Source remains modular; no second manager is downloaded. [XHTTP architecture and usage](docs/XHTTP.md).
 
 Guided installation collects protocol, name and BBR/UFW/QR choices before applying the confirmed defaults, with hopping for IPv4 HY2. **a → 9** retains custom installation; **d → 14** configures existing nodes. [Details](docs/AUTOMATIC-SETUP.md).
 

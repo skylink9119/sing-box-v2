@@ -285,5 +285,11 @@ PY_ALLOW
   acme_guard || return 1
   if [[ $(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["method"])' "$BASE/acme-state.json") == http ]];then ufw allow 80/tcp || return 1;fi
  fi
+ local xhttp_ports xhttp_port
+ xhttp_ports=$(xhttp_command ports) || return 1
+ while IFS= read -r xhttp_port;do
+  [[ -n $xhttp_port ]] || continue
+  valid_port "$xhttp_port" && ufw allow "$xhttp_port/tcp" || return 1
+ done <<< "$xhttp_ports"
  users_firewall_allow
 }

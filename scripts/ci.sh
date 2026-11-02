@@ -42,13 +42,16 @@ if [[ -n ${GH_TOKEN:-} ]];then
  }
 fi
 download_install_core "$PWD/work/tools/sing-box"
+xray_tag=$(xhttp_latest)
+SKYBYTE_GITHUB_TOKEN=${GH_TOKEN:-} xhttp_backend download --tag "$xray_tag" --asset Xray-linux-64.zip --file "$PWD/work/tools/xray"
+"$PWD/work/tools/xray" version
 if [[ -n ${GH_TOKEN:-} ]];then unset -f curl;fi
 rm -f -- "$github_config";trap - EXIT;unset GH_TOKEN
 curl -fsSL --retry 2 https://github.com/MetaCubeX/mihomo/releases/download/v1.19.32/mihomo-linux-amd64-compatible-v1.19.32.gz -o work/tools/mihomo.gz
 printf '%s\n' 'ba3ce607747a07f948fc35780e108a4a7c7f552a38b9bd4d115f313ebcb89c20  work/tools/mihomo.gz' | sha256sum -c -
 gzip -d work/tools/mihomo.gz
 chmod 755 work/tools/mihomo
-SING_BOX_BIN="$PWD/work/tools/sing-box" MIHOMO_BIN="$PWD/work/tools/mihomo" python3 -m unittest discover -s tests -v
+SING_BOX_BIN="$PWD/work/tools/sing-box" XRAY_BIN="$PWD/work/tools/xray" MIHOMO_BIN="$PWD/work/tools/mihomo" python3 -m unittest discover -s tests -v
 SING_BOX_BIN="$PWD/work/tools/sing-box" python3 scripts/benchmark_users.py --engine "$PWD/work/tools/sing-box" --counts 10,30,50 --output work/account-benchmark.json
 chmod 755 work
 chmod 644 work/account-benchmark.json

@@ -20,7 +20,9 @@
 
 ---
 
-# SKYBYTE Manager V2.9.2：模块化维护结构
+# SKYBYTE Manager V2.10.0：模块化维护结构
+
+新增 **a → 10 XHTTP**：按需使用最新稳定 Xray 内核，自动部署 XHTTP + Reality / TLS-CDN；统一入口管理双内核，独立配置、服务、导出与备份。源码保持模块化，VPS 无需第二个管理项目。[XHTTP 使用与模块说明](docs/XHTTP.md)。
 
 安装向导先收集协议、节点名称和 BBR/UFW/二维码选项，再按确认的默认计划自动安装；IPv4 HY2 自动配置端口跳跃。**a → 9** 保留手动参数安装，**d → 14** 可给已有节点补配。[使用说明](docs/AUTOMATIC-SETUP.md)。
 

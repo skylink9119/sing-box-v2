@@ -14,6 +14,25 @@ import time
 import unicodedata
 import uuid
 
+
+def integrated_xhttp_ports(base):
+    from pathlib import Path
+    import json
+    root=Path(base)/'xhttp';state=root/'state.json';marker=root/'.owner'
+    if not root.exists() and not root.is_symlink():return set()
+    if any(p.is_symlink() for p in (root,state,marker)):raise ValueError('Unsafe XHTTP state')
+    if not marker.is_file() or marker.read_text()!='SKYBYTE-SB-XHTTP/1\n':raise ValueError('Unknown XHTTP owner')
+    if not state.exists():return set()
+    if state.stat().st_size>4*1024*1024:raise ValueError('XHTTP state too large')
+    data=json.loads(state.read_text())
+    if data.get('schema')!=1 or not isinstance(data.get('nodes'),dict):raise ValueError('Invalid XHTTP state')
+    ports=set()
+    for kind,node in data['nodes'].items():
+        p=node['port']
+        if kind not in ('xhttp-reality','xhttp-tls') or type(p)!=int or not 1<=p<=65535:raise ValueError('Invalid XHTTP port')
+        ports.add(p)
+    return ports
+
 OWNER = 'SKYBYTE HAProxy TCP v1'
 UNIT = 'skybyte-haproxy.service'
 
@@ -176,7 +195,7 @@ class Relay:
         users = self.base / 'users'
         if users.exists() and not users.is_symlink():
             paths += list(users.glob('*/server.json'))
-        ports = set()
+        ports = integrated_xhttp_ports(self.base)
         for path in paths:
             if path.exists():
                 if path.is_symlink() or path.parent.is_symlink() or path.stat().st_size > 4 * 1024**2:
@@ -317,8 +336,7 @@ class Relay:
                 raise ValueError('Unknown rule ID / 无此规则 ID')
             return
         if action in ('check_port', 'check_configs'):
-            if state is None: return
-            reserved = {r['port'] for r in state['rules']}
+            reserved = {r['port'] for r in (state or {'rules':[]})['rules']} | integrated_xhttp_ports(self.base)
             if action == 'check_port': wanted = {port(int(args[0]))}
             else:
                 directory = Path(args[0])
