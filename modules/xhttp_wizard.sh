@@ -2,7 +2,10 @@
 xhttp_guided_install() (
  local XHTTP_KIND=${1:-xhttp-reality} XHTTP_NAME XHTTP_SNI=addons.mozilla.org
  local XHTTP_CERT='' XHTTP_KEY='' XHTTP_CDN=0 WIZARD_CHOICE
- local selected_bbr selected_firewall selected_qr
+ local selected_bbr selected_firewall selected_qr installed_kinds
+ installed_kinds=''
+ if [[ -f $BASE/xhttp/state.json || -L $BASE/xhttp/state.json ]];then installed_kinds=$(xhttp_backend node-kinds) || return 1;fi
+ if grep -Fxq "$XHTTP_KIND" <<< "$installed_kinds";then err "$(L '所选 XHTTP 协议已经安装，请使用 b → 11 管理。' 'This XHTTP protocol is installed; manage it through b → 11.')";return 1;fi
  case $XHTTP_KIND in xhttp-reality|xhttp-tls);;*)return 1;;esac
  XHTTP_NAME=$(choose_node_name) || return 1
  if [[ $XHTTP_KIND == xhttp-tls ]];then

@@ -86,11 +86,11 @@ class AuditTest(unittest.TestCase):
         self.shell('backup_engine restore_plan '+shlex.quote(str(snapshot))+' '+shlex.quote(str(stage)))
         argv=['backup.py',str(self.base),str(self.backups),str(self.config/'config.json'),str(self.bin),'list']
         with patch.object(sys,'argv',argv):namespace=runpy.run_path(str(manager.ROOT/'src/backup.py'))
-        restore=namespace['restore_files'];original=restore.__globals__['replace_file']
+        restore=namespace['restore_files'];original=restore.__globals__['replace_from_file']
         def fail_binary(path,*args):
             if path==self.bin:raise OSError('simulated binary publication failure')
             return original(path,*args)
-        with patch.dict(restore.__globals__,replace_file=fail_binary):
+        with patch.dict(restore.__globals__,replace_from_file=fail_binary):
             with self.assertRaises(OSError):restore(str(stage))
         restore(str(stage),True)
         for path,data in before.items():self.assertEqual(path.read_bytes(),data)
@@ -189,7 +189,7 @@ fi; };service_healthy(){ :; };configuration_apply sni node.example'''
     def test_offline_selection_survives_next_main_menu_action_only_in_session(self):
         directory=self.root/'offline';directory.mkdir()
         code='''need_root(){ :; };flock(){ :; };startup_info(){ :; };retire_auto_update(){ :; };users_summary(){ :; };
-install_protocol(){ printf 'OFFLINE=%s\n' "${SKYBYTE_ASSET_DIR:-missing}"; };unset SKYBYTE_ASSET_DIR;exec 9>"$BASE/test-lock";main'''
+installation_available(){ :; };install_protocol(){ printf 'OFFLINE=%s\n' "${SKYBYTE_ASSET_DIR:-missing}"; };unset SKYBYTE_ASSET_DIR;exec 9>"$BASE/test-lock";main'''
         result=self.shell(code,input='a\n7\n8\n'+str(directory)+'\n0\n1\nOffline Node\nn\nn\nn\ny\n0\nq\n')
         self.assertIn('OFFLINE='+str(directory),result.stdout);self.assertFalse(list(self.base.glob('.session.*')))
 

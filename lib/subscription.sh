@@ -8,16 +8,23 @@ shadowrocket_qr(){
  fi
  exports >/dev/null || return 1
  warn "$(L '二维码包含节点凭据，请勿公开。HY2 自签名节点仍需配置信任证书。' 'QR codes contain node credentials; keep them private. Self-signed HY2 still requires certificate trust.')"
- local link name count=0
- while IFS= read -r link; do
-  [[ -n $link ]] || continue
-  name=$(printf '%s' "$link" | python3 -c 'import sys,urllib.parse; u=urllib.parse.urlsplit(sys.stdin.read()); print(urllib.parse.unquote(u.fragment) if u.fragment else dict(urllib.parse.parse_qsl(u.query)).get("remarks","Shadowrocket"))') || return 1
+ local link name rows count=0
+ rows=$(python3 - "$BASE/shadowrocket-native-nodes.txt" <<'PY_QR_ROWS'
+import sys,urllib.parse
+for link in open(sys.argv[1]):
+ link=link.strip()
+ if not link:continue
+ u=urllib.parse.urlsplit(link);name=urllib.parse.unquote(u.fragment) if u.fragment else dict(urllib.parse.parse_qsl(u.query)).get('remarks','Shadowrocket')
+ print(''.join(c for c in name if c.isprintable()));print(link)
+PY_QR_ROWS
+ ) || return 1
+ while IFS= read -r name && IFS= read -r link; do
   printf '%s\n' '----------------------------------------------'
   printf '%s%s%s\n' "$YELLOW" "$name" "$RESET"
   # Feed credentials via stdin; keep the QR high-contrast for phone cameras.
   printf '%s' "$link" | qrencode -t ANSIUTF8 -m 2 || return 1
   count=$((count+1))
- done < "$BASE/shadowrocket-native-nodes.txt"
+ done <<< "$rows"
  printf '%s\n' '----------------------------------------------'
  (( count > 0 )) || { err "$(L '没有可生成二维码的节点' 'No nodes available for QR codes')"; return 1; }
 }

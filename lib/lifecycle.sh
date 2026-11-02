@@ -1,7 +1,7 @@
 # lib/lifecycle.sh — build-time module; assembled by scripts/build.py.
 uninstall_manager(){
  need_root
- if [[ ! -f $META && -f $BASE/xhttp/.owner ]];then
+ if [[ ! -f $META && -f $BASE/xhttp/state.json ]];then
   xhttp_command guard || return 1
   confirm "$(L '备份后卸载本项目的 XHTTP / Xray 与管理脚本？' 'Back up and remove the managed XHTTP/Xray and manager?')" || return 0
   xhttp_command purge --confirmed || return 1

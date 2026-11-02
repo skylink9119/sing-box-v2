@@ -267,7 +267,7 @@ LOGO
   else sub_menu "$group" || return 0; [[ $MENU_BACK != 1 ]] || { group='';continue; };fi
   [[ -n $MAIN_ACTION ]] || continue
   navigation_action "$MAIN_ACTION"
-  if [[ $MAIN_ACTION == uninstall && $MENU_ACTION_STATUS == 0 && ! -e $META ]]; then return 0; fi
+  if [[ $MAIN_ACTION == uninstall && $MENU_ACTION_STATUS == 0 && ! -e $META && ! -f $BASE/xhttp/state.json && ! -f $MANAGER_LIB && ! -f $MANAGER_BIN ]]; then return 0; fi
   if [[ $MAIN_ACTION == manager_update && $MENU_ACTION_STATUS == 0 && -f $MANAGER_LIB ]] && ! grep -Fxq "MANAGER_VERSION=$MANAGER_VERSION" "$MANAGER_LIB"; then rm -f -- "$SKYBYTE_SESSION_FILE";exec 9>&-; exec bash "$MANAGER_LIB"; fi
  done
 )

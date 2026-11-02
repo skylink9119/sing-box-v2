@@ -205,9 +205,9 @@ relay_menu() (
  if ! warp_engine relay_export "$stage/profile.json";then rm -rf "$stage";return 1;fi
  case $choice in
   2) relay_verify "$stage/profile.json" || rc=$?;;
-  3) confirm "$(L '验证并切换所有节点到住宅落地出口？当前 WARP / 中转分流将被替换。' 'Verify and route all nodes through the landing exit? Current WARP / relay routing will be replaced.')" && relay_switch global "$stage/profile.json" || rc=$?;;
-  4) confirm "$(L '恢复原始直连路由？网站将看到本 VPS 出口 IP。' 'Restore original direct routing? Destinations will see this VPS egress IP.')" && relay_switch direct "$stage/profile.json" || rc=$?;;
-  5) confirm "$(L '删除保存的落地凭据？已启用中转时须先恢复直连或切换 WARP。' 'Remove saved landing credentials? First restore direct routing or switch to WARP if relay is active.')" && warp_engine relay_forget || rc=$?;;
+  3) if confirm "$(L '验证并切换所有节点到住宅落地出口？当前 WARP / 中转分流将被替换。' 'Verify and route all nodes through the landing exit? Current WARP / relay routing will be replaced.')";then relay_switch global "$stage/profile.json" || rc=$?;fi;;
+  4) if confirm "$(L '恢复原始直连路由？网站将看到本 VPS 出口 IP。' 'Restore original direct routing? Destinations will see this VPS egress IP.')";then relay_switch direct "$stage/profile.json" || rc=$?;fi;;
+  5) if confirm "$(L '删除保存的落地凭据？已启用中转时须先恢复直连或切换 WARP。' 'Remove saved landing credentials? First restore direct routing or switch to WARP if relay is active.')";then warp_engine relay_forget || rc=$?;fi;;
   *) rc=1;;
  esac
  rm -rf "$stage";return "$rc"

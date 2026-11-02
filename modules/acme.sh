@@ -37,6 +37,10 @@ acme_issue(){
  esac
  say '申请公开证书会公开域名；请阅读并同意 CA 条款 https://letsencrypt.org/repository/ 。DNS Token 需仅授权对应区域 DNS 编辑。' 'Public issuance publishes the domain. Review CA terms: https://letsencrypt.org/repository/ . Scope DNS tokens to the target zone.'
  confirm "$(L '接受 CA 条款并申请证书？' 'Accept CA terms and request certificate?')" || return 0
+ if [[ $method == cloudflare ]];then
+  prompt_read "$(L 'Cloudflare DNS API Token（隐藏）：' 'Cloudflare DNS API Token (hidden): ')" token secret || return 0;echo
+  [[ $token =~ ^[a-zA-Z0-9_-]{20,200}$ ]] || { err "$(L 'Token 格式无效，未创建申请目录，可直接重试。' 'Invalid token format; no issuance directory created. Retry directly.')";return 1; }
+ fi
  apt_install certbot || return 1
  if [[ $method == cloudflare ]];then apt_install python3-certbot-dns-cloudflare || return 1;fi
  mkdir -m 700 "$BASE/acme" || return 1
@@ -44,8 +48,6 @@ acme_issue(){
  acme_options
  local -a challenge=(--standalone)
  if [[ $method == cloudflare ]];then
-  prompt_read "$(L 'Cloudflare DNS API Token（隐藏）：' 'Cloudflare DNS API Token (hidden): ')" token secret || return 1;echo
-  [[ $token =~ ^[a-zA-Z0-9_-]{20,200}$ ]] || return 1
   printf 'dns_cloudflare_api_token = %s\n' "$token" > "$BASE/acme/cloudflare.ini";chmod 600 "$BASE/acme/cloudflare.ini";unset token
   challenge=(--dns-cloudflare --dns-cloudflare-credentials "$BASE/acme/cloudflare.ini" --dns-cloudflare-propagation-seconds 60)
  else
@@ -140,7 +142,7 @@ acme_menu(){
   1) acme_issue;;2) acme_use_hy2;;3) acme_renew;;4) acme_timer;;
   5) [[ ! -f $SYSTEMD_DIR/skybyte-acme.timer ]] || systemctl disable --now skybyte-acme.timer;;
   6) [[ ! -e $BASE/acme-state.json ]] || { err "$(L '已有成功申请，拒绝清理' 'Successful issuance exists; refusing cleanup')";return 1; }
-   confirm "$(L '删除本工具未完成的 ACME 申请目录后重试？' 'Delete the incomplete managed ACME attempt for retry?')" && rm -rf "$BASE/acme";;
+   confirm "$(L '删除本工具未完成的 ACME 申请目录后重试？' 'Delete the incomplete managed ACME attempt for retry?')" || return 0; rm -rf "$BASE/acme";;
   0) return 0;;*) return 1;;
  esac
 }

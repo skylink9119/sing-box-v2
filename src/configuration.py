@@ -9,6 +9,11 @@ def address(s):
  except ValueError:
   if len(s)>253 or not re.fullmatch(r'(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,63}',s):raise ValueError('Invalid address/domain')
   return s.lower()
+def reality_sni(value):
+ value=address(value)
+ try:ipaddress.ip_address(value)
+ except ValueError:return value
+ raise ValueError('Reality SNI requires a DNS name, not an IP literal')
 def port(s):
  if not s.isdecimal() or len(s)>5 or not (int(s)==443 or 1024<=int(s)<=65535):raise ValueError('Port requires 443 or 1024-65535')
  return int(s)
@@ -25,23 +30,7 @@ if (base/'users.json').exists():
   p=base/'users'/u['id'];paths.append((p/'server.json',load(p/'server.json'),p/'state.json',load(p/'state.json')))
 
 
-def integrated_xhttp_ports(base):
-    from pathlib import Path
-    import json
-    root=Path(base)/'xhttp';state=root/'state.json';marker=root/'.owner'
-    if not root.exists() and not root.is_symlink():return set()
-    if any(p.is_symlink() for p in (root,state,marker)):raise ValueError('Unsafe XHTTP state')
-    if not marker.is_file() or marker.read_text()!='SKYBYTE-SB-XHTTP/1\n':raise ValueError('Unknown XHTTP owner')
-    if not state.exists():return set()
-    if state.stat().st_size>4*1024*1024:raise ValueError('XHTTP state too large')
-    data=json.loads(state.read_text())
-    if data.get('schema')!=1 or not isinstance(data.get('nodes'),dict):raise ValueError('Invalid XHTTP state')
-    ports=set()
-    for kind,node in data['nodes'].items():
-        p=node['port']
-        if kind not in ('xhttp-reality','xhttp-tls') or type(p)!=int or not 1<=p<=65535:raise ValueError('Invalid XHTTP port')
-        ports.add(p)
-    return ports
+from src.managed_ports import integrated_xhttp_ports
 
 def check_admin_port(value,protocol,adding=False):
  for _,cfg,_,_ in paths[1:]:
@@ -56,9 +45,6 @@ def check_admin_port(value,protocol,adding=False):
    if p.exists() or p.is_symlink():
     if load(p)['port']==value:raise ValueError('Port reserved by a managed TCP service')
 
-# TCP-only port edits retain the unrelated HY2 listener and hopping rules.
-keep_hop=action in ('reality','ipv6') or (action=='ports' and len(args)==2 and args[1].isdecimal() and all(i['listen_port']==int(args[1]) for i in main['inbounds'] if i['type']=='hysteria2'))
-if not keep_hop:meta['hop']=False
 if action=='ipv6':
  value=args[0]
  if value!='off':
@@ -105,7 +91,7 @@ elif action=='nat_exports':
  if len(ports)!=2:raise ValueError('Two mapped ports required')
  meta['ip']=value;meta['export_ports']=dict(zip(('vless','hysteria2'),ports))
 elif action in ('sni','reality'):
- value=address(args[0])
+ value=reality_sni(args[0])
  host=address(args[1]) if action=='reality' else value
  number=int(args[2]) if action=='reality' else None
  if number is not None and not 1<=number<=65535:raise ValueError('Invalid handshake target port')
@@ -116,7 +102,7 @@ elif action in ('sni','reality'):
     i['tls']['server_name']=value;i['tls']['reality']['handshake']['server']=host;s['sni']=value
     if number is not None:i['tls']['reality']['handshake']['server_port']=number
 elif action=='tls':
- domain,cert,key=args;domain=address(domain)
+ domain,cert,key=args;domain=address(domain);cert=os.path.abspath(cert);key=os.path.abspath(key)
  if 'hysteria2' not in {i['type'] for i in main['inbounds']}:raise ValueError('HY2 is not installed')
  for _,cfg,_,s in paths:
   for i in cfg['inbounds']:
@@ -150,14 +136,14 @@ elif action in ('add','remove'):
    sock.bind(('::' if family==socket.AF_INET6 else '0.0.0.0',value))
   finally:sock.close()
   if protocol=='vless':
-   sni=address(args[2]);pairs=subprocess.check_output([binary,'generate','reality-keypair'],text=True);keys=dict(line.split(': ',1) for line in pairs.strip().splitlines())
+   sni=reality_sni(args[2]);pairs=subprocess.check_output([binary,'generate','reality-keypair'],text=True);keys=dict(line.split(': ',1) for line in pairs.strip().splitlines())
    meta.update(public_key=keys['PublicKey'],sid=secrets.token_hex(4),sni=sni)
    template={'type':'vless','tag':'reality','listen':listen,'listen_port':value,'users':[{'name':'user1','uuid':meta['uuid'],'flow':'xtls-rprx-vision'}],'tls':{'enabled':True,'server_name':sni,'reality':{'enabled':True,'handshake':{'server':sni,'server_port':443},'private_key':keys['PrivateKey'],'short_id':[meta['sid']]}}}
   else:
    domain=address(args[2]);cert_mode='2'
    if args[3]=='selfsigned':
     dest_cert=conf.parent/'hy2-added.crt';dest_key=conf.parent/'hy2-added.key'
-    if any(p.exists() or p.is_symlink() for p in (dest_cert,dest_key)):raise ValueError('Generated certificate paths already exist; use existing-certificate mode')
+    if any(p.is_symlink() or (p.exists() and str(p) not in old_meta.get('managed_certificates',[])) for p in (dest_cert,dest_key)):raise ValueError('Generated certificate paths are not owned; use existing-certificate mode')
     cert=str(stage/'hy2-added.crt');key=str(stage/'hy2-added.key');exe=os.environ.get('OPENSSL_BIN','openssl')
     try:ipaddress.ip_address(domain);san='IP:'+domain
     except ValueError:san='DNS:'+domain
@@ -169,7 +155,7 @@ elif action in ('add','remove'):
     pathlib.Path(cert).chmod(0o600);pathlib.Path(key).chmod(0o600)
     generated=[[cert,str(dest_cert)],[key,str(dest_key)]];generated_cert=(str(dest_cert),str(dest_key));cert_mode='1'
     meta['managed_certificates']=list(dict.fromkeys(meta.get('managed_certificates',[])+list(generated_cert)))
-   else:cert,key=args[3:5]
+   else:cert,key=map(os.path.abspath,args[3:5])
    meta.update(domain=domain,cert_path=generated_cert[0] if generated_cert else cert,cert_mode=cert_mode)
    template={'type':'hysteria2','tag':'hy2','listen':listen,'listen_port':value,'users':[{'name':'user1','password':meta['hy2_password']}],'tls':{'enabled':True,'server_name':domain,'certificate_path':cert,'key_path':key}}
   main['inbounds'].append(template)
@@ -211,6 +197,11 @@ def tls_check(i):
  keypub=subprocess.check_output([exe,'pkey','-in',key,'-pubout','-passin','pass:'],stderr=subprocess.DEVNULL)
  if certpub!=keypub:raise ValueError('Certificate/key mismatch')
 
+# Preserve hopping whenever the actual HY2 listener port survives this edit.
+old_hy2=[i['listen_port'] for i in original['inbounds'] if i['type']=='hysteria2']
+new_hy2=[i['listen_port'] for i in main['inbounds'] if i['type']=='hysteria2']
+keep_hop=old_hy2==new_hy2
+if not keep_hop:meta['hop']=False
 planned=list(generated)
 for n,(p,cfg,mp,s) in enumerate(paths):
  types={i['type'] for i in cfg['inbounds']};s['mode']='0' if not types else '3' if len(types)==2 else '1' if 'vless' in types else '2'
@@ -236,4 +227,4 @@ for n,(p,cfg,mp,s) in enumerate(paths):
  write(candidate,cfg);planned.append([str(candidate),str(p)])
  sm=stage/(str(n)+'-state.json');write(sm,s);planned.append([str(sm),str(mp)])
 write(stage/'plan.json',planned)
-if action=='ports' and keep_hop:write(stage/'keep-hopping',True)
+if keep_hop:write(stage/'keep-hopping',True)

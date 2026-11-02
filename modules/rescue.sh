@@ -121,7 +121,7 @@ rescue_menu(){
    prompt_read "$(L '公网 Reality TCP 端口 [0=本机端口]：' 'Public Reality TCP port [0=local port]: ')" vp || return 0
    prompt_read "$(L '公网 HY2 UDP 端口 [0=本机端口]：' 'Public HY2 UDP port [0=local port]: ')" hp || return 0
    warn "$(L '只更新管理员节点导出；不会替服务商创建 NAT。受限用户端口需单独映射，HY2 证书身份保持原值，跳跃将关闭。' 'Updates admin exports only; does not create provider NAT. User ports need separate mappings; HY2 certificate identity is retained and hopping is disabled.')"
-   confirm "$(L '保存 NAT 导出设置？' 'Save NAT export settings?')" && configuration_apply nat_exports "$host" "${vp:-0}" "${hp:-0}";;
+   confirm "$(L '保存 NAT 导出设置？' 'Save NAT export settings?')" || return 0; configuration_apply nat_exports "$host" "${vp:-0}" "${hp:-0}";;
   5) argo_network_settings;;
   6) check_owned || return 1;edge=$(rescue_engine family) || return 1
    say '使用你已有的合法 WARP WireGuard 双栈配置；原生 IPv6 必须使用 IPv6 Peer Endpoint。默认 MTU 1280，无需 /dev/net/tun。' 'Use your own valid dual-stack WARP WireGuard profile. Native IPv6 needs an IPv6 Peer Endpoint. Default MTU 1280; no /dev/net/tun is required.'

@@ -25,7 +25,9 @@ PY_HOP_OFF
 }
 hop(){
  check_owned && hop_guard || return 1
- [[ $(protocol_mode) != 1 ]] || { err "$(L '未安装 HY2' 'HY2 not installed')"; return 1; }
+ local current_mode
+ current_mode=$(protocol_mode) || return 1
+ [[ $current_mode == 2 || $current_mode == 3 ]] || { err "$(L '未安装 HY2' 'HY2 not installed')"; return 1; }
  local choice backend start end target
  # --menu renders only; a numeric argument executes one selected operation.
  if [[ $# == 0 || $1 == --menu ]]; then
@@ -40,7 +42,7 @@ hop(){
  else
   choice=$1
  fi
- if [[ $choice == 2 ]]; then confirm "$(L '关闭跳跃？' 'Disable hopping?')" && hop_disable; return; fi
+ if [[ $choice == 2 ]]; then confirm "$(L '关闭跳跃？' 'Disable hopping?')" || return 0; { hop_disable && exports; }; return; fi
  [[ $choice == 1 ]] || return 0
  if [[ ${2:-} == --automatic ]];then
   backend=nftables;start=20000;end=30000

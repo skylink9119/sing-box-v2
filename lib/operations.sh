@@ -185,7 +185,10 @@ certificate_check(){
  { IFS= read -r cert; IFS= read -r key; IFS= read -r name; } <<<"$identity"
  validate_certificate "$cert" "$key" "$name" || return 1
  fingerprint=$(openssl x509 -in "$cert" -noout -fingerprint -sha256) || return 1
- if [[ ! -f $BASE/certificate-status.json ]]; then certificate_record "$fingerprint"; return; fi
+ if [[ ! -f $BASE/certificate-status.json ]]; then
+  if [[ $(state cert_mode) == 2 ]];then certificate_reload;else certificate_record "$fingerprint";fi
+  return
+ fi
  previous=$(python3 - "$BASE/certificate-status.json" <<'PY'
 import json,sys
 print(json.load(open(sys.argv[1]))['fingerprint'])
@@ -216,7 +219,7 @@ certificate_menu(){
  fi
  case $choice in
   1) report_output certificate_info;;
-  2) confirm "$(L '同步证书并重启正在运行的 HY2 服务？' 'Sync certificates and restart active HY2 services?')" && certificate_reload;;
+  2) confirm "$(L '同步证书并重启正在运行的 HY2 服务？' 'Sync certificates and restart active HY2 services?')" || return 0; certificate_reload;;
   3)
    users_guard setup || return 1
    certificate_check || return 1

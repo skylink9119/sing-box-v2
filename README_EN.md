@@ -20,7 +20,9 @@
 
 ---
 
-# SKYBYTE Manager V2.10.2: modular source architecture
+# SKYBYTE Manager V2.10.3: modular source architecture
+
+**v2.10.3 boundary fixes:** retain HY2 hopping across non-port edits, isolate faulty user cores, reconcile account restore endpoints, reload renewed certificates even without an old baseline, and inventory managed firewall ports. Cancel is a no-op. Menu text/state reads and large-file backup I/O are lighter. [Audit fixes and validation](docs/AUDIT-2026-11-02.md).
 
 **a → 3 installs XHTTP automatically; b → 11 manages XHTTP**: on-demand latest stable Xray, guided XHTTP + Reality / TLS-CDN deployment, with separate configuration, service, exports and backups under one manager. Source remains modular; no second manager is downloaded. [XHTTP architecture and usage](docs/XHTTP.md).
 

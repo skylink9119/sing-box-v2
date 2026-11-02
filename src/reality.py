@@ -24,7 +24,7 @@ def hostname(value):
     except ValueError:
         pass
     value = value.encode('idna').decode('ascii').lower()
-    if len(value) > 253 or not all(re.fullmatch(r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?', part)
+    if re.fullmatch(r'[0-9.]+',value) or len(value) > 253 or not all(re.fullmatch(r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?', part)
                                    for part in value.split('.')):
         raise ValueError('Invalid hostname')
     return value

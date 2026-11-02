@@ -69,10 +69,10 @@ def handler(base,manager,exporter=None):
     path=urllib.parse.urlsplit(self.path)
     match=re.fullmatch(r'/s/([A-Za-z0-9_-]{43})/(shadowrocket|v2rayn|clash|singbox)',path.path)
     if not match or path.query or path.fragment:return self.reply(404)
-    if not self.server.allow(self.client_address[0]):return self.reply(429)
     token,kind=match.groups();auth=authorize(base,token)
     if not auth:return self.reply(404)
     uid,_=auth
+    if not self.server.allow(self.client_address[0],uid):return self.reply(429)
     if self.command!='HEAD':export(uid)
     auth=authorize(base,token)
     if not auth or auth[0]!=uid:return self.reply(404)
@@ -99,7 +99,9 @@ class Server(socketserver.ThreadingMixIn,http.server.HTTPServer):
   try:super().process_request_thread(request,address)
   finally:self.slots.release()
  def handle_error(self,*_):pass
- def allow(self,ip):
+ def allow(self,ip,identity=None):
+  # Only authenticated account identities enter this table in the HTTP handler.
+  ip="account:"+identity if identity is not None else ip
   with self.rate_lock:
    now=time.monotonic()
    self.rates={k:v for k,v in self.rates.items() if now-v[0]<60}
@@ -107,7 +109,8 @@ class Server(socketserver.ThreadingMixIn,http.server.HTTPServer):
    start,count=self.rates.get(ip,(now,0));self.rates[ip]=(start,count+1);return count<60
  def get_request(self):
   request,address=self.socket.accept();request.settimeout(10)
-  return (self.context.wrap_socket(request,server_side=True,do_handshake_on_connect=False),address) if hasattr(self,'context') else (request,address)
+  try:return (self.context.wrap_socket(request,server_side=True,do_handshake_on_connect=False),address) if hasattr(self,'context') else (request,address)
+  except BaseException:request.close();raise
 
 class DualServer(Server):
  address_family=socket.AF_INET6

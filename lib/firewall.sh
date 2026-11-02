@@ -1,8 +1,9 @@
 # lib/firewall.sh — build-time module; assembled by scripts/build.py.
 firewall_audit(){
  if command -v ufw >/dev/null; then
-  local rules hy2_port; rules=$(LC_ALL=C ufw status); printf '%s\n' "$rules"
-  if [[ -f $META && $(protocol_mode) != 1 && $rules == *'Status: active'* ]]; then
+  local rules hy2_port current_mode=0; rules=$(LC_ALL=C ufw status); printf '%s\n' "$rules"
+  if [[ -f $META ]];then current_mode=$(protocol_mode) || return 1;fi
+  if [[ ( $current_mode == 2 || $current_mode == 3 ) && $rules == *'Status: active'* ]]; then
    hy2_port=$(protocol_port hysteria2) || return 1
    grep -Eq "${hy2_port}/udp[[:space:]]+ALLOW" <<<"$rules" || warn "$(L "未检测到 UDP $hy2_port 放行，请检查规则" "UDP $hy2_port allow rule not detected; inspect rules")"
    if [[ $(state hop) == True ]]; then
@@ -111,7 +112,7 @@ firewall(){
    say '当前 SSH 监听信息（必须人工核实）：' 'SSH listener information (VERIFY manually):'
    detect_ssh_ports
    prompt_read "$(L '输入当前 SSH TCP 端口（请核实云控制台/sshd 设置）：' 'Enter verified SSH TCP port: ')" port
-   port=${port:-${SSH_PORTS:-}}
+   port=${port:-${SSH_PORTS%%$'\n'*}}
    valid_port "$port" || { err "$(L 'SSH 端口无效' 'Invalid SSH port')"; return 1; }
    warn "$(L '如果 SSH 端口判断错误，开启 UFW 可能导致远程连接断开！请保留 VPS 控制台访问。' 'Wrong SSH port may lock you out. Keep VPS console access.')"
    say '将放行 SSH 与实际节点、订阅和 HTTP证书验证端口。' 'Will allow SSH and actual node, subscription and HTTP certificate-validation ports.'

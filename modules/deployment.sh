@@ -24,28 +24,17 @@ PY_SAVED_UFW
    deployment_firewall_gate || return 1
    # Do not silently block an existing website or other public listener.
    listeners=$(ss -H -lntu) || return 1
-   allowed=$(python3 - "$CONF" <<'PY_DEPLOYMENT_PORTS'
-import json,sys
-from pathlib import Path
-for inbound in (json.load(open(sys.argv[1]))['inbounds'] if Path(sys.argv[1]).exists() else []):
- print(('tcp' if inbound['type']=='vless' else 'udp')+':'+str(inbound['listen_port']))
-PY_DEPLOYMENT_PORTS
-   ) || return 1
-   local xhttp_ports xhttp_port
-   xhttp_ports=$(xhttp_command ports) || return 1
-   while IFS= read -r xhttp_port;do
-    [[ -n $xhttp_port ]] || continue
-    valid_port "$xhttp_port" || return 1
-    allowed+=$'\n'"tcp:$xhttp_port"
-   done <<< "$xhttp_ports"
+   allowed=$(managed_listener_rules) || return 1
    python3 - "$SSH_PORTS" "$allowed" 3< <(printf '%s\n' "$listeners") <<'PY_DEPLOYMENT_LISTENERS' || return 1
-import os,sys
-allowed={'tcp:'+port for port in sys.argv[1].split()}|set(sys.argv[2].split())
+import ipaddress,os,sys
+allowed={'tcp:'+port for port in sys.argv[1].split()}|{proto+':'+port for port,proto in (rule.split('/') for rule in sys.argv[2].split())}
 for line in os.fdopen(3):
  fields=line.split()
  if len(fields)<5:raise SystemExit('Cannot parse listeners / 无法识别监听信息')
  address,port=fields[4].rsplit(':',1)
- if address.startswith('127.') or address in ('[::1]','::1'):continue
+ try:local=ipaddress.ip_address(address.strip('[]').split('%',1)[0])
+ except ValueError:local=None
+ if local is not None and (local.is_loopback or local.is_link_local):continue
  if fields[0]+':'+port not in allowed:raise SystemExit('Other public listeners detected; inspect d → 2 first / 存在其它公开监听服务，请先通过 d → 2 手工核对')
 PY_DEPLOYMENT_LISTENERS
    ;;
@@ -132,7 +121,7 @@ deployment_apply_selected(){
  else check_owned || return 1;fi
  local selected_bbr=$1 selected_firewall=$2 selected_qr=$3
  [[ $selected_bbr =~ ^[01]$ && $selected_firewall =~ ^[01]$ && $selected_qr =~ ^[01]$ ]] || return 1
- local failed=0 firewall_ready=false hopping_status packages=()
+ local failed=0 firewall_ready=false hopping_status current_mode=0 packages=()
  if [[ $selected_firewall == 1 ]];then command -v ufw >/dev/null || packages+=(ufw);fi
  if [[ $selected_qr == 1 ]];then command -v qrencode >/dev/null || packages+=(qrencode);fi
  if (( ${#packages[@]} ));then
@@ -154,7 +143,8 @@ deployment_apply_selected(){
    report_output say '[通过] UFW 已启用，已放行 SSH 和实际节点端口' '[PASS] UFW enabled with SSH and actual node ports allowed'
   else err "$(L '[未完成] 防火墙设置未完成，请用 d → 2 核对' '[INCOMPLETE] Firewall setup incomplete; inspect d → 2')";failed=1;fi
  else report_output say '[跳过] UFW 安装与启用' '[SKIP] UFW installation and activation';fi
- if [[ $deployment_context == sing-box ]] && [[ $(protocol_mode) == 2 || $(protocol_mode) == 3 ]];then
+ if [[ $deployment_context == sing-box ]];then current_mode=$(protocol_mode) || return 1;fi
+ if [[ $current_mode == 2 || $current_mode == 3 ]];then
   if [[ $selected_firewall == 0 || $firewall_ready == true ]];then
    if deployment_hopping;then :;else
     hopping_status=$?

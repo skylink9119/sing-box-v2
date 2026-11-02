@@ -81,9 +81,10 @@ def json_text(value):
 
 # Reused from SKYBYTE Xray Manager v0.1.34; see docs/XHTTP.md.
 def domain(value):
+    if not isinstance(value,str) or any(ord(c)<32 or ord(c)==127 for c in value):raise ValueError("Invalid domain / 域名无效")
     value = value.strip().rstrip(".").lower()
     value = value.encode("idna").decode("ascii")
-    if len(value) > 253 or not all(re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", x)
+    if re.fullmatch(r"[0-9.]+", value) or (value != "localhost" and ("." not in value or not re.fullmatch(r"[a-z][a-z0-9-]{1,62}", value.rsplit(".",1)[-1]))) or len(value) > 253 or not all(re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", x)
                                     for x in value.split(".")):
         raise ValueError("Invalid domain / 域名无效")
     return value

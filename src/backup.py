@@ -11,13 +11,29 @@ def files(root):
  result={}
  for p in root.rglob('*'):
   if p.is_symlink():raise ValueError('Backup contains symlinks')
-  if p.is_file() and p.name!='backup-manifest.json':result[str(p.relative_to(root))]=p
+  if p.is_file() and p.name not in ('backup-manifest.json','.incomplete'):result[str(p.relative_to(root))]=p
  return result
+
+def file_digest(path):
+ digest=hashlib.sha256()
+ with open(path,'rb') as source:
+  for chunk in iter(lambda:source.read(1024*1024),b''):digest.update(chunk)
+ return digest.hexdigest()
+
+def replace_from_file(path,source,mode=0o600):
+ if path.is_symlink() or path.parent.is_symlink() or source.is_symlink():raise ValueError('Restore file symlink')
+ fd,tmp=tempfile.mkstemp(dir=path.parent)
+ try:
+  with os.fdopen(fd,'wb') as target,open(source,'rb') as original:
+   shutil.copyfileobj(original,target,1024*1024);target.flush();os.fsync(target.fileno())
+  os.chmod(tmp,mode);os.replace(tmp,path)
+ finally:
+  if os.path.exists(tmp):os.unlink(tmp)
 
 def manifest(root,replace=False):
  contents=files(root)
  if len(contents)>10000:raise ValueError('Too many backup files')
- d={'owner':OWNER,'schema':1,'created_at':int(time.time()),'files':{n:hashlib.sha256(p.read_bytes()).hexdigest() for n,p in contents.items()}}
+ d={'owner':OWNER,'schema':1,'created_at':int(time.time()),'files':{n:file_digest(p) for n,p in contents.items()}}
  target=root/'backup-manifest.json'
  if target.is_symlink():raise ValueError('Manifest symlink')
  if target.exists():
@@ -29,6 +45,7 @@ def manifest(root,replace=False):
  os.replace(tmp,target)
 
 def verify(root,required=False):
+ if (root/'.incomplete').exists() or (root/'.incomplete').is_symlink():raise ValueError('Incomplete backup; refusing restore')
  contents=files(root);p=root/'backup-manifest.json'
  if not p.exists():
   if required:raise ValueError('Archive has no integrity manifest')
@@ -36,7 +53,7 @@ def verify(root,required=False):
  d=json.loads(p.read_text())
  if d.get('owner')!=OWNER or d.get('schema')!=1 or set(d['files'])!=set(contents):raise ValueError('Backup manifest mismatch')
  for n,f in contents.items():
-  if hashlib.sha256(f.read_bytes()).hexdigest()!=d['files'][n]:raise ValueError('Backup integrity check failed')
+  if file_digest(f)!=d['files'][n]:raise ValueError('Backup integrity check failed')
 
 def check(root):
  verify(root)
@@ -99,9 +116,9 @@ def restore_plan(root,value):
   if not source.exists():continue
   if source.is_symlink() or not source.is_file() or dest.is_symlink() or dest.parent.is_symlink() or dest.exists() and not dest.is_file():raise ValueError('Unsafe restore file')
   n=len(plan);candidate=stage/('new-'+str(n));old=stage/('old-'+str(n))
-  replace_file(candidate,source.read_bytes())
+  replace_from_file(candidate,source)
   previous_mode=None
-  if dest.exists():previous_mode=dest.stat().st_mode&0o777;replace_file(old,dest.read_bytes())
+  if dest.exists():previous_mode=dest.stat().st_mode&0o777;replace_from_file(old,dest)
   plan.append({'target':str(dest),'mode':mode,'previous_mode':previous_mode,'index':n})
  replace_file(stage/'transaction.json',json.dumps(plan).encode())
 
@@ -112,13 +129,13 @@ def restore_files(value,rollback=False):
   if str(dest) not in allowed or item['index']!=n or dest.is_symlink() or dest.parent.is_symlink():raise ValueError('Invalid restore journal')
   if mode is None:
    if dest.exists():
-    if dest.read_bytes()!=(stage/('new-'+str(n))).read_bytes():raise ValueError('Restore target changed; retained')
+    if file_digest(dest)!=file_digest(stage/('new-'+str(n))):raise ValueError('Restore target changed; retained')
     dest.unlink()
   else:
    if type(mode) is not int or not 0<=mode<=0o777:raise ValueError('Invalid restore mode')
    source=stage/(('old-' if rollback else 'new-')+str(n))
    if source.is_symlink() or not source.is_file():raise ValueError('Invalid restore source')
-   replace_file(dest,source.read_bytes(),mode)
+   replace_from_file(dest,source,mode)
 
 if action=='manifest':manifest(pathlib.Path(args[0]))
 elif action=='reseal':manifest(contained(args[0]),True)

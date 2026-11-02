@@ -25,6 +25,9 @@ def assemble(name, chain=()):
     if path.is_symlink() or path.parent.is_symlink() or not path.is_file():
         raise ValueError('Missing or symlinked source include: ' + key)
     source = path.read_text()
+    if 'from src.managed_ports import integrated_xhttp_ports\n' in source:
+        source = source.replace('from src.managed_ports import integrated_xhttp_ports\n',
+                                assemble('managed_ports.py', chain + (key,)))
     if source and not source.endswith("\n"):
         source += "\n"
     return re.sub(r'^# @include ([^\n]+)(?:\n|$)',

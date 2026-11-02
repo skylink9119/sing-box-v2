@@ -1,6 +1,7 @@
 # Runs inside xhttp_command's isolated shell; all inputs were already confirmed.
 xhttp_install_automatic(){
  local kind=$XHTTP_KIND host listen=0.0.0.0 port=443 stage
+ command -v curl >/dev/null || apt_install --no-install-recommends curl ca-certificates || return 1
  local flags=(--kind "$kind" --name "$XHTTP_NAME" --sni "$XHTTP_SNI")
  if [[ $kind == xhttp-tls && $XHTTP_CDN == 1 ]];then host=$XHTTP_SNI
  else host=$(curl -q -4fsS --noproxy '*' --max-time 12 https://api.ipify.org) || host=$(curl -q -6fsS --noproxy '*' --max-time 12 https://api64.ipify.org) || return 1;fi

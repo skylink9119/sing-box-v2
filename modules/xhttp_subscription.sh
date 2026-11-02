@@ -16,7 +16,7 @@ show_nodes(){
 qr_nodes(){
  helper guard || return 1
  if ! command -v qrencode >/dev/null; then
-  confirm '安装本地二维码工具？' 'Install local QR utility?' || return 1
+  confirm '安装本地二维码工具？' 'Install local QR utility?' || return 0
   apt_refresh && apt-get install -y qrencode || return 1
  fi
  local uri
