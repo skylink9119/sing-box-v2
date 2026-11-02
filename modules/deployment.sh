@@ -5,11 +5,19 @@ deployment_firewall_gate(){
 PY_DEPLOYMENT_GATE
 }
 deployment_firewall(){
- local status port listeners allowed
+ local status port listeners allowed saved_rules
  detect_ssh_ports || return 1
  [[ -n $SSH_PORTS ]] || { err "$(L '未确认 SSH 端口，未启用防火墙' 'SSH ports unknown; firewall was not enabled')";return 1; }
  while IFS= read -r port;do valid_port "$port" || return 1;done <<<"$SSH_PORTS"
  status=$(LC_ALL=C ufw status) || return 1
+ saved_rules=$(LC_ALL=C ufw show added) || return 1
+ python3 - "$saved_rules" <<'PY_SAVED_UFW' || return 1
+import sys
+for line in sys.argv[1].splitlines():
+ line=line.strip()
+ if line.startswith('ufw ') and not line.startswith('ufw allow '):
+  raise SystemExit('Saved UFW deny/limit or custom rules need manual review / UFW 保存了拒绝、限制或自定义规则，请先用 d → 2 手工核对')
+PY_SAVED_UFW
  case $status in
   'Status: active'*) ;;
   'Status: inactive'*)
@@ -106,26 +114,38 @@ automatic_setup(){
  say 'BBR 作用于 TCP，不直接改变 HY2 的 UDP 拥塞控制。云防火墙仍需在服务商处放行。' 'BBR affects TCP, not HY2 UDP congestion control. Provider firewall rules still need checking.'
  detect_ssh_ports || return 1
  confirm "$(L '按以上计划自动配置？' 'Apply this automatic setup plan?')" || return 0
+ deployment_apply_selected 1 1 1
+}
+deployment_apply_selected(){
+ [[ $# == 3 ]] || return 1
+ need_root
+ check_owned || return 1
+ local selected_bbr=$1 selected_firewall=$2 selected_qr=$3
+ [[ $selected_bbr =~ ^[01]$ && $selected_firewall =~ ^[01]$ && $selected_qr =~ ^[01]$ ]] || return 1
  local failed=0 firewall_ready=false hopping_status packages=()
- command -v ufw >/dev/null || packages+=(ufw)
- command -v qrencode >/dev/null || packages+=(qrencode)
+ if [[ $selected_firewall == 1 ]];then command -v ufw >/dev/null || packages+=(ufw);fi
+ if [[ $selected_qr == 1 ]];then command -v qrencode >/dev/null || packages+=(qrencode);fi
  if (( ${#packages[@]} ));then
   if ! apt_install --no-install-recommends "${packages[@]}";then
-   err "$(L '[失败] 工具安装未完成，已安装的节点保留' '[FAIL] Tool installation incomplete; installed nodes retained')"
-   failed=1
+   err "$(L '[失败] 工具安装未完成，已安装的节点保留' '[FAIL] Tool installation incomplete; installed nodes retained')";failed=1
   fi
  fi
- if command -v qrencode >/dev/null;then
-  report_output say '[通过] 二维码工具已安装' '[PASS] qrencode is installed'
- else err "$(L '[失败] 二维码工具不可用' '[FAIL] qrencode unavailable')";failed=1;fi
- if deployment_bbr;then report_output say '[通过] 已开启 BBR + FQ' '[PASS] BBR + FQ enabled'
- else err "$(L '[未完成] BBR 未成功启用，请查看上方原因' '[INCOMPLETE] BBR not enabled; inspect the reason above')";failed=1;fi
- if command -v ufw >/dev/null && deployment_firewall;then
-  firewall_ready=true
-  report_output say '[通过] UFW 已启用，已放行 SSH 和实际节点端口' '[PASS] UFW enabled with SSH and actual node ports allowed'
- else err "$(L '[未完成] 防火墙设置未完成，请用 d → 2 核对' '[INCOMPLETE] Firewall setup incomplete; inspect d → 2')";failed=1;fi
+ if [[ $selected_qr == 1 ]];then
+  if command -v qrencode >/dev/null;then report_output say '[通过] 二维码工具已安装，可用 b → 4 查看小火箭二维码' '[PASS] qrencode is installed; use b → 4 for Shadowrocket QR codes'
+  else err "$(L '[失败] 二维码工具不可用' '[FAIL] qrencode unavailable')";failed=1;fi
+ else report_output say '[跳过] 二维码工具' '[SKIP] QR tooling';fi
+ if [[ $selected_bbr == 1 ]];then
+  if deployment_bbr;then report_output say '[通过] 已开启 BBR + FQ' '[PASS] BBR + FQ enabled'
+  else err "$(L '[未完成] BBR 未成功启用，请查看上方原因' '[INCOMPLETE] BBR not enabled; inspect the reason above')";failed=1;fi
+ else report_output say '[跳过] BBR 设置' '[SKIP] BBR settings';fi
+ if [[ $selected_firewall == 1 ]];then
+  if command -v ufw >/dev/null && deployment_firewall;then
+   firewall_ready=true
+   report_output say '[通过] UFW 已启用，已放行 SSH 和实际节点端口' '[PASS] UFW enabled with SSH and actual node ports allowed'
+  else err "$(L '[未完成] 防火墙设置未完成，请用 d → 2 核对' '[INCOMPLETE] Firewall setup incomplete; inspect d → 2')";failed=1;fi
+ else report_output say '[跳过] UFW 安装与启用' '[SKIP] UFW installation and activation';fi
  if [[ $(protocol_mode) == 2 || $(protocol_mode) == 3 ]];then
-  if [[ $firewall_ready == true ]];then
+  if [[ $selected_firewall == 0 || $firewall_ready == true ]];then
    if deployment_hopping;then :;else
     hopping_status=$?
     if [[ $hopping_status != 2 ]];then err "$(L '[未完成] HY2 跳跃未启用，请用 d → 5 核对' '[INCOMPLETE] HY2 hopping not enabled; inspect d → 5')";failed=1;fi

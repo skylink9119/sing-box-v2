@@ -51,6 +51,12 @@ ss(){ printf '%s\\n' 'tcp LISTEN 0 128 0.0.0.0:2222 0.0.0.0:*' 'tcp LISTEN 0 128
             self.assertNotEqual(result.returncode,0)
             self.assertNotIn('UFW --force enable',result.stderr)
 
+    def test_saved_deny_rules_are_not_overridden_or_enabled_automatically(self):
+        code=self.firewall_mocks()+"""ufw(){ case $* in status) echo 'Status: inactive';; 'show added') echo 'ufw deny 2222/tcp';; *) echo BAD >&2;;esac; };deployment_firewall"""
+        result=self.shell(code,ok=False)
+        self.assertNotEqual(result.returncode,0)
+        self.assertNotIn('BAD',result.stderr)
+
     def test_active_ufw_retains_policies_and_only_adds_allowed_ports(self):
         result=self.shell(self.firewall_mocks()+'ACTIVE=true;deployment_firewall_gate(){ echo BAD;return 1; };deployment_firewall')
         self.assertNotIn('BAD',result.stdout)

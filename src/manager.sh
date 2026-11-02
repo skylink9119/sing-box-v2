@@ -39,6 +39,7 @@ HAPROXY_RUNTIME_DIR=/run/systemd/system
 # @include modules/certificate.sh
 # @include modules/install.sh
 # @include modules/deployment.sh
+# @include modules/wizard.sh
 # @include modules/hysteria2.sh
 # @include lib/users.sh
 # @include modules/argo.sh

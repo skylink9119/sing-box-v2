@@ -1277,7 +1277,7 @@ install_protocol() (
  prompt_read '> ' mode || return; fi
  [[ "$mode" == 0 ]] && return 0
  [[ "$mode" =~ ^[123]$ ]] || { err "Invalid selection"; return 1; }
- notice; confirm "$(L '同意声明并安装所选协议？' 'Accept notice and install selected protocol(s)?')" || return 0
+ if [[ ${2:-} != guided ]];then notice; confirm "$(L '同意声明并安装所选协议？' 'Accept notice and install selected protocol(s)?')" || return 0;fi
  if [[ -e $CONF || -L $CONF || -e $META || -L $META || -e $BIN || -L $BIN || -e $SYSTEMD_DIR/sing-box.service || -L $SYSTEMD_DIR/sing-box.service ]] || command -v sing-box >/dev/null; then err "$(L '发现已有配置或核心，拒绝覆盖；追加协议用 a → 5 → 4，已有节点增加 IPv6 备用用 d → 13 → 2。' 'Existing configuration or binary found; refusing to overwrite. Add a protocol through a → 5 → 4, or add IPv6 backups through d → 13 → 2.')"; return 1; fi
  if systemctl list-unit-files sing-box.service --no-legend 2>/dev/null | grep -q sing-box; then err "$(L '已有 sing-box 服务，拒绝覆盖' 'Existing sing-box service found; refusing to overwrite')"; return 1; fi
  install_environment_check "$mode" || return 1
@@ -1312,8 +1312,11 @@ install_protocol() (
  install_port_check "$mode" "$vp" "$hp" "${listen_addr:-0.0.0.0}" || return 1
  local domain="" cert="" key="" sni="" node_name node_suffix=''
  [[ ${2:-} != ipv6 ]] || node_suffix=-IPv6
- node_name=$(choose_node_name "$node_suffix") || { err "$(L '节点名称无效' 'Invalid node name')"; return 1; }
+ if [[ ${2:-} == guided ]];then node_name=$WIZARD_NODE_NAME
+ else node_name=$(choose_node_name "$node_suffix") || { err "$(L '节点名称无效' 'Invalid node name')"; return 1; };fi
  if [[ $mode != 1 ]]; then
+  if [[ ${2:-} == guided ]];then cert_mode=1
+  else
   prompt_options 'HY2证书:
 1. 无域名(自动自签名)
 2. 已有证书
@@ -1322,6 +1325,7 @@ install_protocol() (
 2. Existing certificate
 3. Managed ACME'
   prompt_read '> ' cert_mode
+  fi
   case "$cert_mode" in
    1) say '需要客户端安全地导入证书并启用验证。' 'Client must securely import and verify the certificate.';;
    2) prompt_read "$(L '证书域名：' 'Certificate domain: ')" domain
@@ -1337,7 +1341,8 @@ install_protocol() (
   esac
  fi
  if [[ $mode != 2 ]]; then
-  prompt_read "$(L 'Reality 握手域名 [addons.mozilla.org]：' 'Reality handshake [addons.mozilla.org]: ')" sni
+  if [[ ${2:-} == guided ]];then sni=addons.mozilla.org
+  else prompt_read "$(L 'Reality 握手域名 [addons.mozilla.org]：' 'Reality handshake [addons.mozilla.org]: ')" sni || return 1;fi
   sni=${sni:-addons.mozilla.org}
   [[ $sni =~ ^[a-zA-Z0-9.-]+$ ]] || { err "$(L '无效 SNI' 'Invalid SNI')"; return 1; }
  fi
@@ -1417,7 +1422,10 @@ PY_INSTALL_SAN
  exports || return 1
  committed=true
  ok "$(L '部署完成；请检查云防火墙' 'Installed; check provider firewall')"
- automatic_setup || warn "$(L '节点已保留，部分配套配置未完成，可通过 d → 14 重试。' 'Node retained; some optional setup is incomplete. Retry via d → 14.')"
+ if [[ ${2:-} == guided ]];then
+  deployment_apply_selected "$WIZARD_BBR" "$WIZARD_FIREWALL" "$WIZARD_QR" || warn "$(L '节点已安装，部分所选配置未完成，请查看上方结果。' 'Node installed; some selected setup is incomplete. Inspect the results above.')"
+ else automatic_setup || warn "$(L '节点已保留，部分配套配置未完成，可通过 d → 14 重试。' 'Node retained; some optional setup is incomplete. Retry via d → 14.')"
+ fi
 )
 # Automatic post-install setup; one explicit confirmation, no hidden menu input.
 deployment_firewall_gate(){
@@ -1481,11 +1489,19 @@ if __name__=='__main__':
 PY_DEPLOYMENT_GATE
 }
 deployment_firewall(){
- local status port listeners allowed
+ local status port listeners allowed saved_rules
  detect_ssh_ports || return 1
  [[ -n $SSH_PORTS ]] || { err "$(L '未确认 SSH 端口，未启用防火墙' 'SSH ports unknown; firewall was not enabled')";return 1; }
  while IFS= read -r port;do valid_port "$port" || return 1;done <<<"$SSH_PORTS"
  status=$(LC_ALL=C ufw status) || return 1
+ saved_rules=$(LC_ALL=C ufw show added) || return 1
+ python3 - "$saved_rules" <<'PY_SAVED_UFW' || return 1
+import sys
+for line in sys.argv[1].splitlines():
+ line=line.strip()
+ if line.startswith('ufw ') and not line.startswith('ufw allow '):
+  raise SystemExit('Saved UFW deny/limit or custom rules need manual review / UFW 保存了拒绝、限制或自定义规则，请先用 d → 2 手工核对')
+PY_SAVED_UFW
  case $status in
   'Status: active'*) ;;
   'Status: inactive'*)
@@ -1582,26 +1598,38 @@ automatic_setup(){
  say 'BBR 作用于 TCP，不直接改变 HY2 的 UDP 拥塞控制。云防火墙仍需在服务商处放行。' 'BBR affects TCP, not HY2 UDP congestion control. Provider firewall rules still need checking.'
  detect_ssh_ports || return 1
  confirm "$(L '按以上计划自动配置？' 'Apply this automatic setup plan?')" || return 0
+ deployment_apply_selected 1 1 1
+}
+deployment_apply_selected(){
+ [[ $# == 3 ]] || return 1
+ need_root
+ check_owned || return 1
+ local selected_bbr=$1 selected_firewall=$2 selected_qr=$3
+ [[ $selected_bbr =~ ^[01]$ && $selected_firewall =~ ^[01]$ && $selected_qr =~ ^[01]$ ]] || return 1
  local failed=0 firewall_ready=false hopping_status packages=()
- command -v ufw >/dev/null || packages+=(ufw)
- command -v qrencode >/dev/null || packages+=(qrencode)
+ if [[ $selected_firewall == 1 ]];then command -v ufw >/dev/null || packages+=(ufw);fi
+ if [[ $selected_qr == 1 ]];then command -v qrencode >/dev/null || packages+=(qrencode);fi
  if (( ${#packages[@]} ));then
   if ! apt_install --no-install-recommends "${packages[@]}";then
-   err "$(L '[失败] 工具安装未完成，已安装的节点保留' '[FAIL] Tool installation incomplete; installed nodes retained')"
-   failed=1
+   err "$(L '[失败] 工具安装未完成，已安装的节点保留' '[FAIL] Tool installation incomplete; installed nodes retained')";failed=1
   fi
  fi
- if command -v qrencode >/dev/null;then
-  report_output say '[通过] 二维码工具已安装' '[PASS] qrencode is installed'
- else err "$(L '[失败] 二维码工具不可用' '[FAIL] qrencode unavailable')";failed=1;fi
- if deployment_bbr;then report_output say '[通过] 已开启 BBR + FQ' '[PASS] BBR + FQ enabled'
- else err "$(L '[未完成] BBR 未成功启用，请查看上方原因' '[INCOMPLETE] BBR not enabled; inspect the reason above')";failed=1;fi
- if command -v ufw >/dev/null && deployment_firewall;then
-  firewall_ready=true
-  report_output say '[通过] UFW 已启用，已放行 SSH 和实际节点端口' '[PASS] UFW enabled with SSH and actual node ports allowed'
- else err "$(L '[未完成] 防火墙设置未完成，请用 d → 2 核对' '[INCOMPLETE] Firewall setup incomplete; inspect d → 2')";failed=1;fi
+ if [[ $selected_qr == 1 ]];then
+  if command -v qrencode >/dev/null;then report_output say '[通过] 二维码工具已安装，可用 b → 4 查看小火箭二维码' '[PASS] qrencode is installed; use b → 4 for Shadowrocket QR codes'
+  else err "$(L '[失败] 二维码工具不可用' '[FAIL] qrencode unavailable')";failed=1;fi
+ else report_output say '[跳过] 二维码工具' '[SKIP] QR tooling';fi
+ if [[ $selected_bbr == 1 ]];then
+  if deployment_bbr;then report_output say '[通过] 已开启 BBR + FQ' '[PASS] BBR + FQ enabled'
+  else err "$(L '[未完成] BBR 未成功启用，请查看上方原因' '[INCOMPLETE] BBR not enabled; inspect the reason above')";failed=1;fi
+ else report_output say '[跳过] BBR 设置' '[SKIP] BBR settings';fi
+ if [[ $selected_firewall == 1 ]];then
+  if command -v ufw >/dev/null && deployment_firewall;then
+   firewall_ready=true
+   report_output say '[通过] UFW 已启用，已放行 SSH 和实际节点端口' '[PASS] UFW enabled with SSH and actual node ports allowed'
+  else err "$(L '[未完成] 防火墙设置未完成，请用 d → 2 核对' '[INCOMPLETE] Firewall setup incomplete; inspect d → 2')";failed=1;fi
+ else report_output say '[跳过] UFW 安装与启用' '[SKIP] UFW installation and activation';fi
  if [[ $(protocol_mode) == 2 || $(protocol_mode) == 3 ]];then
-  if [[ $firewall_ready == true ]];then
+  if [[ $selected_firewall == 0 || $firewall_ready == true ]];then
    if deployment_hopping;then :;else
     hopping_status=$?
     if [[ $hopping_status != 2 ]];then err "$(L '[未完成] HY2 跳跃未启用，请用 d → 5 核对' '[INCOMPLETE] HY2 hopping not enabled; inspect d → 5')";failed=1;fi
@@ -1609,6 +1637,65 @@ automatic_setup(){
   else err "$(L '[未完成] 请先完成防火墙设置，再开启 HY2 跳跃' '[INCOMPLETE] Complete firewall setup before HY2 hopping')";failed=1;fi
  fi
  return "$failed"
+}
+# Front-load guided choices; no package or node mutation before final consent.
+wizard_toggle(){
+ local answer
+ while :;do
+  prompt_read "$1 [y/N]: " answer || return 1
+  if [[ $answer =~ ^[[:space:]]*[Yy][[:space:]]*$ ]];then WIZARD_CHOICE=1;return 0;fi
+  if [[ $answer =~ ^[[:space:]]*([Nn])?[[:space:]]*$ ]];then WIZARD_CHOICE=0;return 0;fi
+  err "$(L '请输入 y 或 n' 'Enter y or n')"
+ done
+}
+wizard_protocol(){
+ prompt_options '安装协议：
+1. Reality + Vision（TCP）
+2. Hysteria2（UDP）
+3. 双协议
+0. 返回' 'Protocol:
+1. Reality + Vision (TCP)
+2. Hysteria2 (UDP)
+3. Both
+0. Back'
+ prompt_read '> ' WIZARD_PROTOCOL || return 1
+ case $WIZARD_PROTOCOL in 0) return 2;;1|2|3)return 0;;*)err "$(L '无效协议选项' 'Invalid protocol')";return 1;;esac
+}
+wizard_selected(){
+ if [[ $1 == 1 ]];then L '启用' 'Enable';else L '跳过' 'Skip';fi
+}
+guided_install() (
+ local protocol_label
+ local WIZARD_PROTOCOL=${1:-} WIZARD_NODE_NAME WIZARD_BBR WIZARD_FIREWALL WIZARD_QR WIZARD_CHOICE
+ if [[ -z $WIZARD_PROTOCOL ]];then
+  if wizard_protocol;then :;else [[ $? == 2 ]] && return 0;return 1;fi
+ fi
+ [[ $WIZARD_PROTOCOL =~ ^[123]$ ]] || return 1
+ WIZARD_NODE_NAME=$(choose_node_name) || return 1
+ wizard_toggle "$(L '是否开启 BBR + FQ（仅作用于 TCP）？' 'Enable BBR + FQ (TCP only)?')" || return 0;WIZARD_BBR=$WIZARD_CHOICE
+ wizard_toggle "$(L '是否安装并开启 UFW 防火墙？' 'Install and enable UFW?')" || return 0;WIZARD_FIREWALL=$WIZARD_CHOICE
+ wizard_toggle "$(L '是否安装小火箭二维码工具？' 'Install Shadowrocket QR tooling?')" || return 0;WIZARD_QR=$WIZARD_CHOICE
+ case $WIZARD_PROTOCOL in
+  1)protocol_label='Reality + Vision';;2)protocol_label=Hysteria2;;3)protocol_label=$(L 'Reality + HY2 双协议' 'Reality + HY2');;
+ esac
+ notice
+ say '========== 自动部署计划 ==========' '========== Guided deployment plan =========='
+ say "协议：${protocol_label}；节点：$WIZARD_NODE_NAME" "Protocol: $protocol_label; node: $WIZARD_NODE_NAME"
+ say '端口：所选协议均为 443；公网地址自动识别。' 'Port: 443 for selected protocols; public address detected automatically.'
+ if [[ $WIZARD_PROTOCOL != 2 ]];then say 'Reality 握手网站：addons.mozilla.org（安装前检测）' 'Reality target: addons.mozilla.org (checked before installation)';fi
+ if [[ $WIZARD_PROTOCOL != 1 ]];then say 'HY2：自动自签证书，客户端须导入并验证；IPv4 跳跃默认 20000–30000/UDP，冲突时跳过并提示。' 'HY2: self-signed certificate requiring client trust; IPv4 hopping defaults to UDP 20000–30000, with conflicts reported.';fi
+ say "BBR + FQ：$(wizard_selected "$WIZARD_BBR")" "BBR + FQ: $(wizard_selected "$WIZARD_BBR")"
+ say "UFW：$(wizard_selected "$WIZARD_FIREWALL")" "UFW: $(wizard_selected "$WIZARD_FIREWALL")"
+ say "二维码工具：$(wizard_selected "$WIZARD_QR")" "QR tool: $(wizard_selected "$WIZARD_QR")"
+ if [[ $WIZARD_FIREWALL == 1 ]];then detect_ssh_ports || return 1;fi
+ say '需要修改端口、连接地址、证书或握手网站，请取消后选 a → 9 自定义安装。' 'For custom ports, address, certificates or Reality target, cancel and choose a → 9.'
+ confirm "$(L '同意声明并按以上计划开始自动安装？' 'Accept the notice and install using this plan?')" || return 0
+ install_protocol "$WIZARD_PROTOCOL" guided
+)
+manual_install(){
+ local WIZARD_PROTOCOL
+ if wizard_protocol;then install_protocol "$WIZARD_PROTOCOL" custom
+ else [[ $? == 2 ]] && return 0;return 1;fi
 }
 # modules/hysteria2.sh — build-time module; assembled by scripts/build.py.
 hy2_diagnostics(){
@@ -7755,7 +7842,9 @@ sub_menu(){
    say ' 6. 受限网络部署（Argo / IPv6 / NAT）' ' 6. Restricted networks (Argo / IPv6 / NAT)'
    say ' 7. 节点安装前检测（不安装）' ' 7. Node installation checks (no installation)'
    say ' 8. 搭建 IPv6 节点' ' 8. Install IPv6 nodes'
+   say ' 9. 自定义安装（手动填写参数）' ' 9. Custom install (manual parameters)'
    printf '%s' "$YELLOW"
+   say '1–3 使用自动部署向导；手动参数请选择 9。' '1–3 use guided deployment; choose 9 for manual parameters.'
    say '请按实际网络选择；HY2 需放行 UDP 端口。' 'Choose for your network; allow the HY2 UDP port.'
    printf '%s' "$GREEN"
    ;;
@@ -7818,6 +7907,7 @@ sub_menu(){
   1:6) MAIN_ACTION=rescue;;
   1:7) MAIN_ACTION=install_checks;;
   1:8) MAIN_ACTION=install_ipv6;;
+  1:9) MAIN_ACTION=manual_install;;
   2:1) MAIN_ACTION=nodes;;
   2:2) MAIN_ACTION=subscription;;
   2:3) MAIN_ACTION=rename;;
@@ -7860,7 +7950,8 @@ sub_menu(){
 dispatch_action(){
  local action=$1;shift
  case $action in
- install_reality) install_protocol 1;; install_hy2) install_protocol 2;; install_dual) install_protocol 3;;
+ install_reality) guided_install 1;; install_hy2) guided_install 2;; install_dual) guided_install 3;;
+ manual_install) manual_install;;
  install_ipv6) ipv6_install_menu "$@";;
  node_ports) edit_node_ports;;
  argo) argo_manager "$@";; nodes) exports;; node_parameters) report_output node_parameters;; subscription) subscription;; rename) rename_node;; qr) shadowrocket_qr;; users) users_manager;;

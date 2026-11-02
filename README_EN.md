@@ -22,7 +22,7 @@
 
 # SKYBYTE Manager V2.8.29: modular source architecture
 
-New **d → 14** post-install setup configures qrencode, BBR and UFW after one confirmation, adding hopping for IPv4 HY2. [Details](docs/AUTOMATIC-SETUP.md).
+Guided installation collects protocol, name and BBR/UFW/QR choices before applying the confirmed defaults, with hopping for IPv4 HY2. **a → 9** retains custom installation; **d → 14** configures existing nodes. [Details](docs/AUTOMATIC-SETUP.md).
 
 Read-only installation checks (**a → 7**) verify the managed configuration, systemd service, executable and actual socket owners when a UDP port is occupied. Confirmed managed HY2 is reported as already installed, with links to nodes (**b → 1**), port editing (**b → 8**) and service status (**c → 1**). Other or unverified owners remain conflicts. Installation never treats an occupied port as free or overwrites an existing node.
 
