@@ -109,7 +109,7 @@ fixture_core(){ echo 'sing-box version 1.0.0'; }
 apply_update(){ echo "UPDATE=$1"; }
 run_submenu core_versions'''
         result=self.shell(code,input='1\ny\n0\n')
-        self.assertIn('UPDATE=1.14.3',result.stdout)
+        self.assertIn('UPDATE=1.14.4',result.stdout)
 
     def test_account_operations_stay_open_and_wait_without_lock(self):
         code=self.mocks()+'''check_owned(){ :; };users_guard(){ :; }

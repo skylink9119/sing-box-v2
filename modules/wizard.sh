@@ -42,6 +42,9 @@ guided_install() (
  notice
  say '========== 自动部署计划 ==========' '========== Guided deployment plan =========='
  say "协议：${protocol_label}；节点：$WIZARD_NODE_NAME" "Protocol: $protocol_label; node: $WIZARD_NODE_NAME"
+ if [[ -n ${SKYBYTE_ASSET_DIR:-} ]];then
+  say "内核：离线官方安装包 $CORE_RECOMMENDED" "Core: offline official package $CORE_RECOMMENDED"
+ else say '内核：安装时获取官方最新稳定版（不含预发布版）' 'Core: latest official stable release, resolved during installation (no prereleases)';fi
  if [[ $install_kind == guided-ipv6 ]];then
   say 'TCP 端口：443；自动使用首个通过检测的本机原生公网 IPv6，监听 IPv6/双栈。客户端须支持 IPv6。' 'TCP port: 443; use the first validated native public IPv6 with an IPv6/dual-stack listener. Client IPv6 required.'
  else say '端口：所选协议均为 443；公网地址自动识别。' 'Port: 443 for selected protocols; public address detected automatically.';fi

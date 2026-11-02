@@ -8,8 +8,8 @@
 set -Eeuo pipefail
 umask 077
 SCRIPT_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
-MANAGER_VERSION=2.9.1
-CORE_RECOMMENDED=1.14.3
+MANAGER_VERSION=2.9.2
+CORE_RECOMMENDED=1.14.4
 BASE=/etc/singbox-v2
 CONF=/etc/sing-box/config.json
 SYSTEMD_DIR=/etc/systemd/system
@@ -497,7 +497,28 @@ WantedBy=multi-user.target
 EOF
  systemctl daemon-reload; }
 # Installation requires a clean deployment; configuration generation is separately testable.
-latest(){ curl -q -fsSL --connect-timeout 10 --proto '=https' --proto-redir '=https' --max-time 25 https://api.github.com/repos/SagerNet/sing-box/releases/latest | python3 -c 'import json,sys; d=json.load(sys.stdin); assert not d.get("prerelease") and not d.get("draft"); print(d["tag_name"].lstrip("v"))'; }
+latest(){
+ curl -q -fsSL --connect-timeout 10 --proto '=https' --proto-redir '=https' --max-time 25 https://api.github.com/repos/SagerNet/sing-box/releases/latest | python3 -c '
+import json,re,sys
+d=json.load(sys.stdin)
+tag=d.get("tag_name", "")
+if d.get("prerelease") is not False or d.get("draft") is not False or not isinstance(tag,str) or not re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+",tag):
+ raise SystemExit("Invalid stable release metadata / 官方稳定版信息无效")
+print(tag[1:])'
+}
+download_install_core(){
+ local version
+ if [[ -n ${SKYBYTE_ASSET_DIR:-} ]];then
+  version=$CORE_RECOMMENDED
+  say "离线安装：使用安装包版本 ${version}，无法查询在线最新版本。" "Offline install: using package version $version; online latest is not queried."
+ else
+  say '正在查询 sing-box 官方最新稳定版……' 'Resolving the latest official stable sing-box release…'
+  version=$(latest) || { err "$(L '无法获取官方最新稳定版，停止安装；请检查 GitHub 网络后重试，不会回退旧版。' 'Cannot resolve the latest official stable release. Installation stopped; check GitHub access and retry. No older fallback is used.')";return 1; }
+ fi
+ [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { err 'Invalid core version / 内核版本号无效';return 1; }
+ say "安装 sing-box 内核：$version" "Installing sing-box core: $version"
+ download_binary "$version" "$1"
+}
 update(){
  check_owned || return 1
  local new current
@@ -1365,7 +1386,7 @@ install_protocol() (
  stage=$(mktemp -d "$BASE/install.XXXXXX") || return 1
  local BIN=$stage/sing-box CONF=$stage/config/config.json META=$stage/state.json BASE=$stage
  mkdir -m 700 "$stage/config"
- download_binary "$CORE_RECOMMENDED" "$BIN" || { err "$(L '官方安装失败' 'Release installation failed')"; return 1; }
+ download_install_core "$BIN" || { err "$(L '官方安装失败' 'Release installation failed')"; return 1; }
  chmod 755 "$BIN"
  local uuid pair priv="" pub="" sid="" passwd ip
  uuid=$(cat /proc/sys/kernel/random/uuid)
@@ -1686,6 +1707,9 @@ guided_install() (
  notice
  say '========== 自动部署计划 ==========' '========== Guided deployment plan =========='
  say "协议：${protocol_label}；节点：$WIZARD_NODE_NAME" "Protocol: $protocol_label; node: $WIZARD_NODE_NAME"
+ if [[ -n ${SKYBYTE_ASSET_DIR:-} ]];then
+  say "内核：离线官方安装包 $CORE_RECOMMENDED" "Core: offline official package $CORE_RECOMMENDED"
+ else say '内核：安装时获取官方最新稳定版（不含预发布版）' 'Core: latest official stable release, resolved during installation (no prereleases)';fi
  if [[ $install_kind == guided-ipv6 ]];then
   say 'TCP 端口：443；自动使用首个通过检测的本机原生公网 IPv6，监听 IPv6/双栈。客户端须支持 IPv6。' 'TCP port: 443; use the first validated native public IPv6 with an IPv6/dual-stack listener. Client IPv6 required.'
  else say '端口：所选协议均为 443；公网地址自动识别。' 'Port: 443 for selected protocols; public address detected automatically.';fi
@@ -6423,7 +6447,7 @@ rescue_bootstrap_core() (
  case $bind_family in 4)listen=0.0.0.0;;6)listen=::;;*)listen=::;;esac
  stage=$(mktemp -d "$BASE/install.XXXXXX") || return 1
  mkdir -m 700 "$stage/config"
- download_binary "$CORE_RECOMMENDED" "$stage/sing-box" || return 1
+ download_install_core "$stage/sing-box" || return 1
  python3 - "$stage" "$listen" <<'PY_RESCUE_CORE'
 import json,pathlib,sys
 p=pathlib.Path(sys.argv[1])
@@ -6522,7 +6546,7 @@ rescue_menu(){
   7) edge=$(rescue_engine family);say "原生路由选择：$edge" "Native route selection: $edge"
    edge=$(rescue_engine edge "$edge") || return 1
    say "Cloudflare 入口 TCP 7844 可连接数量：$edge/2；UDP 和隧道注册尚未验证。" "Reachable Cloudflare TCP 7844 endpoints: $edge/2; UDP and tunnel registration remain unverified.";;
-  8) say '文件名：sing-box-1.14.3-linux-<架构>.tar.gz、sing-box-1.14.3-release.json、cloudflared-linux-<架构>、cloudflared-release.json。' 'Files: sing-box-1.14.3-linux-<arch>.tar.gz, sing-box-1.14.3-release.json, cloudflared-linux-<arch>, cloudflared-release.json.'
+  8) say '文件名：sing-box-1.14.4-linux-<架构>.tar.gz、sing-box-1.14.4-release.json、cloudflared-linux-<架构>、cloudflared-release.json。' 'Files: sing-box-1.14.4-linux-<arch>.tar.gz, sing-box-1.14.4-release.json, cloudflared-linux-<arch>, cloudflared-release.json.'
    prompt_read "$(L '可信离线安装包目录（绝对路径；回车取消）：' 'Trusted offline asset directory (absolute; Enter cancels): ')" directory || return 0
    [[ -n $directory ]] || return 0
    [[ $directory == /* && -d $directory && ! -L $directory ]] || return 1

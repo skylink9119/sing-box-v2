@@ -35,7 +35,7 @@ rescue_bootstrap_core() (
  case $bind_family in 4)listen=0.0.0.0;;6)listen=::;;*)listen=::;;esac
  stage=$(mktemp -d "$BASE/install.XXXXXX") || return 1
  mkdir -m 700 "$stage/config"
- download_binary "$CORE_RECOMMENDED" "$stage/sing-box" || return 1
+ download_install_core "$stage/sing-box" || return 1
  python3 - "$stage" "$listen" <<'PY_RESCUE_CORE'
 import json,pathlib,sys
 p=pathlib.Path(sys.argv[1])
@@ -134,7 +134,7 @@ rescue_menu(){
   7) edge=$(rescue_engine family);say "原生路由选择：$edge" "Native route selection: $edge"
    edge=$(rescue_engine edge "$edge") || return 1
    say "Cloudflare 入口 TCP 7844 可连接数量：$edge/2；UDP 和隧道注册尚未验证。" "Reachable Cloudflare TCP 7844 endpoints: $edge/2; UDP and tunnel registration remain unverified.";;
-  8) say '文件名：sing-box-1.14.3-linux-<架构>.tar.gz、sing-box-1.14.3-release.json、cloudflared-linux-<架构>、cloudflared-release.json。' 'Files: sing-box-1.14.3-linux-<arch>.tar.gz, sing-box-1.14.3-release.json, cloudflared-linux-<arch>, cloudflared-release.json.'
+  8) say '文件名：sing-box-1.14.4-linux-<架构>.tar.gz、sing-box-1.14.4-release.json、cloudflared-linux-<架构>、cloudflared-release.json。' 'Files: sing-box-1.14.4-linux-<arch>.tar.gz, sing-box-1.14.4-release.json, cloudflared-linux-<arch>, cloudflared-release.json.'
    prompt_read "$(L '可信离线安装包目录（绝对路径；回车取消）：' 'Trusted offline asset directory (absolute; Enter cancels): ')" directory || return 0
    [[ -n $directory ]] || return 0
    [[ $directory == /* && -d $directory && ! -L $directory ]] || return 1
