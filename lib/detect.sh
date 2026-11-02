@@ -46,14 +46,21 @@ startup_info(){
  fi
  if [[ -x $BASE/cloudflared ]] || command -v cloudflared >/dev/null; then argo=true; fi
  if command -v nginx >/dev/null; then nginx=true; fi
- services=$(startup_probe systemctl show --no-pager --property=Id,LoadState,ActiveState sing-box.service skybyte-argo-tunnel.service nginx.service skybyte-haproxy.service skybyte-users.service) || services=''
+ services=$(startup_probe systemctl show --no-pager --property=Id,LoadState,ActiveState sing-box.service skybyte-argo-tunnel.service nginx.service skybyte-haproxy.service skybyte-users.service skybyte-sb-xhttp.service) || services=''
  printf '%s\n----------------------------------------------\n' "$YELLOW"
  say "脚本版本：SKYBYTE Manager v$MANAGER_VERSION" "Script version: SKYBYTE Manager v$MANAGER_VERSION"
- say '功能更新：IPv6 Reality 自动部署（a → 4）；受限网络部署（a → 7）；安装前检测（a → 8）' 'Features: guided IPv6 Reality (a → 4); restricted networks (a → 7); installation checks (a → 8)'
+ say '功能更新：XHTTP 双内核自动部署（a → 10）；Reality / HY2 / XHTTP 统一管理' 'Features: guided XHTTP dual-core deployment (a → 10); unified Reality / HY2 / XHTTP management'
  say '系统信息：' 'System information:'
  printf '  %s: %s\n' "$(L '操作系统' 'OS')" "$os" "$(L '内核' 'Kernel')" "$kernel" "$(L '处理器架构' 'Architecture')" "$arch" "$(L '虚拟化' 'Virtualization')" "$virtual"
  printf '  IPv4: %s\n  IPv6: %s\n' "${ipv4:-$(L '未检测到' 'Not detected')}" "${ipv6:-$(L '未检测到' 'Not detected')}"
  startup_service_info "$sb_label" "$sb" sing-box.service "$services"
+ local xhttp_installed=false xhttp_label=Xray xhttp_version
+ if [[ -x $BASE/xhttp-core/xray ]];then
+  xhttp_installed=true
+  xhttp_version=$(startup_probe "$BASE/xhttp-core/xray" version | awk 'NR==1{print $2}') || xhttp_version=''
+  [[ -z $xhttp_version ]] || xhttp_label="Xray($xhttp_version)"
+ fi
+ startup_service_info "$xhttp_label / XHTTP" "$xhttp_installed" skybyte-sb-xhttp.service "$services"
  startup_service_info Argo "$argo" skybyte-argo-tunnel.service "$services"
  startup_service_info Nginx "$nginx" nginx.service "$services"
  [[ ! -d $BASE/haproxy ]] || hp=true

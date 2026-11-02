@@ -26,10 +26,18 @@ PY_SAVED_UFW
    listeners=$(ss -H -lntu) || return 1
    allowed=$(python3 - "$CONF" <<'PY_DEPLOYMENT_PORTS'
 import json,sys
-for inbound in json.load(open(sys.argv[1]))['inbounds']:
+from pathlib import Path
+for inbound in (json.load(open(sys.argv[1]))['inbounds'] if Path(sys.argv[1]).exists() else []):
  print(('tcp' if inbound['type']=='vless' else 'udp')+':'+str(inbound['listen_port']))
 PY_DEPLOYMENT_PORTS
    ) || return 1
+   local xhttp_ports xhttp_port
+   xhttp_ports=$(xhttp_command ports) || return 1
+   while IFS= read -r xhttp_port;do
+    [[ -n $xhttp_port ]] || continue
+    valid_port "$xhttp_port" || return 1
+    allowed+=$'\n'"tcp:$xhttp_port"
+   done <<< "$xhttp_ports"
    python3 - "$SSH_PORTS" "$allowed" 3< <(printf '%s\n' "$listeners") <<'PY_DEPLOYMENT_LISTENERS' || return 1
 import os,sys
 allowed={'tcp:'+port for port in sys.argv[1].split()}|set(sys.argv[2].split())
@@ -117,9 +125,11 @@ automatic_setup(){
  deployment_apply_selected 1 1 1
 }
 deployment_apply_selected(){
- [[ $# == 3 ]] || return 1
+ [[ $# == 3 || $# == 4 ]] || return 1
  need_root
- check_owned || return 1
+ local deployment_context=${4:-sing-box}
+ if [[ $deployment_context == xhttp ]];then xhttp_command guard || return 1
+ else check_owned || return 1;fi
  local selected_bbr=$1 selected_firewall=$2 selected_qr=$3
  [[ $selected_bbr =~ ^[01]$ && $selected_firewall =~ ^[01]$ && $selected_qr =~ ^[01]$ ]] || return 1
  local failed=0 firewall_ready=false hopping_status packages=()
@@ -131,7 +141,7 @@ deployment_apply_selected(){
   fi
  fi
  if [[ $selected_qr == 1 ]];then
-  if command -v qrencode >/dev/null;then report_output say '[通过] 二维码工具已安装，可用 b → 4 查看小火箭二维码' '[PASS] qrencode is installed; use b → 4 for Shadowrocket QR codes'
+  if command -v qrencode >/dev/null;then report_output say '[通过] 二维码工具已安装；sing-box 用 b → 4，XHTTP 用 a → 10 → 5' '[PASS] qrencode installed; sing-box: b → 4, XHTTP: a → 10 → 5'
   else err "$(L '[失败] 二维码工具不可用' '[FAIL] qrencode unavailable')";failed=1;fi
  else report_output say '[跳过] 二维码工具' '[SKIP] QR tooling';fi
  if [[ $selected_bbr == 1 ]];then
@@ -144,7 +154,7 @@ deployment_apply_selected(){
    report_output say '[通过] UFW 已启用，已放行 SSH 和实际节点端口' '[PASS] UFW enabled with SSH and actual node ports allowed'
   else err "$(L '[未完成] 防火墙设置未完成，请用 d → 2 核对' '[INCOMPLETE] Firewall setup incomplete; inspect d → 2')";failed=1;fi
  else report_output say '[跳过] UFW 安装与启用' '[SKIP] UFW installation and activation';fi
- if [[ $(protocol_mode) == 2 || $(protocol_mode) == 3 ]];then
+ if [[ $deployment_context == sing-box ]] && [[ $(protocol_mode) == 2 || $(protocol_mode) == 3 ]];then
   if [[ $selected_firewall == 0 || $firewall_ready == true ]];then
    if deployment_hopping;then :;else
     hopping_status=$?

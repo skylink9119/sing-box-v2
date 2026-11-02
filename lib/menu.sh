@@ -36,6 +36,7 @@ sub_menu(){
    say ' 7. 受限网络部署（Argo / IPv6 / NAT）' ' 7. Restricted networks (Argo / IPv6 / NAT)'
    say ' 8. 节点安装前检测（不安装）' ' 8. Node installation checks (no installation)'
    say ' 9. 自定义安装（手动填写参数）' ' 9. Custom install (manual parameters)'
+   say '10. XHTTP 节点（自动下载 Xray 内核）' '10. XHTTP nodes (on-demand Xray core)'
    printf '%s' "$YELLOW"
    say '请按实际网络选择；HY2 需放行 UDP 端口。' 'Choose for your network; allow the HY2 UDP port.'
    printf '%s' "$GREEN"
@@ -100,6 +101,7 @@ sub_menu(){
   1:7) MAIN_ACTION=rescue;;
   1:8) MAIN_ACTION=install_checks;;
   1:9) MAIN_ACTION=manual_install;;
+  1:10) MAIN_ACTION=xhttp;;
   2:1) MAIN_ACTION=nodes;;
   2:2) MAIN_ACTION=subscription;;
   2:3) MAIN_ACTION=rename;;
@@ -147,7 +149,8 @@ dispatch_action(){
  manual_install) manual_install;;
  install_ipv6) ipv6_install_menu "$@";;
  node_ports) edit_node_ports;;
- argo) argo_manager "$@";; nodes) exports;; node_parameters) report_output node_parameters;; subscription) subscription;; rename) rename_node;; qr) shadowrocket_qr;; users) users_manager;;
+ xhttp) xhttp_menu "$@";;
+ argo) argo_manager "$@";; nodes) view_all_nodes;; node_parameters) report_output view_all_parameters;; subscription) subscription;; rename) rename_node;; qr) shadowrocket_qr;; users) users_manager;;
  service) service_manager "$@";; logs) report_output journalctl -u sing-box -n 80 --no-pager;; argo_status) report_output argo_status;;
  automatic_setup) automatic_setup;;
  initialize) initialize_server;; firewall) firewall "$@";; audit) report_output firewall_audit;; bbr) bbr;; hop) hop "$@";; traffic) traffic "$@";;
@@ -183,6 +186,9 @@ run_submenu(){
   [[ $choice != 0 ]] || return 0
   # Enter child menus before taking a lock, so nested idle menus also release it.
   case "$handler:$choice" in
+   xhttp_menu:12) run_submenu xhttp_custom_menu; continue;;
+   xhttp_menu:6) run_submenu xhttp_service_menu; continue;;
+   xhttp_menu:7) run_submenu xhttp_edit_menu; continue;;
    rescue_menu:10) run_submenu ipv6_install_menu; continue;;
    warp_menu:6) run_submenu warp_rules_menu; continue;;
    warp_menu:8) run_submenu media_check; continue;;
@@ -192,6 +198,7 @@ run_submenu(){
 }
 navigation_action(){
  case $1 in
+  xhttp) run_submenu xhttp_menu;;
   media) run_submenu media_check;;
   firewall) run_submenu firewall;; service) run_submenu service_manager;;
   traffic) run_submenu traffic;; argo) run_submenu argo_manager;;

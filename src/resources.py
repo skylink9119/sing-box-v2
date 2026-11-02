@@ -11,14 +11,15 @@ MIB_KIB = 1024
 def processes(text, base, binary):
     """Select exact managed executable/config prefixes; never expose argv."""
     prefix = str(binary) + ' run -c '
+    xhttp_prefix = str(base / 'xhttp-core/xray') + ' run -config '
     users = str(base / 'users') + '/'
     result = []
     for line in text.splitlines():
         fields = line.split(None, 2)
         if (len(fields) != 3 or not fields[0].isdigit() or not fields[1].isdigit()
-                or not fields[2].startswith(prefix)):
+                or not fields[2].startswith((prefix, xhttp_prefix))):
             continue
-        config = fields[2][len(prefix):]
+        config = fields[2][len(xhttp_prefix if fields[2].startswith(xhttp_prefix) else prefix):]
         result.append({'pid': int(fields[0]), 'rss': int(fields[1]),
                        'account': config if config.startswith(users) else None})
     return result

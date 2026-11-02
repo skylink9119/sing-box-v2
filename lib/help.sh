@@ -2,6 +2,7 @@ usage_help(){
  printf '%s' "$YELLOW"
  if [[ ${LANGUAGE_CHOICE:-zh_CN} == en_US ]];then cat <<'HELP_EN'
 SKYBYTE Manager — quick guide
+XHTTP: a → 10, guided installs 1/2, manual install 12. Xray is downloaded only when needed; sing-box and Xray use separate services/configs. Parameters: b → 7.
 1. Install: main a → Reality/HY2/both. Enter defaults, allow actual TCP/UDP ports in provider firewall.
 2. Node ports: b → 8 (Enter keeps current values). Other node edits: main a → 6. Change admin ports/address/SNI or add/remove a protocol without resetting credentials/usage. TCP-only port edits retain HY2 hopping; changing HY2 ports disables hopping. Re-enable it for the current listener.
 3. Client import: main b → 1 or 4. Use Shadowrocket native links/QR, v2rayN, full Mihomo YAML or sing-box JSON. Self-signed HY2 needs explicit public-certificate trust; never share private keys.
@@ -21,6 +22,7 @@ CLI: --help, --self-check. Maintenance flags are used by owned systemd services.
 HELP_EN
  else cat <<'HELP_ZH'
 SKYBYTE Manager — 快速使用说明
+XHTTP：a → 10；1/2 自动部署，12 手动安装。按需下载 Xray，双内核配置和服务独立；b → 7 查看保密参数。
 1. 安装：主菜单 a 选择 Reality、HY2或双协议。回车使用默认值，云安全组需放行实际 TCP/UDP 端口。
 2. 修改节点端口：b → 8（回车保留当前端口）；其它节点修改：主菜单a → 6，可改管理员端口、地址、SNI或增删协议，保留凭据与用量。仅改 TCP 端口保留 HY2 跳跃；更改 HY2 端口后请重新开启跳跃。
 3. 导入客户端：主菜单b → 1或4，提供小火箭专用链接/二维码、v2rayN、完整 Mihomo YAML与sing-box JSON。自签名 HY2 须信任公开证书；不要分享私钥。

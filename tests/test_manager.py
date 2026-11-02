@@ -1318,12 +1318,12 @@ startup_info"""
 
     def test_grouped_menu_dispatches_without_renumbering_function_logic(self):
         for language,label in [('en_US','Nodes and subscriptions'),('zh_CN','节点与订阅')]:
-            code='need_root(){ :; }; flock(){ :; }; exports(){ echo EXPORTED; }; LANGUAGE_CHOICE='+language+'; main'
+            code='need_root(){ :; }; flock(){ :; }; view_all_nodes(){ echo EXPORTED; }; LANGUAGE_CHOICE='+language+'; main'
             result=self.shell(code,input='2\n1\n0\n')
             self.assertIn(label,result.stdout);self.assertIn('EXPORTED',result.stdout)
             self.assertNotIn('printf:',result.stderr)
             self.assertNotIn('24.',result.stdout)
-        result=self.shell('need_root(){ :; }; flock(){ :; }; exports(){ echo BAD; }; main',input='2\n0\n0\n')
+        result=self.shell('need_root(){ :; }; flock(){ :; }; view_all_nodes(){ echo BAD; }; main',input='2\n0\n0\n')
         self.assertNotIn('BAD',result.stdout)
 
     def test_cloudflared_download_digest_is_required(self):

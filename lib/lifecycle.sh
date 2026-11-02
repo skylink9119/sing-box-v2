@@ -1,5 +1,19 @@
 # lib/lifecycle.sh — build-time module; assembled by scripts/build.py.
 uninstall_manager(){
+ need_root
+ if [[ ! -f $META && -f $BASE/xhttp/.owner ]];then
+  xhttp_command guard || return 1
+  confirm "$(L '备份后卸载本项目的 XHTTP / Xray 与管理脚本？' 'Back up and remove the managed XHTTP/Xray and manager?')" || return 0
+  xhttp_command purge --confirmed || return 1
+  manager_shortcut_remove || return 1
+  local manager_file
+  for manager_file in "$MANAGER_BIN" "$MANAGER_LIB";do
+   if [[ -f $manager_file && ! -L $manager_file ]] && grep -q '^# SKYBYTE Manager V2.1 community manager;' "$manager_file";then rm -f -- "$manager_file" || return 1;fi
+  done
+  say '已卸载；XHTTP 私密备份和未知文件保留。' 'Removed; private XHTTP backups and unknown files retained.'
+  return 0
+ fi
+ xhttp_command guard || return 1
  certificate_guard && warp_guard && hop_guard && acme_guard && online_guard && haproxy_guard || return 1
  users_guard || return 1
  need_root
@@ -42,6 +56,7 @@ for value in paths:
 PY
  ) || return 1
  snap=$(backup) || { err "$(L '备份失败，已取消卸载' 'Backup failed; uninstall cancelled')"; return 1; }
+ if [[ -f $BASE/xhttp/state.json ]];then xhttp_command purge --confirmed || return 1;fi
  users_stop || return 1
  if [[ -f $BASE/users.json ]]; then users_engine ledger "$snap" && backup_engine reseal "$snap" || return 1; fi
  online_remove || return 1
