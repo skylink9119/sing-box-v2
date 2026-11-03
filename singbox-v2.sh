@@ -8,7 +8,7 @@
 set -Eeuo pipefail
 umask 077
 SCRIPT_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
-MANAGER_VERSION=2.10.3
+MANAGER_VERSION=2.10.4
 CORE_RECOMMENDED=1.14.4
 BASE=/etc/singbox-v2
 CONF=/etc/sing-box/config.json
@@ -175,6 +175,51 @@ apt_install() (
   # Some archive CDN edges cache an earlier 404 even while the package exists.
   DEBIAN_FRONTEND=noninteractive apt-get install -y "$@" -o Acquire::http::No-Cache=true -o Acquire::https::No-Cache=true || return 1
  else return "$status";fi
+)
+
+debian_security_update() (
+ need_root
+ local distro codename suite work preview
+ distro=$(awk -F= '$1=="ID" {gsub(/"/,"",$2);print $2}' "$OS_RELEASE") || return 1
+ codename=$(awk -F= '$1=="VERSION_CODENAME" {gsub(/"/,"",$2);print $2}' "$OS_RELEASE") || return 1
+ if [[ $distro != debian || ( $codename != bookworm && $codename != trixie ) ]];then
+  say '此菜单支持 Debian 12（bookworm）和 Debian 13（trixie）。' 'This menu supports Debian 12 (bookworm) and Debian 13 (trixie).'
+  return 0
+ fi
+ require_cmd apt-get || return 1
+ local keyring=/usr/share/keyrings/debian-archive-keyring.gpg
+ if [[ ! -r $keyring ]];then
+  err "$(L '缺少 Debian 官方归档签名密钥，请先修复 debian-archive-keyring。' 'Debian archive keyring missing. Repair debian-archive-keyring first.')"
+  return 1
+ fi
+ suite=$codename-security
+ work=$(mktemp -d /tmp/skybyte-debian-security.XXXXXX) || return 1
+ trap 'rm -rf -- "$work"' EXIT
+ # APT's _apt sandbox must be able to traverse this directory to fetch indexes.
+ chmod 0755 "$work" && mkdir -m 0755 "$work/lists" || return 1
+ printf 'deb [signed-by=%s] https://deb.debian.org/debian-security %s main contrib non-free non-free-firmware\n' "$keyring" "$suite" > "$work/security.list" || return 1
+ local -a apt_options=(
+  -o "Dir::Etc::sourcelist=$work/security.list" -o Dir::Etc::sourceparts=-
+  -o "Dir::State::lists=$work/lists" -o Dir::Cache::pkgcache= -o Dir::Cache::srcpkgcache=
+  -o APT::Default-Release= -o Acquire::Check-Valid-Until=true
+  -o APT::Get::AutomaticRemove=false -o APT::Ignore-Hold=false
+ )
+ local -a upgrade_options=(--with-new-pkgs --no-remove --no-install-recommends)
+ say "正在检查 Debian 安全仓库（${suite}）……" "Checking the Debian security archive (${suite})..."
+ apt-get "${apt_options[@]}" -o APT::Update::Error-Mode=any -o Acquire::Retries=2 update || return 1
+ preview=$(LC_ALL=C apt-get "${apt_options[@]}" "${upgrade_options[@]}" -s upgrade) || return 1
+ printf '%s\n' "$preview"
+ if ! grep -q '^Inst ' <<< "$preview";then
+  say '当前没有可直接安装的安全更新。上面列出的暂缓软件包请另行检查。' 'No security updates can be installed now. Review any packages listed as kept back.'
+  return 0
+ fi
+ warn "$(L '软件包更新可能重启相关服务。' 'Package updates may restart affected services.')"
+ confirm "$(L '安装上面列出的 Debian 安全更新？' 'Install the Debian security updates listed above?')" || return 0
+ apt-get "${apt_options[@]}" "${upgrade_options[@]}" -o DPkg::Lock::Timeout=30 -y upgrade || return 1
+ ok "$(L 'Debian 安全更新已执行。' 'Debian security update completed.')"
+ if [[ -f /run/reboot-required ]];then
+  warn "$(L '系统提示需要重启，请选择合适时间手动重启。' 'The system requests a reboot. Schedule a manual reboot when convenient.')"
+ fi
 )
 # Own only /usr/local/bin/sb; never replace the system lrzsz sender at /usr/bin/sb.
 MANAGER_SHORTCUT=${MANAGER_SHORTCUT:-/usr/local/bin/sb}
@@ -10780,6 +10825,7 @@ sub_menu(){
    say ' 5. HY2 证书检查与续签重载' ' 5. HY2 certificate checks and renewal reload'
    say ' 6. ACME 证书申请与续签' ' 6. ACME issuance and renewal'
    say ' 7. 备份管理与加密导出' ' 7. Backup management and encryption'
+   say ' 8. Debian 安全更新（漏洞修复）' ' 8. Debian security updates'
    ;;
   6)
    say ' 1. 切换语言' ' 1. Change language'
@@ -10834,6 +10880,7 @@ sub_menu(){
   5:5) MAIN_ACTION=certificate;;
   5:6) MAIN_ACTION=acme;;
   5:7) MAIN_ACTION=backup_tools;;
+  5:8) MAIN_ACTION=debian_security_update;;
   6:1) MAIN_ACTION=language;;
   6:2) MAIN_ACTION=notice;;
   6:3) MAIN_ACTION=uninstall;;
@@ -10859,6 +10906,7 @@ dispatch_action(){
  ipv6) ipv6_menu "$@";;
  reality) reality_menu "$@";;
  rescue) rescue_menu "$@";;
+ debian_security_update) debian_security_update;;
  manager_update) manager_update;; certificate) certificate_menu "$@";; resources) report_output resource_info;;
  update) core_versions "$@";; settings) node_settings "$@";; online) online_menu "$@";; acme) acme_menu "$@";; backup_tools) backup_tools "$@";; help) usage_help;; backup) backup;; restore) restore;;
  language) select_language && startup_info;; notice) notice;; uninstall) uninstall_manager;;

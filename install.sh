@@ -3,8 +3,8 @@ set -Eeuo pipefail
 umask 077
 if [[ -t 2 && -z ${NO_COLOR:-} ]]; then RED=$'\033[1;31m'; RESET=$'\033[0m'; else RED=''; RESET=''; fi
 err(){ printf '%s%s%s\n' "$RED" "$*" "$RESET" >&2; }
-RELEASE_VERSION=2.10.3
-MANAGER_SHA256=bc27eed51ed1ef10777c0f5f56a7a77fc9077217f8e5f405a3a091323e41f71d
+RELEASE_VERSION=2.10.4
+MANAGER_SHA256=b2c0e3d446d5d66ce68461aa9a73f82c6e0ce8bb052f71ae7bb1f73a2aaadb35
 RELEASE_URL=https://github.com/skylink9119/sing-box-v2/releases/download/v$RELEASE_VERSION
 URL=$RELEASE_URL/singbox-v2.sh
 MANAGER_DIR=/usr/local/lib/singbox-v2
@@ -122,6 +122,51 @@ apt_install() (
   # Some archive CDN edges cache an earlier 404 even while the package exists.
   DEBIAN_FRONTEND=noninteractive apt-get install -y "$@" -o Acquire::http::No-Cache=true -o Acquire::https::No-Cache=true || return 1
  else return "$status";fi
+)
+
+debian_security_update() (
+ need_root
+ local distro codename suite work preview
+ distro=$(awk -F= '$1=="ID" {gsub(/"/,"",$2);print $2}' "$OS_RELEASE") || return 1
+ codename=$(awk -F= '$1=="VERSION_CODENAME" {gsub(/"/,"",$2);print $2}' "$OS_RELEASE") || return 1
+ if [[ $distro != debian || ( $codename != bookworm && $codename != trixie ) ]];then
+  say '此菜单支持 Debian 12（bookworm）和 Debian 13（trixie）。' 'This menu supports Debian 12 (bookworm) and Debian 13 (trixie).'
+  return 0
+ fi
+ require_cmd apt-get || return 1
+ local keyring=/usr/share/keyrings/debian-archive-keyring.gpg
+ if [[ ! -r $keyring ]];then
+  err "$(L '缺少 Debian 官方归档签名密钥，请先修复 debian-archive-keyring。' 'Debian archive keyring missing. Repair debian-archive-keyring first.')"
+  return 1
+ fi
+ suite=$codename-security
+ work=$(mktemp -d /tmp/skybyte-debian-security.XXXXXX) || return 1
+ trap 'rm -rf -- "$work"' EXIT
+ # APT's _apt sandbox must be able to traverse this directory to fetch indexes.
+ chmod 0755 "$work" && mkdir -m 0755 "$work/lists" || return 1
+ printf 'deb [signed-by=%s] https://deb.debian.org/debian-security %s main contrib non-free non-free-firmware\n' "$keyring" "$suite" > "$work/security.list" || return 1
+ local -a apt_options=(
+  -o "Dir::Etc::sourcelist=$work/security.list" -o Dir::Etc::sourceparts=-
+  -o "Dir::State::lists=$work/lists" -o Dir::Cache::pkgcache= -o Dir::Cache::srcpkgcache=
+  -o APT::Default-Release= -o Acquire::Check-Valid-Until=true
+  -o APT::Get::AutomaticRemove=false -o APT::Ignore-Hold=false
+ )
+ local -a upgrade_options=(--with-new-pkgs --no-remove --no-install-recommends)
+ say "正在检查 Debian 安全仓库（${suite}）……" "Checking the Debian security archive (${suite})..."
+ apt-get "${apt_options[@]}" -o APT::Update::Error-Mode=any -o Acquire::Retries=2 update || return 1
+ preview=$(LC_ALL=C apt-get "${apt_options[@]}" "${upgrade_options[@]}" -s upgrade) || return 1
+ printf '%s\n' "$preview"
+ if ! grep -q '^Inst ' <<< "$preview";then
+  say '当前没有可直接安装的安全更新。上面列出的暂缓软件包请另行检查。' 'No security updates can be installed now. Review any packages listed as kept back.'
+  return 0
+ fi
+ warn "$(L '软件包更新可能重启相关服务。' 'Package updates may restart affected services.')"
+ confirm "$(L '安装上面列出的 Debian 安全更新？' 'Install the Debian security updates listed above?')" || return 0
+ apt-get "${apt_options[@]}" "${upgrade_options[@]}" -o DPkg::Lock::Timeout=30 -y upgrade || return 1
+ ok "$(L 'Debian 安全更新已执行。' 'Debian security update completed.')"
+ if [[ -f /run/reboot-required ]];then
+  warn "$(L '系统提示需要重启，请选择合适时间手动重启。' 'The system requests a reboot. Schedule a manual reboot when convenient.')"
+ fi
 )
 installer_dependencies(){
  local name
