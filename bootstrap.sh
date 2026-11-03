@@ -18,11 +18,11 @@
  fi
  installer=$(mktemp "${TMPDIR:-/tmp}/skybyte-install.XXXXXX")
  trap 'rm -f -- "$installer"' EXIT
- curl -q -fsSL --proto '=https' --proto-redir '=https' --retry 2 --connect-timeout 10 --max-time 120 https://github.com/skylink9119/sing-box-v2/releases/download/v2.10.5/install.sh -o "$installer"
+ curl -q -fsSL --proto '=https' --proto-redir '=https' --retry 2 --connect-timeout 10 --max-time 120 https://github.com/skylink9119/sing-box-v2/releases/download/v2.10.6/install.sh -o "$installer"
  if [[ -s $installer ]] && head -n 1 "$installer" | grep -Fxq '#!/usr/bin/env bash' && bash -n "$installer";then :;else
   printf 'Invalid installer download / 安装脚本为空或格式错误，已停止执行\n' >&2;exit 1
  fi
- if ! printf '%s  %s\n' 'f032b03679186f2fb47558d6c8d934b211f8e16c2eac50707ff2c1df9722e6a9' "$installer" | sha256sum -c - >/dev/null;then
+ if ! printf '%s  %s\n' '19bb8cf0e951e5d5ecd102dd57054c8a1ff01969779e9fa1ba2605eb6237a49d' "$installer" | sha256sum -c - >/dev/null;then
   printf 'Installer SHA256 mismatch / 安装脚本 SHA256 校验失败，已停止执行\n' >&2;exit 1
  fi
  bash "$installer" "$@"

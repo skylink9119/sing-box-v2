@@ -65,6 +65,6 @@ media_check(){
  say '按需下载并校验 xykt 官方脚本；可能安装检测依赖。仅保存本地 TXT/JSON，不上传报告、不生成 HTML。检测会访问第三方服务，结果不保证实际解锁。' 'Verified xykt scripts run on demand and may install diagnostic dependencies. Local TXT/JSON only; no report uploads or HTML. Probes contact third-party services and cannot guarantee playback.'
  say '隐私模式跳过 Geekbench；快速硬件查看不跑性能测试。完整体检会增加 CPU、内存和磁盘负载；测速会消耗流量。' 'Privacy mode skips Geekbench. Quick hardware mode skips benchmarks. Full assessment loads CPU, memory and disk; speed tests consume traffic.'
  confirm "$(L '开始检测？' 'Start diagnostics?')" || return 0
- ensure_binary curl curl || return 1
+ command -v curl >/dev/null || apt_install --no-install-recommends curl ca-certificates || return 1
  report_output quality_engine "$action" "$REPORT" "${LANGUAGE_CHOICE:-zh_CN}" "$family"
 }

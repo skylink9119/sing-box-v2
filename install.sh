@@ -3,8 +3,8 @@ set -Eeuo pipefail
 umask 077
 if [[ -t 2 && -z ${NO_COLOR:-} ]]; then RED=$'\033[1;31m'; RESET=$'\033[0m'; else RED=''; RESET=''; fi
 err(){ printf '%s%s%s\n' "$RED" "$*" "$RESET" >&2; }
-RELEASE_VERSION=2.10.5
-MANAGER_SHA256=d3f0e20d9c2bb75d98a553bb70aea5bc94a62da1b46fe765c977d15688a6e7ff
+RELEASE_VERSION=2.10.6
+MANAGER_SHA256=c7938c9e0a29a059e606470ae10ff085aad1ebffa430ed171e1b7145c7a78581
 RELEASE_URL=https://github.com/skylink9119/sing-box-v2/releases/download/v$RELEASE_VERSION
 URL=$RELEASE_URL/singbox-v2.sh
 MANAGER_DIR=/usr/local/lib/singbox-v2
