@@ -66,7 +66,7 @@ sub_menu(){
    say ' 5. HY2 端口跳跃' ' 5. HY2 port hopping'
    say ' 6. VPS 流量统计（vnStat）' ' 6. VPS traffic (vnStat)'
    say ' 7. 进程、内存与负载' ' 7. Processes, memory and load'
-   say ' 8. 流媒体 / 回程 / 测速' ' 8. Media / routes / speed tests'
+   say ' 8. VPS 质量检测（硬件 / IP / 网络）' ' 8. VPS quality (hardware / IP / network)'
    say ' 9. WARP 出站与分流' ' 9. WARP egress and routing'
    say '10. 住宅落地 / VPS 中转' '10. Residential landing / VPS relay'
    say '11. HAProxy TCP 透传' '11. HAProxy TCP passthrough'

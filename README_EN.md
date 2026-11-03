@@ -20,9 +20,9 @@
 
 ---
 
-# SKYBYTE Manager V2.10.4: modular source architecture
+# SKYBYTE Manager V2.10.5: modular source architecture
 
-**v2.10.4:** **f → 8** previews Debian security updates on Debian 12/13 and installs them after confirmation. It uses the matching official security archive and respects package holds and existing APT sources. Review kept-back packages and arrange a reboot if the system requests one.
+**v2.10.5:** **d → 8** now uses xykt hardware/IP/network engines also used by NodeQuality. Yellow terminal tables, private local TXT/JSON, no HTML or report uploads. WARP egress and direct/WARP comparisons remain available.
 
 **v2.10.3 boundary fixes:** retain HY2 hopping across non-port edits, isolate faulty user cores, reconcile account restore endpoints, reload renewed certificates even without an old baseline, and inventory managed firewall ports. Cancel is a no-op. Menu text/state reads and large-file backup I/O are lighter. [Audit fixes and validation](docs/AUDIT-2026-11-02.md).
 
@@ -324,19 +324,26 @@ IPv6 exports use bracketed URI authorities and valid IP SANs. IPv6-only bootstra
 
 Backups include routing, private gateway configuration and owned units. Restore retains current account quotas, expiry and usage while reconciling routing. Uninstall stops/removes the managed gateway and preserves external source profiles. The official client is disconnected only when its registration fingerprint still matches; its package, repository and registration remain. Backups contain private keys; keep them private.
 
-## Professional media, routes and speed tests
+## VPS quality diagnostics
 
-Reports use yellow terminal output; media results appear in bordered, terminal-width-aware tables with wrapped provider names and notes. Menus keep their green labels. NO_COLOR and redirected output remain plain text.
+Open **d → 8**. Reports use yellow, terminal-width-aware tables; `NO_COLOR` or redirection produces plain text. `0` returns one level.
 
-Open **d → 8**. [UnlockTests](https://github.com/oneclickvirt/UnlockTests) (Apache-2.0), the specialized media engine used by goecs, replaces the old page parser. Default coverage is global platforms plus AI, including Netflix, Disney+, YouTube Premium, TikTok, Spotify, ChatGPT and Gemini; all-region tests are available. Choose VPS direct IPv4/IPv6/both, WARP, or direct/WARP comparison. Preserve upstream status, region, unlock type and errors rather than interpreting HTTP 200 as unlocking.
+| Choice | Function |
+| --- | --- |
+| 1 | Quick hardware information without benchmarks |
+| 2 / 3 | IPv4 / IPv6 IP reputation, media and mail probes |
+| 4 | Network quality, latency and speed; choose IPv4 / IPv6 |
+| 5 | Detailed return routes; choose IPv4 / IPv6, no speed tests |
+| 6 | Full hardware, IP, network and route assessment |
+| 7 / 8 | WARP egress / direct IPv4 versus WARP |
 
-[goecs](https://github.com/oneclickvirt/ecs) (GPL-3.0) provides optional return-route, speed and combined network tests. Route-only tests disable speed; bandwidth-consuming tests require `y`. CPU, memory and disk stress tests, automatic result uploads and tool logging are disabled. Upstream China return-route modules require Chinese mode, including from the English menu.
+Uses [HardwareQuality](https://github.com/xykt/HardwareQuality), [IPQuality](https://github.com/xykt/IPQuality) and [NetQuality](https://github.com/xykt/NetQuality), all AGPL-3.0, also used by NodeQuality. This is not the official NodeQuality service. Entry scripts are pinned by commit and SHA256 and downloaded on demand, without a resident service or menu-startup network request. Upstream manages its own packages and probe dependencies; entry-script hashing does not pin every dependency.
 
-Official release metadata, URLs and SHA256 are verified on demand; cached assets are rehashed and only the current asset is retained. Latest stable releases are checked when running diagnostics, never while opening the main menu. Errors, timeouts or changed JSON schemas stop with an incomplete result; process groups and temporary files are cleaned up. No resident process is added.
+Confirm with `y` before execution. Full assessment runs sysbench/fio and loads CPU, memory and disk; speed tests consume traffic. Every xykt invocation uses privacy flag `-p`: report uploads and Geekbench submissions are disabled. Consequently not every score in the original screenshot is reproduced. Probes still contact platforms, IP-data services, NextTrace API, speed endpoints and xykt usage counters, which see the egress IP and request metadata.
 
-Media JSON reports are private mode 600 at `/etc/singbox-v2/reports/diagnostic-*.json`, recording provenance/digest, path, provider results and incomplete reasons, without raw pages or node credentials. Third-party probes contact platforms, DNS/region services and route/IP-data services, which see the egress IP. Uploads are disabled; external diagnostic requests still occur. Tools use temporary working/home directories, sanitized environments and an explicit loopback SOCKS5 proxy for WARP.
+Private reports under `/etc/singbox-v2/reports/quality-*/` contain `report.txt`, `report.json` and per-stage `.log` files (directory 700, files 600). No HTML or public download server is created. JSON retains source fields and provenance; terminal sections cap at 300 rows. Upstream routes lack structured JSON, so route text is wrapped in a table and retained as `route_text`. Failure, cancellation and timeout preserve available results; full assessments continue after individual failures. Reports may contain public IP and hardware details; manage retention and sharing yourself.
 
-Proxy egress address families are selected by the proxy; DNS-based native/proxy classification can consult system DNS. A VPS egress test does not establish client routing, account eligibility, residential-IP status or playback. Return routes describe the VPS-to-probe path at test time, not every subscriber route.
+WARP and comparison probes retain [UnlockTests](https://github.com/oneclickvirt/UnlockTests) (Apache-2.0), including Netflix, Disney+, ChatGPT and Gemini, with upstream statuses and local `diagnostic-*.json`. Coverage differs from xykt IPQuality. Proxy address family is selected by WARP, and auxiliary DNS checks may use system DNS. Completion does not mean all probes passed, nor guarantee account eligibility, residential IP status, catalogs, playback or client connectivity. Routes describe only the current VPS-to-probe path.
 
 
 ## Node editing (V2.5)

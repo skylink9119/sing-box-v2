@@ -126,12 +126,12 @@ users_manager'''
         self.assertNotIn('SELECT_LOCK=1',result.stdout)
 
     def test_professional_diagnostics_cancel_speed_and_compare_preserve_menu(self):
-        code=self.mocks()+'''media_engine(){ echo "DIAGNOSTIC $*"; }
+        code=self.mocks()+'''media_engine(){ echo "DIAGNOSTIC $*"; };quality_engine(){ echo "QUALITY $*"; }
 warp_engine(){ echo 40000; };warp_loopback(){ :; };warp_verify(){ :; }
 main'''
-        result=self.shell(code,input='d\n8\n8\nn\n5\n0\n0\nq\n')
+        result=self.shell(code,input='d\n8\n4\n4\nn\n8\n0\n0\nq\n')
         self.assertIn('DIAGNOSTIC compare',result.stdout)
-        self.assertNotIn('DIAGNOSTIC speed',result.stdout)
+        self.assertNotIn('QUALITY network',result.stdout)
         self.assertNotIn('SELECT_LOCK=1',result.stdout)
 
     def test_node_port_editor_is_available_from_nodes_menu(self):
