@@ -20,9 +20,9 @@
 
 ---
 
-# SKYBYTE Manager V2.10.5: modular source architecture
+# SKYBYTE Manager V2.10.6: modular source architecture
 
-**v2.10.5:** **d → 8** now uses xykt hardware/IP/network engines also used by NodeQuality. Yellow terminal tables, private local TXT/JSON, no HTML or report uploads. WARP egress and direct/WARP comparisons remain available.
+**v2.10.6:** Fix diagnostics failing to start after confirmation. **d → 8** now uses xykt hardware/IP/network engines also used by NodeQuality. Yellow terminal tables, private local TXT/JSON, no HTML or report uploads. WARP egress and direct/WARP comparisons remain available.
 
 **v2.10.3 boundary fixes:** retain HY2 hopping across non-port edits, isolate faulty user cores, reconcile account restore endpoints, reload renewed certificates even without an old baseline, and inventory managed firewall ports. Cancel is a no-op. Menu text/state reads and large-file backup I/O are lighter. [Audit fixes and validation](docs/AUDIT-2026-11-02.md).
 

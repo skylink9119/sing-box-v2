@@ -129,7 +129,8 @@ users_manager'''
         code=self.mocks()+'''media_engine(){ echo "DIAGNOSTIC $*"; };quality_engine(){ echo "QUALITY $*"; }
 warp_engine(){ echo 40000; };warp_loopback(){ :; };warp_verify(){ :; }
 main'''
-        result=self.shell(code,input='d\n8\n4\n4\nn\n8\n0\n0\nq\n')
+        result=self.shell(code,input='d\n8\n4\n4\nn\n1\ny\n8\n0\n0\nq\n')
+        self.assertIn('QUALITY quick',result.stdout)
         self.assertIn('DIAGNOSTIC compare',result.stdout)
         self.assertNotIn('QUALITY network',result.stdout)
         self.assertNotIn('SELECT_LOCK=1',result.stdout)
