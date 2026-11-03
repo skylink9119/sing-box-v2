@@ -82,6 +82,7 @@ sub_menu(){
    say ' 5. HY2 证书检查与续签重载' ' 5. HY2 certificate checks and renewal reload'
    say ' 6. ACME 证书申请与续签' ' 6. ACME issuance and renewal'
    say ' 7. 备份管理与加密导出' ' 7. Backup management and encryption'
+   say ' 8. Debian 安全更新（漏洞修复）' ' 8. Debian security updates'
    ;;
   6)
    say ' 1. 切换语言' ' 1. Change language'
@@ -136,6 +137,7 @@ sub_menu(){
   5:5) MAIN_ACTION=certificate;;
   5:6) MAIN_ACTION=acme;;
   5:7) MAIN_ACTION=backup_tools;;
+  5:8) MAIN_ACTION=debian_security_update;;
   6:1) MAIN_ACTION=language;;
   6:2) MAIN_ACTION=notice;;
   6:3) MAIN_ACTION=uninstall;;
@@ -161,6 +163,7 @@ dispatch_action(){
  ipv6) ipv6_menu "$@";;
  reality) reality_menu "$@";;
  rescue) rescue_menu "$@";;
+ debian_security_update) debian_security_update;;
  manager_update) manager_update;; certificate) certificate_menu "$@";; resources) report_output resource_info;;
  update) core_versions "$@";; settings) node_settings "$@";; online) online_menu "$@";; acme) acme_menu "$@";; backup_tools) backup_tools "$@";; help) usage_help;; backup) backup;; restore) restore;;
  language) select_language && startup_info;; notice) notice;; uninstall) uninstall_manager;;

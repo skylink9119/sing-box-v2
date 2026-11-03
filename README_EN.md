@@ -20,7 +20,9 @@
 
 ---
 
-# SKYBYTE Manager V2.10.3: modular source architecture
+# SKYBYTE Manager V2.10.4: modular source architecture
+
+**v2.10.4:** **f → 8** previews Debian security updates on Debian 12/13 and installs them after confirmation. It uses the matching official security archive and respects package holds and existing APT sources. Review kept-back packages and arrange a reboot if the system requests one.
 
 **v2.10.3 boundary fixes:** retain HY2 hopping across non-port edits, isolate faulty user cores, reconcile account restore endpoints, reload renewed certificates even without an old baseline, and inventory managed firewall ports. Cancel is a no-op. Menu text/state reads and large-file backup I/O are lighter. [Audit fixes and validation](docs/AUDIT-2026-11-02.md).
 
