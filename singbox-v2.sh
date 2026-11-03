@@ -8,7 +8,7 @@
 set -Eeuo pipefail
 umask 077
 SCRIPT_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
-MANAGER_VERSION=2.10.4
+MANAGER_VERSION=2.10.5
 CORE_RECOMMENDED=1.14.4
 BASE=/etc/singbox-v2
 CONF=/etc/sing-box/config.json
@@ -3855,49 +3855,614 @@ except (ValueError, OSError, subprocess.SubprocessError) as error:
  print('检测失败 / Diagnostic failed: '+safe_text(error), file=sys.stderr);sys.exit(1)
 PY_MEDIA
 }
+quality_engine(){
+ python3 - "$@" <<'PY_QUALITY'
+"""Verified, on-demand upstream diagnostics. No node configuration is read."""
+import datetime
+import hashlib
+import io
+import json
+import os
+from pathlib import Path
+import platform
+import re
+import shutil
+import sys
+import unicodedata
+import signal
+import subprocess
+import tempfile
+import threading
+import zipfile
+
+TOOLS = {'unlock': ('oneclickvirt/UnlockTests', 'Apache-2.0'), 'ecs': ('oneclickvirt/ecs', 'GPL-3.0')}
+MAX_DOWNLOAD = 128 * 1024 * 1024
+
+
+def clean_env(home):
+    env = {k: os.environ[k] for k in ('PATH', 'LANG', 'LC_ALL', 'NO_COLOR', 'SSL_CERT_FILE', 'SSL_CERT_DIR') if k in os.environ}
+    env.update(HOME=str(home), TMPDIR=str(home))
+    return env
+
+
+def fetch(url, limit):
+    if not url.startswith('https://'):
+        raise ValueError('Non-HTTPS diagnostic download refused')
+    with tempfile.TemporaryDirectory(prefix='skybyte-diagnostic-download-') as home:
+        target = Path(home) / 'download'
+        args = ['curl', '-q', '-fsSL', '--proto', '=https', '--proto-redir', '=https',
+                '--connect-timeout', '8', '--max-time', '60', '--max-filesize', str(limit),
+                '--user-agent', 'SKYBYTE-Diagnostics', '-o', str(target), url]
+        result = subprocess.run(args, env=clean_env(home), capture_output=True, timeout=65)
+        if result.returncode:
+            raise ValueError('Official diagnostic download failed / 官方检测工具下载失败，请检查 GitHub 连接')
+        data = target.read_bytes()
+    if len(data) > limit:
+        raise ValueError('Diagnostic download too large')
+    return data
+
+
+def private_dir(path):
+    path = Path(path)
+    if not path.is_absolute() or any(p.is_symlink() for p in (path, *path.parents)):
+        raise ValueError('Unsafe diagnostic directory / 检测目录异常')
+    if path.exists() and not path.is_dir():
+        raise ValueError('Diagnostic directory is not a directory')
+    path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    path.chmod(0o700)
+    return path
+
+
+def asset_name(tool, system=None, machine=None):
+    system = (system or platform.system()).lower()
+    machine = machine or platform.machine()
+    arch = {'x86_64': 'amd64', 'amd64': 'amd64', 'aarch64': 'arm64', 'arm64': 'arm64',
+            'armv7l': 'arm', 'armv6l': 'arm', 'i386': '386', 'i686': '386'}.get(machine)
+    if system not in ('linux', 'darwin') or arch is None:
+        raise ValueError('Unsupported diagnostic architecture / 检测工具不支持此架构')
+    return ('ut-' + system + '-' + arch) if tool == 'unlock' else ('goecs_' + system + '_' + arch + '.zip')
+
+
+def ensure_tool(report_dir, tool):
+    repo, _license = TOOLS[tool]
+    folder = private_dir(Path(report_dir).parent / 'diagnostic-tools' / tool)
+    metadata = json.loads(fetch('https://api.github.com/repos/' + repo + '/releases/latest', 2 * 1024 * 1024))
+    tag = metadata.get('tag_name', '')
+    if metadata.get('draft') or metadata.get('prerelease') or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,100}', tag):
+        raise ValueError('Invalid diagnostic release')
+    name = asset_name(tool)
+    assets = [x for x in metadata.get('assets', []) if x.get('name') == name]
+    if len(assets) != 1:
+        raise ValueError('Official diagnostic asset missing')
+    asset = assets[0]
+    url = 'https://github.com/' + repo + '/releases/download/' + tag + '/' + name
+    digest = asset.get('digest', '')
+    if asset.get('browser_download_url') != url or not re.fullmatch(r'sha256:[a-f0-9]{64}', digest):
+        raise ValueError('Official diagnostic SHA256/URL missing or invalid')
+    # Cache the original release asset, not an unverified extracted executable.
+    cached = folder / (digest[7:] + '.asset')
+    if cached.is_symlink() or (cached.exists() and not cached.is_file()):
+        raise ValueError('Unsafe diagnostic cache')
+    if cached.exists():
+        if cached.stat().st_size > MAX_DOWNLOAD: raise ValueError('Diagnostic cache too large')
+        data = cached.read_bytes()
+    else:
+        print('Downloading verified ' + repo + ' ' + tag + ' …', flush=True)
+        data = fetch(url, MAX_DOWNLOAD)
+    if len(data) > MAX_DOWNLOAD or hashlib.sha256(data).hexdigest() != digest[7:]:
+        raise ValueError('Diagnostic SHA256 mismatch; not executed / 检测工具校验失败，未执行')
+    if not cached.exists():
+        fd, temp = tempfile.mkstemp(dir=folder, prefix='.download-')
+        try:
+            with os.fdopen(fd, 'wb') as stream:
+                stream.write(data)
+            os.replace(temp, cached)
+        finally:
+            if os.path.exists(temp): os.unlink(temp)
+    # Retain only the current verified asset; diagnostics must not grow with every release.
+    for previous in folder.glob('*.asset'):
+        if previous != cached and re.fullmatch(r'[a-f0-9]{64}[.]asset', previous.name) and previous.is_file() and not previous.is_symlink():
+            previous.unlink()
+    if tool == 'ecs':
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            entries = [x for x in archive.infolist() if Path(x.filename).name in ('goecs', 'ecs') and not x.is_dir()]
+            if len(entries) != 1 or entries[0].file_size > MAX_DOWNLOAD:
+                raise ValueError('Invalid official diagnostic archive')
+            data = archive.read(entries[0])
+    return data, {'repository': repo, 'release': tag, 'asset': name, 'sha256': digest[7:]}
+
+
+def execute(args, home, timeout, stdout=None, stderr=None, strip_colors=False):
+    process = subprocess.Popen(args, cwd=home, env=clean_env(home), stdout=subprocess.PIPE if strip_colors else stdout, stderr=stderr, start_new_session=True)
+    reader = None
+    if strip_colors:
+        def forward():
+            for line in iter(process.stdout.readline, b''):
+                text = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', line.decode('utf-8', 'replace'))
+                sys.stdout.write(text); sys.stdout.flush()
+        reader = threading.Thread(target=forward, daemon=True); reader.start()
+    try:
+        process.wait(timeout=timeout)
+    except BaseException:
+        try: os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError: pass
+        try: process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            try: os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError: pass
+            process.wait()
+        raise
+    finally:
+        if reader is not None:
+            reader.join()
+            process.stdout.close()
+    return process
+
+
+def unlock_arguments(path, port=None, all_platforms=False, language='zh_CN'):
+    if path not in ('4', '6', 'warp'):
+        raise ValueError('Invalid diagnostic path')
+    args = ['-json', '-region', '20' if all_platforms else '0,21', '-conc', '6', '-timeout', '2m',
+            '-m', '6' if path == '6' else '4', '-L', 'en' if language in ('en', 'en_US') else 'zh']
+    if path == 'warp':
+        if type(port) is not int or not 1024 <= port <= 65535:
+            raise ValueError('Invalid loopback proxy port')
+        args += ['-socks-proxy', 'socks5://127.0.0.1:' + str(port)]
+    return args
+
+
+def ecs_arguments(mode, language='zh_CN'):
+    if mode not in ('route', 'speed', 'full'):
+        raise ValueError('Invalid benchmark mode')
+    # Explicitly opt into each module; upstream default includes uploads/stress tests.
+    return ['-menu=false', '-upload=false', '-log=false', '-l', 'en' if language in ('en','en_US') else 'zh', '-dns-mode', 'system',
+            '-basic=' + str(mode == 'full').lower(), '-ut=' + str(mode == 'full').lower(),
+            '-security=' + str(mode == 'full').lower(), '-backtrace=' + str(mode != 'speed').lower(),
+            '-nt3=' + str(mode != 'speed').lower(), '-speed=' + str(mode != 'route').lower(),
+            '-cpu=false', '-memory=false', '-disk=false', '-email=false', '-ping=false', '-web=false', '-tgdc=false']
+
+
+def safe_text(value, limit=250):
+    # Provider strings must not inject terminal control sequences or extra rows.
+    value = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', str(value))
+    return ''.join(c for c in value if c.isprintable()).strip()[:limit]
+
+
+def display_width(text):
+    return sum(0 if unicodedata.combining(c) else 2 if unicodedata.east_asian_width(c) in ('W', 'F') else 1 for c in text)
+
+
+def wrap_cell(value, width):
+    value = safe_text(value, 1000) or '-'
+    lines, line, used = [], '', 0
+    for index, char in enumerate(value):
+        if char.isspace() and line:
+            following = value[index + 1:].split(' ', 1)[0]
+            if display_width(following) <= width and used + 1 + display_width(following) > width:
+                lines.append(line.rstrip()); line, used = '', 0
+                continue
+        size = display_width(char)
+        if line and used + size > width:
+            lines.append(line); line, used = '', 0
+        line += char; used += size
+    return lines + [line]
+
+
+def report_table(rows, language='zh_CN', columns=None, color=None):
+    """Terminal-cell-aware wrapping keeps Chinese and long provider names aligned."""
+    columns = max(50, min(140, columns or shutil.get_terminal_size((100, 24)).columns))
+    widths = [10, 7, 4, 6, 7]
+    extra = columns - 16 - sum(widths)
+    weights = [0.31, 0.19, 0.09, 0.13, 0.28]
+    for index, weight in enumerate(weights): widths[index] += int(extra * weight)
+    widths[4] += columns - 16 - sum(widths)
+    headers = ['平台', '状态', '地区', '类型', '说明'] if language not in ('en', 'en_US') else ['Platform', 'Status', 'Region', 'Type', 'Notes']
+    output = []
+    def border(left, middle, right):
+        return left + middle.join('─' * (width + 2) for width in widths) + right
+    def cells(values):
+        wrapped = [wrap_cell(value, width) for value, width in zip(values, widths)]
+        for i in range(max(map(len, wrapped))):
+            parts = []
+            for lines, width in zip(wrapped, widths):
+                text = lines[i] if i < len(lines) else ''
+                parts.append(' ' + text + ' ' * (width - display_width(text) + 1))
+            output.append('│' + '│'.join(parts) + '│')
+    output.append(border('┌', '┬', '┐')); cells(headers)
+    output.append(border('├', '┼', '┤'))
+    if not rows:
+        rows = [{'name': '无结果 / No results', 'status': 'Unknown'}]
+    for index, row in enumerate(rows):
+        notes = ' / '.join(dict.fromkeys(x for x in (row.get('error', ''), row.get('info', '')) if x))
+        cells([row.get(k, '') for k in ('name', 'status', 'region', 'unlock_type')] + [notes])
+        if index < len(rows) - 1: output.append(border('├', '┼', '┤'))
+    output.append(border('└', '┴', '┘'))
+    if color is None: color = sys.stdout.isatty() and not os.environ.get('NO_COLOR')
+    return ('\033[1;33m' if color else '') + '\n'.join(output) + ('\033[0m' if color else '')
+
+
+def save_report(directory, report):
+    directory = private_dir(directory)
+    fd, name = tempfile.mkstemp(prefix='diagnostic-', suffix='.json', dir=directory)
+    with os.fdopen(fd, 'w') as stream:
+        json.dump(report, stream, ensure_ascii=False, indent=2)
+    return Path(name)
+
+
+def run(paths, report_dir, port=None, language='zh_CN', all_platforms=False):
+    if not paths or any(p not in ('4', '6', 'warp') for p in paths):
+        raise ValueError('Invalid diagnostic paths')
+    arguments = [unlock_arguments(p, port, all_platforms, language) for p in paths]
+    report_dir = private_dir(report_dir)
+    payload, source = ensure_tool(report_dir, 'unlock')
+    report = {'engine': source, 'time': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+              'playback_verified': False, 'runs': []}
+    failed = False
+    with tempfile.TemporaryDirectory(prefix='.unlock-', dir=report_dir.parent) as home:
+        binary = Path(home) / 'ut'; binary.write_bytes(payload); binary.chmod(0o700)
+        for path, args in zip(paths, arguments):
+            print('\n=== ' + ('SOCKS5 / WARP (address family selected by proxy)' if path == 'warp' else 'VPS direct IPv' + path) + ' ===', flush=True)
+            # Output goes to a private file so unexpected upstream output cannot exhaust RAM.
+            with tempfile.TemporaryFile() as output:
+                try:
+                    result = execute([str(binary), *args], home, 140, stdout=output, stderr=subprocess.DEVNULL)
+                    output.seek(0); raw = output.read(4 * 1024 * 1024 + 1)
+                    if len(raw) > 4 * 1024 * 1024: raise ValueError('Diagnostic result too large')
+                    data = json.loads(raw)
+                    if not isinstance(data, dict) or data.get('schema_version') != 'goecs.unlocktests/v1' or not isinstance(data.get('results'), list):
+                        raise ValueError('Unsupported diagnostic JSON schema')
+                    rows = []
+                    for item in data['results']:
+                        if not isinstance(item, dict): raise ValueError('Invalid provider result')
+                        row = {key: safe_text(item.get(key, '')) for key in ('name', 'status', 'region', 'unlock_type', 'info', 'error', 'ip_version')}
+                        rows.append(row)
+                    error = safe_text(data.get('error', ''))
+                    failed = failed or result.returncode != 0 or bool(error) or not rows
+                except (subprocess.TimeoutExpired, ValueError) as exc:
+                    rows = []; error = safe_text(type(exc).__name__ + ': diagnostic incomplete / 检测未完成'); failed = True
+            report['runs'].append({'path': path, 'results': rows, 'error': error})
+            print(report_table(rows, language))
+            if error: print('检测未完成 / Incomplete: ' + error)
+    output = save_report(report_dir, report)
+    print('本机报告 / Local report: ' + str(output))
+    print('Upstream assessment; account eligibility/playback are not guaranteed. DNS/proxy types do not certify residential IPs.' if language in ('en', 'en_US') else '结果为上游检测判定；不保证账号资格或实际播放。DNS/代理类型为辅助判断，不能当作住宅 IP 认证。')
+    if failed: raise ValueError('Diagnostic incomplete; partial report retained / 检测未完成，已保留部分结果')
+    return report['runs']
+
+
+def benchmark(mode, report_dir, language='zh_CN'):
+    args = ecs_arguments(mode, language)
+    report_dir = private_dir(report_dir)
+    payload, source = ensure_tool(report_dir, 'ecs')
+    print('VPS direct network only / 仅测试 VPS 直连网络；代理和节点客户端线路不在本检测范围。', flush=True)
+    print('Engine: ' + source['repository'] + ' ' + source['release'], flush=True)
+    with tempfile.TemporaryDirectory(prefix='.ecs-', dir=report_dir.parent) as home:
+        binary = Path(home) / 'goecs'; binary.write_bytes(payload); binary.chmod(0o700)
+        result = execute([str(binary), *args], home, 1200, strip_colors=True)
+    if result.returncode: raise ValueError('Benchmark incomplete / 综合检测未完成')
+
+
+def diagnostic_main(argv):
+    if len(argv) != 4:
+        raise ValueError('Invalid diagnostic invocation')
+    action, directory, language, port = argv
+    if action in ('route', 'speed', 'full'):
+        return benchmark(action, directory, language)
+    mapping = {'4': ['4'], '6': ['6'], 'both': ['4', '6'], 'warp': ['warp'], 'compare': ['4', 'warp'], 'all': ['4']}
+    if action not in mapping:
+        raise ValueError('Unknown diagnostic operation')
+    return run(mapping[action], directory, int(port) if port else None, language, action == 'all')
+"""Local-only adapters for the xykt engines used by NodeQuality.
+
+Shared process/download/text helpers are composed from media.py by build.py.
+No node state, credentials, web server, or report-upload service is used.
+"""
+import time
+
+QUALITY_TOOLS = {
+    'hardware': ('HardwareQuality', 'hardware.sh', '06f99880d516bb744afa2948261b9697c79789e2',
+                 '73e032ef5409e014cca411a71c677a76db19a94ef0a96a73827b41b2059cd86c'),
+    'ip': ('IPQuality', 'ip.sh', 'f0df4dc1d7961a092609a17c5b66a7ce49b519cc',
+           'b30df5a3c2204276c54e99dcc5080b46f8a627667730aee7de63b109b8ecaecf'),
+    'network': ('NetQuality', 'net.sh', 'd5b99484d51286374d24b892c1b54235dc282148',
+                '6c40fe1ae40d969255cb63075c94882733b82ba43831341eb1aadeea7b1fbfcd'),
+}
+QUALITY_LIMIT = 4 * 1024 * 1024
+QUALITY_LABELS = {
+    'hardware': '硬件质量 / Hardware', 'ip': 'IP 质量与解锁 / IP quality',
+    'network': '网络质量与测速 / Network', 'route': '三网回程 / Return routes',
+    'OS': '系统', 'Motherboard': '主板', 'CPU': 'CPU', 'GPU': 'GPU',
+    'Memory': '内存', 'Disk': '磁盘', 'Benchmark': '性能评分',
+    'Info': 'IP 信息', 'Type': 'IP 类型', 'Score': '风险评分',
+    'Factor': '风险因素', 'Media': '流媒体与 AI', 'Mail': '邮件连通性',
+    'BGP': 'BGP 信息', 'Local': '本机网络', 'Connectivity': '互联网络',
+    'Delay': '三网延迟', 'Speedtest': '上下行测速', 'Transfer': '传输质量',
+}
+
+
+def quality_arguments(kind, output, family='4', language='zh_CN', quick=False):
+    if kind not in ('hardware', 'ip', 'network', 'route') or family not in ('4', '6'):
+        raise ValueError('Invalid quality test / 检测选项无效')
+    # -p suppresses Check.Place report uploads AND hardware Geekbench uploads.
+    # -y permits dependencies only after the manager's explicit confirmation.
+    args = ['-p', '-y', '-l', 'en' if language in ('en', 'en_US') else 'cn',
+            '-o', str(output)]
+    # HardwareQuality has no -4/-6 switch; it inspects the local host.
+    if kind != 'hardware':
+        args += ['-' + family]
+    if kind == 'hardware' and quick:
+        args += ['-F']
+    if kind == 'network':
+        args += ['-S', '5']  # routes have their own run / report section
+    if kind == 'route':
+        args += ['-R', '-S', '123']  # route-only; no bandwidth benchmark
+    return args
+
+
+def quality_download(kind):
+    repo, filename, commit, digest = QUALITY_TOOLS['network' if kind == 'route' else kind]
+    data = fetch('https://raw.githubusercontent.com/xykt/' + repo + '/' + commit + '/' + filename,
+                 2 * 1024 * 1024)
+    if hashlib.sha256(data).hexdigest() != digest:
+        raise ValueError('检测工具 SHA256 不匹配，未执行 / Diagnostic SHA256 mismatch')
+    return data, {'repository': 'xykt/' + repo, 'commit': commit, 'sha256': digest, 'license': 'AGPL-3.0'}
+
+
+def quality_execute(args, home, log, timeout):
+    """Bounded logs, periodic progress, and process-group cleanup on cancellation."""
+    process = subprocess.Popen(args, cwd=home, env=clean_env(home), stdin=subprocess.DEVNULL,
+                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
+    def drain():
+        remaining = QUALITY_LIMIT
+        with log.open('wb') as stream:
+            while chunk := process.stdout.read(8192):
+                if remaining:
+                    stream.write(chunk[:remaining])
+                    remaining = max(0, remaining - len(chunk))
+    reader = threading.Thread(target=drain, daemon=True)
+    reader.start()
+    started = time.monotonic()
+    try:
+        while True:
+            remaining = timeout - (time.monotonic() - started)
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired(args, timeout)
+            try:
+                return process.wait(timeout=min(15, remaining))
+            except subprocess.TimeoutExpired:
+                print('检测中 / Testing … ' + str(int(time.monotonic() - started)) + ' s', flush=True)
+    finally:
+        # Kill residual children even if their parent has already exited.
+        try: os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError: pass
+        try: process.wait(timeout=2)
+        except subprocess.TimeoutExpired: pass
+        try: os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError: pass
+        process.wait()
+        reader.join(timeout=3)
+        process.stdout.close()
+
+
+def quality_read(path):
+    if path.is_symlink() or not path.is_file():
+        raise ValueError('工具未生成报告 / No report generated')
+    with path.open('rb') as stream:
+        data = stream.read(QUALITY_LIMIT + 1)
+    if len(data) > QUALITY_LIMIT:
+        raise ValueError('检测报告过大 / Report too large')
+    return data.decode('utf-8', 'replace')
+
+
+def quality_json(text):
+    """Upstream appends JSON objects (one per address family), not a JSON array."""
+    decoder = json.JSONDecoder()
+    objects = []
+    while text.strip():
+        value, end = decoder.raw_decode(text.lstrip())
+        if not isinstance(value, dict) or not isinstance(value.get('Head'), dict):
+            raise ValueError('不支持的报告结构 / Unsupported report schema')
+        objects.append(value)
+        if len(objects) > 2:
+            raise ValueError('Too many report objects')
+        text = text.lstrip()[end:]
+    if not objects:
+        raise ValueError('空报告 / Empty report')
+    return objects
+
+
+def quality_rows(value, prefix='', depth=0):
+    """Keep all source fields in JSON; cap terminal details without hiding truncation."""
+    if depth > 12:
+        yield (prefix, '[嵌套过深 / Too deeply nested]')
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            yield from quality_rows(item, (prefix + ' / ' if prefix else '') + safe_text(key, 80), depth + 1)
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            yield from quality_rows(item, prefix + ' [' + str(index + 1) + ']', depth + 1)
+    else:
+        result = '未知 / Unknown' if value is None or value == '' or value == 'null' else str(value)
+        yield (prefix, safe_text(result, 1000))
+
+
+def quality_table(rows, language='zh_CN', columns=None):
+    columns = max(40, min(140, columns or shutil.get_terminal_size((100, 24)).columns))
+    widths = [max(12, (columns - 7) // 3), 0]
+    widths[1] = columns - 7 - widths[0]
+    result = []
+    def border(left, middle, right):
+        return left + middle.join('─' * (w + 2) for w in widths) + right
+    def cells(row):
+        wrapped = [wrap_cell(x, w) for x, w in zip(row, widths)]
+        for i in range(max(map(len, wrapped))):
+            parts = [lines[i] if i < len(lines) else '' for lines in wrapped]
+            result.append('│' + '│'.join(' ' + x + ' ' * (w - display_width(x) + 1)
+                                        for x, w in zip(parts, widths)) + '│')
+    result.append(border('┌', '┬', '┐'))
+    cells(('Item', 'Result') if language in ('en', 'en_US') else ('项目', '检测结果'))
+    result.append(border('├', '┼', '┤'))
+    count = 0
+    for row in rows:
+        if count == 300:
+            cells(('更多 / More', '其余字段见本地 JSON / See local JSON for remaining fields'))
+            break
+        cells(row)
+        count += 1
+    if not count:
+        cells(('—', '无结果 / No results'))
+    result.append(border('└', '┴', '┘'))
+    return '\n'.join(result)
+
+
+def quality_render(run, language='zh_CN', columns=None):
+    scope = '本机 / Local' if run['kind'] == 'hardware' else 'IPv' + run['family']
+    output = ['\n=== ' + QUALITY_LABELS[run['kind']] + ' · ' + scope + ' ===',
+              quality_table([('执行状态 / Execution', run['status'])], language, columns)]
+    if run.get('error'):
+        output.append(quality_table([('说明 / Details', run['error'])], language, columns))
+    for document in run.get('data', []):
+        for chapter, value in document.items():
+            if chapter == 'Head' or not value:
+                continue
+            output.append('\n' + safe_text(chapter if language in ('en', 'en_US') else QUALITY_LABELS.get(chapter, chapter)))
+            if chapter == 'Media' and isinstance(value, dict):
+                output.append(report_table([{'name': name, 'status': item.get('Status', 'Unknown'),
+                                             'region': item.get('Region', ''), 'unlock_type': item.get('Type', '')}
+                                            for name, item in value.items() if isinstance(item, dict)],
+                                           language, columns, color=False))
+            else:
+                output.append(quality_table(quality_rows(value), language, columns))
+    if run.get('route_text'):
+        lines = [safe_text(line, 1000) for line in run['route_text'].splitlines()]
+        output.append(quality_table(((str(i), line) for i, line in enumerate(filter(None, lines), 1)), language, columns))
+    return '\n'.join(output)
+
+
+def quality_main(argv):
+    action, directory, language, family = argv
+    if action not in ('hardware', 'quick', 'ip', 'network', 'route', 'full') or family not in ('4', '6'):
+        raise ValueError('Invalid quality test')
+    directory = private_dir(directory)
+    folder = Path(tempfile.mkdtemp(prefix='quality-', dir=directory))
+    report = {'schema': 'skybyte.quality/v1', 'time': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+              'upload': False, 'runs': []}
+    kinds = ['hardware', 'ip', 'network', 'route'] if action == 'full' else ['hardware' if action == 'quick' else action]
+    failed = False
+    for kind in kinds:
+        run = {'kind': kind, 'family': family, 'status': '未完成 / Incomplete'}
+        report['runs'].append(run)
+        cancelled = False
+        print('\n开始 / Starting: ' + QUALITY_LABELS[kind], flush=True)
+        try:
+            payload, run['engine'] = quality_download(kind)
+            with tempfile.TemporaryDirectory(prefix='.quality-', dir=directory) as home:
+                script = Path(home) / 'check.sh'
+                script.write_bytes(payload)
+                output = Path(home) / ('result.txt' if kind == 'route' else 'result.json')
+                log = folder / (kind + '.log')
+                try:
+                    code = quality_execute(['bash', str(script), *quality_arguments(kind, output, family, language, action == 'quick')],
+                                           home, log, 1800 if kind in ('hardware', 'network') else 900)
+                finally:
+                    # Preserve completed output even if a later stage times out.
+                    if output.is_file() and not output.is_symlink():
+                        try:
+                            raw = quality_read(output)
+                            if kind == 'route':
+                                run['route_text'] = '\n'.join(safe_text(line, 1000) for line in raw.splitlines())
+                            else:
+                                run['data'] = quality_json(raw)
+                        except (ValueError, OSError, RecursionError):
+                            pass
+                run['exit_code'] = code
+                raw = quality_read(output)
+                if kind == 'route':
+                    if not raw.strip(): raise ValueError('Empty route report')
+                    run['route_text'] = '\n'.join(safe_text(line, 1000) for line in raw.splitlines())
+                else:
+                    run['data'] = quality_json(raw)
+                # These pinned IP/Net scripts end with an IPv6 && expression.
+                # A successful IPv4-only report therefore exits 1. Accept only
+                # with a parsed report, keeping the original exit code recorded.
+                completed = code == 0 or (code == 1 and family == '4' and kind != 'hardware')
+                run['status'] = '完成 / Completed' if completed else '部分结果 / Partial results'
+                failed |= not completed
+        except (ValueError, OSError, subprocess.SubprocessError, RecursionError) as error:
+            run['status'] = '失败 / Failed'
+            run['error'] = safe_text(error)
+            failed = True
+        except KeyboardInterrupt:
+            run['status'] = '已取消 / Cancelled'
+            cancelled = failed = True
+        text = quality_render(run, language)
+        print(text, flush=True)
+        # Save after every stage, including errors/cancellation; never create HTML.
+        (folder / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2))
+        (folder / 'report.txt').write_text('\n'.join(quality_render(item, language) for item in report['runs']) + '\n')
+        for path in folder.iterdir(): path.chmod(0o600)
+        if cancelled:
+            break
+    print('\n本地报告 / Local reports: ' + str(folder / 'report.txt') + '\n' + str(folder / 'report.json'))
+    print('检测完成不等于所有项目通过；实际播放与客户端连通性需另行验证。 / Completion does not imply every probe passed.')
+    if failed:
+        raise ValueError('部分检测未完成，查看本地报告及 .log / Some tests failed; inspect reports and logs')
+import sys
+try: quality_main(sys.argv[1:])
+except (ValueError, OSError, subprocess.SubprocessError) as error:
+ print('检测未完成 / Diagnostic incomplete: '+safe_text(error), file=sys.stderr);sys.exit(1)
+PY_QUALITY
+}
 media_check(){
- local selection action port=''
+ local selection action family=4 port=''
  if [[ $# == 0 || $1 == --menu || $1 == --interactive ]];then
-  prompt_options '========== 专业网络检测 ==========
-【流媒体与 AI · UnlockTests】
-1. VPS 直连 IPv4（全球 + AI）
-2. VPS 直连 IPv6（全球 + AI）
-3. VPS 直连双栈
-4. WARP 代理出口
-5. 直连 IPv4 / WARP 对比
-6. 全地区平台（VPS IPv4）
+  prompt_options '========== VPS 质量检测 ==========
+【本机与公网 · xykt / NodeQuality 同源工具】
+1. 硬件信息（快速查看）
+2. IP 质量 / 流媒体（IPv4）
+3. IP 质量 / 流媒体（IPv6）
+4. 网络质量 / 三网测速
+5. 三网回程 / 详细路由
+6. 完整体检（硬件性能 + IP + 网络 + 回程）
 
-【线路与测速 · 融合怪 Go】
-7. 三网回程 / 路由
-8. 三网测速（消耗流量）
-9. 综合网络测评（消耗流量）
-0. 返回' '========== Professional diagnostics ==========
-[Media and AI · UnlockTests]
-1. VPS direct IPv4 (global + AI)
-2. VPS direct IPv6 (global + AI)
-3. VPS direct dual stack
-4. WARP proxy egress
-5. Direct IPv4 / WARP comparison
-6. All-region platforms (VPS IPv4)
+【WARP · 流媒体与 AI】
+7. WARP 代理出口检测
+8. 直连 IPv4 / WARP 对比
+0. 返回' '========== VPS quality diagnostics ==========
+[Direct · xykt engines also used by NodeQuality]
+1. Hardware information (quick)
+2. IP quality / media (IPv4)
+3. IP quality / media (IPv6)
+4. Network quality / speed tests
+5. Return routes / detailed traceroute
+6. Full assessment (hardware + IP + network + routes)
 
-[Routes and speed · goecs]
-7. Return routes / traceroute
-8. Speed tests (uses bandwidth)
-9. Comprehensive network tests (uses bandwidth)
+[WARP · Media and AI]
+7. WARP proxy egress
+8. Direct IPv4 / WARP comparison
 0. Back'
   [[ ${1:-} != --menu ]] || return 0
   prompt_read '> ' selection || return 0
  else selection=$1;fi
  case $selection in
-  1)action=4;;2)action=6;;3)action=both;;4)action=warp;;5)action=compare;;6)action=all;;
-  7)action=route;;8)action=speed;;9)action=full;;0)return 0;;*)return 1;;
+  1)action=quick;;2)action=ip;;3)action=ip;family=6;;4)action=network;;5)action=route;;6)action=full;;
+  7)action=warp;;8)action=compare;;0)return 0;;*)return 1;;
  esac
- say '首次按需下载官方检测工具并校验；报告仅在本机，综合检测关闭上传。结果不保证账号可用或实际播放。' 'Official tools are downloaded and verified on demand; reports stay local and benchmark uploads are disabled. Results do not guarantee playback or account access.'
+ if [[ $action == warp || $action == compare ]];then
+  port=$(warp_engine port) && warp_loopback "$port" && warp_verify "$port" || return 1
+  report_output media_engine "$action" "$REPORT" "${LANGUAGE_CHOICE:-zh_CN}" "$port"
+  return
+ fi
  case $action in
-  warp|compare)port=$(warp_engine port) && warp_loopback "$port" && warp_verify "$port" || return 1;;
-  speed|full)confirm "$(L '测速可能消耗大量流量并临时占用带宽，继续？' 'Tests may use substantial traffic and bandwidth. Continue?')" || return 0;;
+  network|route|full)
+   prompt_read "$(L '检测网络 [4]（4 / 6）: ' 'Address family [4] (4 / 6): ')" family || return 0
+   family=${family:-4};[[ $family == 4 || $family == 6 ]] || { err "$(L '请选择 4 或 6' 'Select 4 or 6')";return 1; };;
  esac
- report_output media_engine "$action" "$REPORT" "${LANGUAGE_CHOICE:-zh_CN}" "$port"
+ say '按需下载并校验 xykt 官方脚本；可能安装检测依赖。仅保存本地 TXT/JSON，不上传报告、不生成 HTML。检测会访问第三方服务，结果不保证实际解锁。' 'Verified xykt scripts run on demand and may install diagnostic dependencies. Local TXT/JSON only; no report uploads or HTML. Probes contact third-party services and cannot guarantee playback.'
+ say '隐私模式跳过 Geekbench；快速硬件查看不跑性能测试。完整体检会增加 CPU、内存和磁盘负载；测速会消耗流量。' 'Privacy mode skips Geekbench. Quick hardware mode skips benchmarks. Full assessment loads CPU, memory and disk; speed tests consume traffic.'
+ confirm "$(L '开始检测？' 'Start diagnostics?')" || return 0
+ ensure_binary curl curl || return 1
+ report_output quality_engine "$action" "$REPORT" "${LANGUAGE_CHOICE:-zh_CN}" "$family"
 }
 reality_engine(){ python3 - "$@" <<'PY_REALITY'
 """Read-only REALITY target diagnostics; standard library, no core required."""
@@ -10809,7 +11374,7 @@ sub_menu(){
    say ' 5. HY2 端口跳跃' ' 5. HY2 port hopping'
    say ' 6. VPS 流量统计（vnStat）' ' 6. VPS traffic (vnStat)'
    say ' 7. 进程、内存与负载' ' 7. Processes, memory and load'
-   say ' 8. 流媒体 / 回程 / 测速' ' 8. Media / routes / speed tests'
+   say ' 8. VPS 质量检测（硬件 / IP / 网络）' ' 8. VPS quality (hardware / IP / network)'
    say ' 9. WARP 出站与分流' ' 9. WARP egress and routing'
    say '10. 住宅落地 / VPS 中转' '10. Residential landing / VPS relay'
    say '11. HAProxy TCP 透传' '11. HAProxy TCP passthrough'
