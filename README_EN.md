@@ -20,9 +20,9 @@
 
 ---
 
-# SKYBYTE Manager V2.10.6: modular source architecture
+# SKYBYTE Manager V2.10.7: modular source architecture
 
-**v2.10.6:** Fix diagnostics failing to start after confirmation. **d → 8** now uses xykt hardware/IP/network engines also used by NodeQuality. Yellow terminal tables, private local TXT/JSON, no HTML or report uploads. WARP egress and direct/WARP comparisons remain available.
+**v2.10.7:** Group return routes by city and carrier and align hop details. **d → 8** now uses xykt hardware/IP/network engines also used by NodeQuality. Yellow terminal tables, private local TXT/JSON, no HTML or report uploads. WARP egress and direct/WARP comparisons remain available.
 
 **v2.10.3 boundary fixes:** retain HY2 hopping across non-port edits, isolate faulty user cores, reconcile account restore endpoints, reload renewed certificates even without an old baseline, and inventory managed firewall ports. Cancel is a no-op. Menu text/state reads and large-file backup I/O are lighter. [Audit fixes and validation](docs/AUDIT-2026-11-02.md).
 
@@ -341,7 +341,7 @@ Uses [HardwareQuality](https://github.com/xykt/HardwareQuality), [IPQuality](htt
 
 Confirm with `y` before execution. Full assessment runs sysbench/fio and loads CPU, memory and disk; speed tests consume traffic. Every xykt invocation uses privacy flag `-p`: report uploads and Geekbench submissions are disabled. Consequently not every score in the original screenshot is reproduced. Probes still contact platforms, IP-data services, NextTrace API, speed endpoints and xykt usage counters, which see the egress IP and request metadata.
 
-Private reports under `/etc/singbox-v2/reports/quality-*/` contain `report.txt`, `report.json` and per-stage `.log` files (directory 700, files 600). No HTML or public download server is created. JSON retains source fields and provenance; terminal sections cap at 300 rows. Upstream routes lack structured JSON, so route text is wrapped in a table and retained as `route_text`. Failure, cancellation and timeout preserve available results; full assessments continue after individual failures. Reports may contain public IP and hardware details; manage retention and sharing yourself.
+Private reports under `/etc/singbox-v2/reports/quality-*/` contain `report.txt`, `report.json` and per-stage `.log` files (directory 700, files 600). No HTML or public download server is created. JSON retains source fields and provenance; terminal sections cap at 300 rows. Upstream routes lack structured JSON, so hops are grouped into tables by city and carrier and retained as `route_text`. Failure, cancellation and timeout preserve available results; full assessments continue after individual failures. Reports may contain public IP and hardware details; manage retention and sharing yourself.
 
 WARP and comparison probes retain [UnlockTests](https://github.com/oneclickvirt/UnlockTests) (Apache-2.0), including Netflix, Disney+, ChatGPT and Gemini, with upstream statuses and local `diagnostic-*.json`. Coverage differs from xykt IPQuality. Proxy address family is selected by WARP, and auxiliary DNS checks may use system DNS. Completion does not mean all probes passed, nor guarantee account eligibility, residential IP status, catalogs, playback or client connectivity. Routes describe only the current VPS-to-probe path.
 
