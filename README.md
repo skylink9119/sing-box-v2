@@ -20,9 +20,9 @@
 
 ---
 
-# SKYBYTE Manager V2.10.6：模块化维护结构
+# SKYBYTE Manager V2.10.7：模块化维护结构
 
-**v2.10.6：** 修复确认检测后因缺失函数而无法启动的问题。 **d → 8** 改为 VPS 质量检测，接入 NodeQuality 同源的 xykt 硬件、IP 与网络检测工具。终端统一黄色表格，保留本地 TXT/JSON；不生成 HTML、不上传报告。WARP 检测与直连对比继续保留。
+**v2.10.7：** 优化三网回程报告排版，按城市和运营商分组显示跳点。 **d → 8** 改为 VPS 质量检测，接入 NodeQuality 同源的 xykt 硬件、IP 与网络检测工具。终端统一黄色表格，保留本地 TXT/JSON；不生成 HTML、不上传报告。WARP 检测与直连对比继续保留。
 
 **v2.10.3 边界修复：**普通参数修改保留 HY2 跳跃，异常用户单独停用，恢复时对齐账本与配置，缺少旧指纹时也同步重载可信证书，并补全防火墙托管端口。取消操作不再误报失败，菜单与备份读写减少资源开销。[修复与验证说明](docs/AUDIT-2026-11-02.md)。
 
@@ -341,7 +341,7 @@ IPv6 地址使用正确 URI 方括号和证书 IP SAN。纯 IPv6 VPS 仍需能�
 
 执行前输入 `y` 确认。完整体检会运行 sysbench/fio，占用 CPU、内存和磁盘；测速消耗流量。所有 xykt 检测启用 `-p` 隐私模式，关闭报告上传，并跳过需要上传成绩的 Geekbench。完整体检不是截图中每一个评分的原样复制；未检测/未知项不能判为通过。检测仍会连接平台、IP 数据服务、NextTrace API、测速节点及 xykt 运行计数服务，对方可见出口 IP 等请求信息。
 
-报告在 `/etc/singbox-v2/reports/quality-*/`：`report.txt`、`report.json` 与各项 `.log`；目录权限 700、文件 600，不生成 HTML、不公开提供下载。JSON 保留原始结构与工具来源，终端每节最多显示 300 行；超出部分查看 JSON。回程上游未提供结构化 JSON，因此把原始路由文本装入表格，并在 JSON 中保留 `route_text`。失败、取消或超时仍保存已经取得的结果，完整体检中单项失败会继续下一项。报告可能包含公网 IP 与硬件信息，请自行管理留存和分享。
+报告在 `/etc/singbox-v2/reports/quality-*/`：`report.txt`、`report.json` 与各项 `.log`；目录权限 700、文件 600，不生成 HTML、不公开提供下载。JSON 保留原始结构与工具来源，终端每节最多显示 300 行；超出部分查看 JSON。回程上游未提供结构化 JSON，因此按城市和运营商整理跳点表，并在 JSON 中保留 `route_text`。失败、取消或超时仍保存已经取得的结果，完整体检中单项失败会继续下一项。报告可能包含公网 IP 与硬件信息，请自行管理留存和分享。
 
 WARP 与直连对比继续采用 [oneclickvirt/UnlockTests](https://github.com/oneclickvirt/UnlockTests)（Apache-2.0），包含 Netflix、Disney+、ChatGPT、Gemini 等全球平台与 AI；保留上游状态、地区和错误信息，保存本地 `diagnostic-*.json`。它与直连 IP 质量检测的平台覆盖不同。代理出口地址族由 WARP 决定，辅助 DNS 检测可能使用 VPS 系统解析。
 

@@ -8,7 +8,7 @@
 set -Eeuo pipefail
 umask 077
 SCRIPT_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
-MANAGER_VERSION=2.10.6
+MANAGER_VERSION=2.10.7
 CORE_RECOMMENDED=1.14.4
 BASE=/etc/singbox-v2
 CONF=/etc/sing-box/config.json
@@ -4286,10 +4286,11 @@ def quality_rows(value, prefix='', depth=0):
         yield (prefix, safe_text(result, 1000))
 
 
-def quality_table(rows, language='zh_CN', columns=None):
+def quality_table(rows, language='zh_CN', columns=None, *, headers=None, widths=None):
     columns = max(40, min(140, columns or shutil.get_terminal_size((100, 24)).columns))
-    widths = [max(12, (columns - 7) // 3), 0]
-    widths[1] = columns - 7 - widths[0]
+    if widths is None:
+        label_width = max(12, (columns - 7) // 3)
+        widths = [label_width, columns - 7 - label_width]
     result = []
     def border(left, middle, right):
         return left + middle.join('─' * (w + 2) for w in widths) + right
@@ -4300,7 +4301,7 @@ def quality_table(rows, language='zh_CN', columns=None):
             result.append('│' + '│'.join(' ' + x + ' ' * (w - display_width(x) + 1)
                                         for x, w in zip(parts, widths)) + '│')
     result.append(border('┌', '┬', '┐'))
-    cells(('Item', 'Result') if language in ('en', 'en_US') else ('项目', '检测结果'))
+    cells(headers or (('Item', 'Result') if language in ('en', 'en_US') else ('项目', '检测结果')))
     result.append(border('├', '┼', '┤'))
     count = 0
     for row in rows:
@@ -4315,10 +4316,76 @@ def quality_table(rows, language='zh_CN', columns=None):
     return '\n'.join(result)
 
 
+ROUTE_HOP = re.compile(r'^(\d+(?:-\s*\d+)?)\s+(\d+(?:\.\d+)?\s*ms|\*)\s*(.*)$')
+ROUTE_GROUP = re.compile(r'^(.+?\s(?:电信|联通|移动))\s+(.*?->.*)$')
+
+
+def quality_route(text, language, columns):
+    columns = max(40, min(140, columns or shutil.get_terminal_size((100, 24)).columns))
+    english = language in ('en', 'en_US')
+    output = []
+    hops = []
+
+    def flush_hops():
+        if not hops:
+            return
+        if columns >= 80:
+            address_width = min(29, max(16, max(display_width(row[2]) for row in hops)))
+            widths = [5, 10, address_width, 9]
+            widths.append(columns - 16 - sum(widths))
+            headers = ('Hop', 'Latency', 'Address', 'ASN', 'Network / location') if english else ('跳点', '延迟', '地址', 'ASN', '线路 / 位置')
+            output.append(quality_table(hops, language, columns, headers=headers, widths=widths))
+        else:
+            headers = ('Hop', 'Route details') if english else ('跳点', '路由详情')
+            rows = [(hop, '  '.join(value for value in (latency, addr, asn, detail) if value))
+                    for hop, latency, addr, asn, detail in hops]
+            output.append(quality_table(rows, language, columns, headers=headers, widths=[5, columns - 12]))
+        hops.clear()
+
+    started = False
+    for raw in text.splitlines():
+        line = safe_text(raw, 1000)
+        if not line:
+            continue
+        if re.fullmatch(r'[=*]{5,}', line):
+            if started and line.startswith('='):
+                break  # upstream footer
+            continue
+        if line.startswith(('https://github.com/xykt/NetQuality', 'bash <(')):
+            continue
+        group = ROUTE_GROUP.fullmatch(line)
+        if group:
+            flush_hops()
+            output.append('')
+            output.extend(wrap_cell(group[1] + '  ·  ' + group[2], columns))
+            started = True
+            continue
+        hop = ROUTE_HOP.fullmatch(line)
+        if hop:
+            number, latency, rest = hop.groups()
+            addr, _, detail = rest.partition(' ')
+            detail = detail.strip()
+            asn = ''
+            if re.match(r'^AS[0-9]+(?:\s|$)', detail):
+                asn, _, detail = detail.partition(' ')
+            hops.append((''.join(number.split()), latency, addr, asn, detail.strip()))
+            started = True
+            continue
+        flush_hops()
+        # Keep metadata, path summaries and unfamiliar lines readable at full width.
+        for part in re.split(r'\s+(?=自治系统路径：)', line):
+            output.extend(wrap_cell(part, columns))
+    flush_hops()
+    return '\n'.join(output)
+
+
 def quality_render(run, language='zh_CN', columns=None):
     scope = '本机 / Local' if run['kind'] == 'hardware' else 'IPv' + run['family']
-    output = ['\n=== ' + QUALITY_LABELS[run['kind']] + ' · ' + scope + ' ===',
-              quality_table([('执行状态 / Execution', run['status'])], language, columns)]
+    output = ['\n=== ' + QUALITY_LABELS[run['kind']] + ' · ' + scope + ' ===']
+    if run['kind'] == 'route':
+        output.append(('Execution: ' if language in ('en', 'en_US') else '执行状态：') + run['status'])
+    else:
+        output.append(quality_table([('执行状态 / Execution', run['status'])], language, columns))
     if run.get('error'):
         output.append(quality_table([('说明 / Details', run['error'])], language, columns))
     for document in run.get('data', []):
@@ -4334,8 +4401,7 @@ def quality_render(run, language='zh_CN', columns=None):
             else:
                 output.append(quality_table(quality_rows(value), language, columns))
     if run.get('route_text'):
-        lines = [safe_text(line, 1000) for line in run['route_text'].splitlines()]
-        output.append(quality_table(((str(i), line) for i, line in enumerate(filter(None, lines), 1)), language, columns))
+        output.append(quality_route(run['route_text'], language, columns))
     return '\n'.join(output)
 
 

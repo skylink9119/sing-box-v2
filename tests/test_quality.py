@@ -61,6 +61,32 @@ class QualityTests(unittest.TestCase):
         self.assertIn('其余字段见本地 JSON', table)
         self.assertNotIn('399', table)
 
+    def test_route_layout_groups_actual_hops_and_fits_terminal(self):
+        route = """*****
+网络质量体检报告：154.17.*.*
+bash <(curl -sL https://Check.Place) -N
+北京 电信    Unknown -> 163
+地理路径：gateway -> 美国    自治系统路径：AS906 -> AS4134
+1-2   0.42ms  193.41.*.*   AS906   [DMIT-BB] Anycast gateway
+北京 联通    AS906 -> CN2GIA
+1     129.11ms  2001:db8:abcd:1234::1  AS4809  中国 北京市
+未识别的线路说明
+=========
+运行次数：123
+"""
+        for width in (40, 72, 80, 120):
+            result = q.quality_route(route, 'zh_CN', width)
+            self.assertEqual(result.count('跳点'), 2)
+            self.assertIn('北京 电信', result)
+            self.assertIn('北京 联通', result)
+            self.assertIn('1-2', result)
+            self.assertIn('129.11ms', result)
+            self.assertIn('AS4809', result)
+            self.assertIn('未识别的线路说明', result)
+            self.assertNotIn('curl', result)
+            self.assertNotIn('运行次数', result)
+            self.assertTrue(all(q.display_width(line) <= width for line in result.splitlines()))
+
     def test_report_path_symlinks_and_size_refused(self):
         p = self.root / 'source'; p.write_text('ok')
         link = self.root / 'link'; link.symlink_to(p)
