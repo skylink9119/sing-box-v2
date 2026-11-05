@@ -128,12 +128,18 @@ users_manager'''
     def test_professional_diagnostics_cancel_speed_and_compare_preserve_menu(self):
         code=self.mocks()+'''media_engine(){ echo "DIAGNOSTIC $*"; };quality_engine(){ echo "QUALITY $*"; }
 warp_engine(){ echo 40000; };warp_loopback(){ :; };warp_verify(){ :; }
-main'''
-        result=self.shell(code,input='d\n8\n4\n4\nn\n1\ny\n8\n0\n0\nq\n')
+run_submenu media_check'''
+        result=self.shell(code,input='4\n4\nn\n1\ny\n8\n0\n')
         self.assertIn('QUALITY quick',result.stdout)
         self.assertIn('DIAGNOSTIC compare',result.stdout)
         self.assertNotIn('QUALITY network',result.stdout)
         self.assertNotIn('SELECT_LOCK=1',result.stdout)
+
+    def test_server_menu_removed_quality_entry(self):
+        result=self.shell('LANGUAGE_CHOICE=en_US; sub_menu 4; echo ACTION=$MAIN_ACTION',input='8\n')
+        self.assertNotIn('VPS quality (hardware', result.stdout)
+        self.assertIn('Invalid choice', result.stdout + result.stderr)
+        self.assertNotIn('ACTION=media', result.stdout)
 
     def test_node_port_editor_is_available_from_nodes_menu(self):
         result=self.shell(self.mocks()+'edit_node_ports(){ echo PORT_EDITOR; };main',input='b\n8\n0\nq\n')

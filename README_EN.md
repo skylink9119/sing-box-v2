@@ -20,9 +20,9 @@
 
 ---
 
-# SKYBYTE Manager V2.10.7: modular source architecture
+# SKYBYTE Manager V2.10.8: modular source architecture
 
-**v2.10.7:** Group return routes by city and carrier and align hop details. **d → 8** now uses xykt hardware/IP/network engines also used by NodeQuality. Yellow terminal tables, private local TXT/JSON, no HTML or report uploads. WARP egress and direct/WARP comparisons remain available.
+**v2.10.8:** Remove item 8, “VPS quality (hardware / IP / network)”, from the Server and network menu. Other menu numbers retain their existing values.
 
 **v2.10.3 boundary fixes:** retain HY2 hopping across non-port edits, isolate faulty user cores, reconcile account restore endpoints, reload renewed certificates even without an old baseline, and inventory managed firewall ports. Cancel is a no-op. Menu text/state reads and large-file backup I/O are lighter. [Audit fixes and validation](docs/AUDIT-2026-11-02.md).
 
@@ -326,7 +326,7 @@ Backups include routing, private gateway configuration and owned units. Restore 
 
 ## VPS quality diagnostics
 
-Open **d → 8**. Reports use yellow, terminal-width-aware tables; `NO_COLOR` or redirection produces plain text. `0` returns one level.
+Open **d → 9 → 8**. Reports use yellow, terminal-width-aware tables; `NO_COLOR` or redirection produces plain text. `0` returns one level.
 
 | Choice | Function |
 | --- | --- |
