@@ -101,6 +101,13 @@ class PortMenuTests(unittest.TestCase):
     script = manager.ManagerTest.script
     shell = manager.ManagerTest.shell
 
+    def test_ipv6_targets_accept_bare_and_bracketed_addresses(self):
+        for host in ('2001:db8::1', '[2001:db8::1]'):
+            result = self.shell("reality_engine(){ printf '%s\\n' \"$@\"; };port_check_tcp '" + host + "' 443")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('[2001:db8::1]:443', result.stdout)
+            self.assertNotIn('[[', result.stdout)
+
     def test_new_menu_routes_both_checks_and_returns_without_idle_lock(self):
         code = navigation.NavigationTests.mocks(self) + '''xhttp_command(){ :; }
 port_diagnostics_engine(){ echo LOCAL_PORT_CHECK; }

@@ -20,7 +20,7 @@ change_node_ports(){
 port_check_tcp(){
  local host=${1:-} port=${2:-}
  valid_port "$port" || { err "$(L '端口须为 1–65535。' 'Use port 1–65535.')";return 1; }
- if [[ $host == *:* && $host != \[*\] ]];then host="[$host]";fi
+ if [[ $host == *:* && $host != '['*']' ]];then host="[$host]";fi
  report_output reality_engine --project sing-box --language "${LANGUAGE_CHOICE:-zh_CN}" --target "$host:$port" --tcp-only
 }
 port_diagnostics_engine(){
