@@ -52,6 +52,7 @@ sub_menu(){
    say ' 9. 节点参数与协议增删' ' 9. Node settings and protocol changes'
    say '10. Argo 临时 / 固定隧道管理' '10. Argo Quick / Named Tunnel controls'
    say '11. XHTTP 节点管理' '11. XHTTP node management'
+   say '12. 端口连通性检测' '12. Port connectivity checks'
    ;;
   3)
    say ' 1. sing-box 状态与启停' ' 1. sing-box status and controls'
@@ -112,6 +113,7 @@ sub_menu(){
   2:9) MAIN_ACTION=settings;;
   2:10) MAIN_ACTION=argo;;
   2:11) MAIN_ACTION=xhttp;;
+  2:12) MAIN_ACTION=port_diagnostics;;
   3:1) MAIN_ACTION=service;;
   3:2) MAIN_ACTION=logs;;
   3:3) MAIN_ACTION=argo_status;;
@@ -151,7 +153,8 @@ dispatch_action(){
  install_xhttp) xhttp_guided_select;;
  manual_install) manual_install;;
  install_ipv6) ipv6_install_menu "$@";;
- node_ports) edit_node_ports;;
+ node_ports) change_node_ports;;
+ port_diagnostics) port_diagnostics_menu "$@";;
  xhttp) xhttp_menu "$@";;
  argo) argo_manager "$@";; nodes) view_all_nodes;; node_parameters) report_output view_all_parameters;; subscription) subscription;; rename) rename_node;; qr) shadowrocket_qr;; users) users_manager;;
  service) service_manager "$@";; logs) report_output journalctl -u sing-box -n 80 --no-pager;; argo_status) report_output argo_status;;
@@ -202,6 +205,7 @@ run_submenu(){
 navigation_action(){
  case $1 in
   xhttp) run_submenu xhttp_menu;;
+  port_diagnostics) run_submenu port_diagnostics_menu;;
   media) run_submenu media_check;;
   firewall) run_submenu firewall;; service) run_submenu service_manager;;
   traffic) run_submenu traffic;; argo) run_submenu argo_manager;;
@@ -297,6 +301,10 @@ if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
  case ${1:-} in
   --help|-h) load_language;usage_help;exit 0;;
   --self-check) manager_self_check; exit $?;;
+  --check-port) [[ $# == 3 ]] || { echo 'Usage: bash singbox-v2.sh --check-port HOST PORT' >&2;exit 2; }
+    require_cmd python3 || exit 1
+    load_language;LANGUAGE_CHOICE=${LANGUAGE_CHOICE:-zh_CN}
+    port_check_tcp "$2" "$3";exit $?;;
   --subscription-serve) need_root;online_guard && online_engine serve;exit $?;;
   --subscription-export) need_root;[[ $# == 2 ]] || exit 1;require_cmd flock || exit 1;exec 9>"$LOCK";flock -s -w 10 9 || exit 1;online_guard && users_guard && users_export "$2" >/dev/null;exit $?;;
   --users-watch) need_root; load_language; LANGUAGE_CHOICE=${LANGUAGE_CHOICE:-en_US}; users_engine watch; exit $?;;

@@ -74,7 +74,7 @@ def resolve(host, number, timeout):
     return value
 
 
-def probe(target, sni='', ca_file=None, timeout=12):
+def probe(target, sni='', ca_file=None, timeout=12, tcp_only=False):
     host, number, sni = target_parts(target, sni)
     checks = {key: {'status': 'skip', 'detail': 'not_checked'}
               for key in ('dns', 'tcp', 'tls', 'certificate', 'h2')}
@@ -110,6 +110,9 @@ def probe(target, sni='', ca_file=None, timeout=12):
             raise last or OSError('No usable address')
         peer = str(ipaddress.ip_address(connection.getpeername()[0]))
         checks['tcp'] = {'status': 'pass', 'detail': target_label(peer, number)}
+        if tcp_only:
+            result['ok'] = True
+            return result
         stage = 'tls'
         context = ssl.create_default_context(cafile=ca_file)
         context.minimum_version = ssl.TLSVersion.TLSv1_3
@@ -139,8 +142,25 @@ def probe(target, sni='', ca_file=None, timeout=12):
     finally:
         if connection is not None:
             connection.close()
-    result['elapsed_ms'] = round((time.monotonic() - started) * 1000)
+        result['elapsed_ms'] = round((time.monotonic() - started) * 1000)
     return result
+
+
+def render_tcp(result, language):
+    english = language in ('en', 'en_US')
+    print(('\nTCP connectivity: ' if english else '\nTCP 端口连通检测：') + result['target'])
+    reasons = {'dns_failed': 'DNS 解析失败', 'timeout': '连接或解析超时',
+               'connect_failed': '无法连接目标端口', 'not_checked': '未检测'}
+    for key in ('dns', 'tcp'):
+        item = result['checks'][key]
+        detail = item['detail'] if english else reasons.get(item['detail'], item['detail'])
+        print('  [' + item['status'].upper() + '] ' + key.upper() + ': ' + detail)
+    print(('Duration: ' if english else '耗时：') + str(result['elapsed_ms']) + ' ms')
+    if result['ok']:
+        print('Connected from this machine.' if english else '已从本机建立 TCP 连接。')
+    else:
+        print('Connection failed; inspect the listener, host/provider firewall and routing.' if english else
+              '连接失败，请核对监听、系统/云防火墙和网络线路。')
 
 
 def configured_targets(path, project):
@@ -222,6 +242,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--target')
     parser.add_argument('--sni', default='')
+    parser.add_argument('--tcp-only', action='store_true', help='Check DNS and TCP connectivity only')
     parser.add_argument('--config')
     parser.add_argument('--list', action='store_true', help='List configured target/SNI pairs without probing')
     parser.add_argument('--normalize', action='store_true', help='Print validated host, port and SNI without probing')
@@ -258,11 +279,19 @@ def main(argv=None):
         return 0
     failed = False
     for target, sni in targets:
-        result = probe(target, sni)
-        render(result, args.language)
+        if args.tcp_only:
+            result = probe(target, sni, tcp_only=True)
+            render_tcp(result, args.language)
+        else:
+            result = probe(target, sni)
+            render(result, args.language)
         failed |= not result['ok']
-    print('\nOnly checks this VPS → target. It does not verify client → VPS or CDN connectivity.' if english else
-          '\n仅检测本 VPS → 握手目标，不代表客户端 → VPS 或 CDN 已连通。')
+    if args.tcp_only:
+        print('\nScope: this machine → target TCP. Verify the node protocol with your client; run this check on another machine to test external ingress.' if english else
+              '\n检测方向：本机 → 目标 TCP。节点协议请通过客户端验证；检测 VPS 公网入站时，请在另一台机器运行此检测。')
+    else:
+        print('\nOnly checks this VPS → target. It does not verify client → VPS or CDN connectivity.' if english else
+              '\n仅检测本 VPS → 握手目标，不代表客户端 → VPS 或 CDN 已连通。')
     return int(failed)
 
 

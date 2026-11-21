@@ -8,7 +8,7 @@
 set -Eeuo pipefail
 umask 077
 SCRIPT_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
-MANAGER_VERSION=2.10.8
+MANAGER_VERSION=2.10.9
 CORE_RECOMMENDED=1.14.4
 BASE=/etc/singbox-v2
 CONF=/etc/sing-box/config.json
@@ -4607,7 +4607,7 @@ def resolve(host, number, timeout):
     return value
 
 
-def probe(target, sni='', ca_file=None, timeout=12):
+def probe(target, sni='', ca_file=None, timeout=12, tcp_only=False):
     host, number, sni = target_parts(target, sni)
     checks = {key: {'status': 'skip', 'detail': 'not_checked'}
               for key in ('dns', 'tcp', 'tls', 'certificate', 'h2')}
@@ -4643,6 +4643,9 @@ def probe(target, sni='', ca_file=None, timeout=12):
             raise last or OSError('No usable address')
         peer = str(ipaddress.ip_address(connection.getpeername()[0]))
         checks['tcp'] = {'status': 'pass', 'detail': target_label(peer, number)}
+        if tcp_only:
+            result['ok'] = True
+            return result
         stage = 'tls'
         context = ssl.create_default_context(cafile=ca_file)
         context.minimum_version = ssl.TLSVersion.TLSv1_3
@@ -4672,8 +4675,25 @@ def probe(target, sni='', ca_file=None, timeout=12):
     finally:
         if connection is not None:
             connection.close()
-    result['elapsed_ms'] = round((time.monotonic() - started) * 1000)
+        result['elapsed_ms'] = round((time.monotonic() - started) * 1000)
     return result
+
+
+def render_tcp(result, language):
+    english = language in ('en', 'en_US')
+    print(('\nTCP connectivity: ' if english else '\nTCP 端口连通检测：') + result['target'])
+    reasons = {'dns_failed': 'DNS 解析失败', 'timeout': '连接或解析超时',
+               'connect_failed': '无法连接目标端口', 'not_checked': '未检测'}
+    for key in ('dns', 'tcp'):
+        item = result['checks'][key]
+        detail = item['detail'] if english else reasons.get(item['detail'], item['detail'])
+        print('  [' + item['status'].upper() + '] ' + key.upper() + ': ' + detail)
+    print(('Duration: ' if english else '耗时：') + str(result['elapsed_ms']) + ' ms')
+    if result['ok']:
+        print('Connected from this machine.' if english else '已从本机建立 TCP 连接。')
+    else:
+        print('Connection failed; inspect the listener, host/provider firewall and routing.' if english else
+              '连接失败，请核对监听、系统/云防火墙和网络线路。')
 
 
 def configured_targets(path, project):
@@ -4755,6 +4775,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--target')
     parser.add_argument('--sni', default='')
+    parser.add_argument('--tcp-only', action='store_true', help='Check DNS and TCP connectivity only')
     parser.add_argument('--config')
     parser.add_argument('--list', action='store_true', help='List configured target/SNI pairs without probing')
     parser.add_argument('--normalize', action='store_true', help='Print validated host, port and SNI without probing')
@@ -4791,11 +4812,19 @@ def main(argv=None):
         return 0
     failed = False
     for target, sni in targets:
-        result = probe(target, sni)
-        render(result, args.language)
+        if args.tcp_only:
+            result = probe(target, sni, tcp_only=True)
+            render_tcp(result, args.language)
+        else:
+            result = probe(target, sni)
+            render(result, args.language)
         failed |= not result['ok']
-    print('\nOnly checks this VPS → target. It does not verify client → VPS or CDN connectivity.' if english else
-          '\n仅检测本 VPS → 握手目标，不代表客户端 → VPS 或 CDN 已连通。')
+    if args.tcp_only:
+        print('\nScope: this machine → target TCP. Verify the node protocol with your client; run this check on another machine to test external ingress.' if english else
+              '\n检测方向：本机 → 目标 TCP。节点协议请通过客户端验证；检测 VPS 公网入站时，请在另一台机器运行此检测。')
+    else:
+        print('\nOnly checks this VPS → target. It does not verify client → VPS or CDN connectivity.' if english else
+              '\n仅检测本 VPS → 握手目标，不代表客户端 → VPS 或 CDN 已连通。')
     return int(failed)
 
 
@@ -7992,6 +8021,194 @@ firewall_allow_protocols(){
  rules=$(managed_listener_rules) || return 1
  while IFS= read -r rule;do [[ -z $rule ]] || ufw allow "$rule" || return 1;done <<< "$rules"
 }
+change_node_ports(){
+ local choice
+ if [[ ! -f $BASE/xhttp/state.json ]];then edit_node_ports;return;fi
+ if [[ ! -f $META || ! -f $CONF ]];then xhttp_command edit 5;return;fi
+ prompt_options '选择要更换端口的节点：
+1. Reality / Hysteria2
+2. XHTTP
+0. 返回' 'Select nodes to change ports:
+1. Reality / Hysteria2
+2. XHTTP
+0. Back'
+ prompt_read '> ' choice || return 0
+ case $choice in
+  1) edit_node_ports;;
+  2) xhttp_command edit 5;;
+  0) return 0;;
+  *) return 1;;
+ esac
+}
+port_check_tcp(){
+ local host=${1:-} port=${2:-}
+ valid_port "$port" || { err "$(L '端口须为 1–65535。' 'Use port 1–65535.')";return 1; }
+ if [[ $host == *:* && $host != \[*\] ]];then host="[$host]";fi
+ report_output reality_engine --project sing-box --language "${LANGUAGE_CHOICE:-zh_CN}" --target "$host:$port" --tcp-only
+}
+port_diagnostics_engine(){
+ python3 - "$BASE" "$CONF" "${LANGUAGE_CHOICE:-zh_CN}" <<'PY_PORT_DIAGNOSTICS'
+"""Read-only diagnostics for managed sing-box and integrated XHTTP listeners."""
+import ipaddress
+import json
+from pathlib import Path
+import shlex
+import socket
+import subprocess
+import sys
+
+
+def read_json(path):
+    path = Path(path)
+    if path.is_symlink() or not path.is_file() or path.stat().st_size > 4 * 1024 * 1024:
+        raise ValueError('Invalid managed configuration')
+    return json.loads(path.read_text())
+
+
+def node_list(base, config):
+    nodes = []
+    if (base / 'state.json').exists():
+        state = read_json(base / 'state.json')
+        for item in read_json(config).get('inbounds', []):
+            if item.get('type') not in ('vless', 'hysteria2'):
+                continue
+            transport = 'udp' if item['type'] == 'hysteria2' else 'tcp'
+            nodes.append((item['type'], transport, item.get('listen', '0.0.0.0'),
+                          item['listen_port'], 'sing-box.service', state.get('ip', '')))
+    root = base / 'xhttp'
+    if (root / 'state.json').exists():
+        marker = root / '.owner'
+        if root.is_symlink() or marker.is_symlink() or marker.read_text() != 'SKYBYTE-SB-XHTTP/1\n':
+            raise ValueError('Unknown XHTTP deployment')
+        state = read_json(root / 'state.json')
+        if state.get('schema') != 1:
+            raise ValueError('Unsupported XHTTP state')
+        for kind, node in state['nodes'].items():
+            if kind not in ('xhttp-reality', 'xhttp-tls'):
+                raise ValueError('Unsupported XHTTP node')
+            nodes.append((kind, 'tcp', node['listen'], node['port'],
+                          'skybyte-sb-xhttp.service', node['address']))
+    return nodes
+
+
+def command(args):
+    try:
+        result = subprocess.run(args, capture_output=True, text=True, timeout=5,
+                                env={'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LC_ALL': 'C'})
+        return result.returncode, result.stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        return None, ''
+
+
+def listener_status(address, port, transport):
+    ip = ipaddress.ip_address(address)
+    family = '-6' if ip.version == 6 else '-4'
+    option = '-lnt' if transport == 'tcp' else '-lnu'
+    code, output = command(['ss', '-H', family, option, '( sport = :' + str(port) + ' )'])
+    if code != 0:
+        return None
+    for line in output.splitlines():
+        fields = line.split()
+        if len(fields) < 5:
+            return None
+        host, _, number = fields[3].rpartition(':')
+        host = host.strip('[]')
+        if number == str(port) and (host == '*' or ipaddress.ip_address(host) == ip):
+            return True
+    return False
+
+
+def local_tcp(address, port):
+    ip = ipaddress.ip_address(address)
+    if ip.is_unspecified:
+        address = '::1' if ip.version == 6 else '127.0.0.1'
+    family = socket.AF_INET6 if ip.version == 6 else socket.AF_INET
+    try:
+        with socket.socket(family, socket.SOCK_STREAM) as connection:
+            connection.settimeout(2)
+            connection.connect((address, port))
+        return True
+    except OSError:
+        return False
+
+
+def main(argv):
+    base, config, language = argv
+    english = language == 'en_US'
+    def text(zh, en):
+        return en if english else zh
+    try:
+        nodes = node_list(Path(base), Path(config))
+        for _, _, address, port, _, _ in nodes:
+            ipaddress.ip_address(address)
+            if type(port) is not int or not 1 <= port <= 65535:
+                raise ValueError('Invalid port')
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        print(text('无法读取托管节点配置。', 'Cannot read managed node configuration.'), file=sys.stderr)
+        return 1
+    if not nodes:
+        print(text('尚未安装直连节点。', 'No direct nodes installed.'))
+        return 0
+    failed = False
+    for name, transport, address, port, unit, public in nodes:
+        print('\n=== ' + name + ' / ' + transport.upper() + ' ' + str(port) + ' ===')
+        code, _ = command(['systemctl', 'is-active', '--quiet', unit])
+        failed |= code != 0
+        service = text('运行中', 'active') if code == 0 else text('未运行或无法查询', 'inactive or unavailable')
+        print(text('服务：', 'Service: ') + unit + ' — ' + service)
+        listening = listener_status(address, port, transport)
+        status = text('未能查询', 'unknown')
+        if listening is not None:
+            status = text('存在监听', 'listening') if listening else text('未发现监听', 'not listening')
+        print(text('监听：', 'Listener: ') + address + ':' + str(port) + ' — ' + status)
+        if listening is not True:
+            failed = True
+        if transport == 'tcp':
+            connected = local_tcp(address, port)
+            failed |= not connected
+            print(text('本机 TCP 连接：', 'Local TCP connection: ') + ('PASS' if connected else 'FAIL'))
+            if public and not any(ord(c) < 32 or ord(c) == 127 for c in str(public)):
+                print(text('在另一台已安装脚本的机器检测公网入站：', 'Test external ingress from another machine with this script: '))
+                print('bash singbox-v2.sh --check-port ' + shlex.quote(str(public)) + ' ' + str(port))
+        else:
+            print(text('UDP 公网状态：待验证；请用 HY2 客户端连接并访问网站，检查 QUIC/TLS 与传输。',
+                       'UDP public ingress: unverified; connect with a HY2 client and test QUIC/TLS and traffic.'))
+    print(text('\n请核对系统防火墙、云安全组和 NAT 映射。以上监听与本机 TCP 结果仅反映本机状态。',
+               '\nReview host/provider firewall rules and NAT mappings. Listener and local TCP results describe this host.'))
+    print(text('更改端口后，请重新导入客户端节点。', 'Re-import client nodes after changing ports.'))
+    return int(failed)
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))
+PY_PORT_DIAGNOSTICS
+}
+port_diagnostics_menu(){
+ local choice host port
+ if [[ $# == 0 || $1 == --menu ]];then
+  prompt_options '端口连通性检测
+1. 检测已安装节点（服务 / 监听 / 本机 TCP）
+2. 检测远程 TCP 端口（本机 → 目标）
+0. 返回' 'Port connectivity checks
+1. Installed nodes (service / listener / local TCP)
+2. Remote TCP port (this machine → target)
+0. Back'
+  [[ ${1:-} != --menu ]] || return 0
+  prompt_read '> ' choice || return 0
+ else choice=$1;fi
+ case $choice in
+  1)
+   [[ ! -f $META ]] || check_owned || return 1
+   xhttp_command guard || return 1
+   report_output port_diagnostics_engine;;
+  2)
+   prompt_read "$(L '目标 VPS 的公网 IP / 域名：' 'Target VPS public IP / hostname: ')" host || return 0
+   prompt_read "$(L '目标 TCP 端口：' 'Target TCP port: ')" port || return 0
+   port_check_tcp "$host" "$port";;
+  0) return 0;;
+  *) return 1;;
+ esac
+}
 # shellcheck shell=bash
 ipv6_engine(){
  python3 - sing-box "$BASE" "$CONF" "$@" <<'PY_IPV6'
@@ -8747,7 +8964,7 @@ usage_help(){
 SKYBYTE Manager — quick guide
 XHTTP: a → 3 starts guided deployment; a → 6 selects manual parameters; b → 11 manages nodes. Xray is downloaded only when needed; sing-box and Xray use separate services/configs. Parameters: b → 7.
 1. Install: main a → Reality/HY2/both. Enter defaults, allow actual TCP/UDP ports in provider firewall.
-2. Node ports: b → 8 (Enter keeps current values). Other node edits: main b → 9. Change admin ports/address/SNI or add/remove a protocol without resetting credentials/usage. TCP-only port edits retain HY2 hopping; changing HY2 ports disables hopping. Re-enable it for the current listener.
+2. Node ports: b → 8 (Reality/HY2 or XHTTP; Enter keeps current values). Port checks: b → 12. Other node edits: main b → 9. Change admin ports/address/SNI or add/remove a protocol without resetting credentials/usage. TCP-only port edits retain HY2 hopping; changing HY2 ports disables hopping. Re-enable it for the current listener.
 3. Client import: main b → 1 or 4. Use Shadowrocket native links/QR, v2rayN, full Mihomo YAML or sing-box JSON. Self-signed HY2 needs explicit public-certificate trust; never share private keys.
 4. Accounts: main c. Initialize, create accounts and set quota/expiry. Share personal exports, not administrator nodes. Accounts are not actual people and may share credentials.
 5. HTTPS subscriptions: obtain a trusted certificate through main f → 6, then main b → 6. Create/rotate/revoke personal links through user menu 16. Configure provider TCP access. Tokens grant access to credentials: keep links private. Revocation does not rotate node passwords.
@@ -8761,13 +8978,13 @@ XHTTP: a → 3 starts guided deployment; a → 6 selects manual parameters; b �
 13. Reality target checks: main d → 12. Check configured targets or a custom hostname/port/SNI; verify DNS, TCP, TLS 1.3, certificate and HTTP/2. Read-only, with bounded network timeouts; this does not test client-to-VPS connectivity.
 14. Node parameters: main b → 7 shows UUID/public key/short ID/SNI. Important data is stored on this VPS: keep it private and install/enable a firewall through d → 2 after allowing SSH and node ports.
 15. Installation checks run automatically; there is no separate preflight menu. New installs and Reality additions run preflight checks; local binds do not prove public inbound access. The short HTTPS install entry is sky9119.cc/sb.sh.
-CLI: --help, --self-check. Maintenance flags are used by owned systemd services.
+CLI: --help, --self-check, --check-port HOST PORT. Maintenance flags are used by owned systemd services.
 HELP_EN
  else cat <<'HELP_ZH'
 SKYBYTE Manager — 快速使用说明
 XHTTP：a → 3 自动部署；a → 6 手动安装；b → 11 管理节点。按需下载 Xray，双内核配置和服务独立；b → 7 查看保密参数。
 1. 安装：主菜单 a 选择 Reality、HY2或双协议。回车使用默认值，云安全组需放行实际 TCP/UDP 端口。
-2. 修改节点端口：b → 8（回车保留当前端口）；其它节点修改：主菜单b → 9，可改管理员端口、地址、SNI或增删协议，保留凭据与用量。仅改 TCP 端口保留 HY2 跳跃；更改 HY2 端口后请重新开启跳跃。
+2. 修改节点端口：b → 8（可选 Reality/HY2 或 XHTTP，回车保留当前端口）；端口检测：b → 12；其它节点修改：主菜单b → 9，可改管理员端口、地址、SNI或增删协议，保留凭据与用量。仅改 TCP 端口保留 HY2 跳跃；更改 HY2 端口后请重新开启跳跃。
 3. 导入客户端：主菜单b → 1或4，提供小火箭专用链接/二维码、v2rayN、完整 Mihomo YAML与sing-box JSON。自签名 HY2 须信任公开证书；不要分享私钥。
 4. 用户管理：主菜单c，初始化后添加用户并设额度/有效期。只分享个人节点，不要分享管理员节点；账户数量不代表真实人数，无法阻止凭据分享。
 5. 在线订阅：主菜单f → 6获取可信证书，再通过主菜单b → 6配置HTTPS服务。用户菜单16签发、重置、撤销个人链接。云安全组需允许订阅 TCP 端口。Token可获取节点凭据，链接请保密；撤销订阅不等于更换节点密码。
@@ -11426,6 +11643,7 @@ sub_menu(){
    say ' 9. 节点参数与协议增删' ' 9. Node settings and protocol changes'
    say '10. Argo 临时 / 固定隧道管理' '10. Argo Quick / Named Tunnel controls'
    say '11. XHTTP 节点管理' '11. XHTTP node management'
+   say '12. 端口连通性检测' '12. Port connectivity checks'
    ;;
   3)
    say ' 1. sing-box 状态与启停' ' 1. sing-box status and controls'
@@ -11486,6 +11704,7 @@ sub_menu(){
   2:9) MAIN_ACTION=settings;;
   2:10) MAIN_ACTION=argo;;
   2:11) MAIN_ACTION=xhttp;;
+  2:12) MAIN_ACTION=port_diagnostics;;
   3:1) MAIN_ACTION=service;;
   3:2) MAIN_ACTION=logs;;
   3:3) MAIN_ACTION=argo_status;;
@@ -11525,7 +11744,8 @@ dispatch_action(){
  install_xhttp) xhttp_guided_select;;
  manual_install) manual_install;;
  install_ipv6) ipv6_install_menu "$@";;
- node_ports) edit_node_ports;;
+ node_ports) change_node_ports;;
+ port_diagnostics) port_diagnostics_menu "$@";;
  xhttp) xhttp_menu "$@";;
  argo) argo_manager "$@";; nodes) view_all_nodes;; node_parameters) report_output view_all_parameters;; subscription) subscription;; rename) rename_node;; qr) shadowrocket_qr;; users) users_manager;;
  service) service_manager "$@";; logs) report_output journalctl -u sing-box -n 80 --no-pager;; argo_status) report_output argo_status;;
@@ -11576,6 +11796,7 @@ run_submenu(){
 navigation_action(){
  case $1 in
   xhttp) run_submenu xhttp_menu;;
+  port_diagnostics) run_submenu port_diagnostics_menu;;
   media) run_submenu media_check;;
   firewall) run_submenu firewall;; service) run_submenu service_manager;;
   traffic) run_submenu traffic;; argo) run_submenu argo_manager;;
@@ -11671,6 +11892,10 @@ if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
  case ${1:-} in
   --help|-h) load_language;usage_help;exit 0;;
   --self-check) manager_self_check; exit $?;;
+  --check-port) [[ $# == 3 ]] || { echo 'Usage: bash singbox-v2.sh --check-port HOST PORT' >&2;exit 2; }
+    require_cmd python3 || exit 1
+    load_language;LANGUAGE_CHOICE=${LANGUAGE_CHOICE:-zh_CN}
+    port_check_tcp "$2" "$3";exit $?;;
   --subscription-serve) need_root;online_guard && online_engine serve;exit $?;;
   --subscription-export) need_root;[[ $# == 2 ]] || exit 1;require_cmd flock || exit 1;exec 9>"$LOCK";flock -s -w 10 9 || exit 1;online_guard && users_guard && users_export "$2" >/dev/null;exit $?;;
   --users-watch) need_root; load_language; LANGUAGE_CHOICE=${LANGUAGE_CHOICE:-en_US}; users_engine watch; exit $?;;

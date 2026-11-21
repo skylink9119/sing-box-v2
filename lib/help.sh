@@ -4,7 +4,7 @@ usage_help(){
 SKYBYTE Manager — quick guide
 XHTTP: a → 3 starts guided deployment; a → 6 selects manual parameters; b → 11 manages nodes. Xray is downloaded only when needed; sing-box and Xray use separate services/configs. Parameters: b → 7.
 1. Install: main a → Reality/HY2/both. Enter defaults, allow actual TCP/UDP ports in provider firewall.
-2. Node ports: b → 8 (Enter keeps current values). Other node edits: main b → 9. Change admin ports/address/SNI or add/remove a protocol without resetting credentials/usage. TCP-only port edits retain HY2 hopping; changing HY2 ports disables hopping. Re-enable it for the current listener.
+2. Node ports: b → 8 (Reality/HY2 or XHTTP; Enter keeps current values). Port checks: b → 12. Other node edits: main b → 9. Change admin ports/address/SNI or add/remove a protocol without resetting credentials/usage. TCP-only port edits retain HY2 hopping; changing HY2 ports disables hopping. Re-enable it for the current listener.
 3. Client import: main b → 1 or 4. Use Shadowrocket native links/QR, v2rayN, full Mihomo YAML or sing-box JSON. Self-signed HY2 needs explicit public-certificate trust; never share private keys.
 4. Accounts: main c. Initialize, create accounts and set quota/expiry. Share personal exports, not administrator nodes. Accounts are not actual people and may share credentials.
 5. HTTPS subscriptions: obtain a trusted certificate through main f → 6, then main b → 6. Create/rotate/revoke personal links through user menu 16. Configure provider TCP access. Tokens grant access to credentials: keep links private. Revocation does not rotate node passwords.
@@ -18,13 +18,13 @@ XHTTP: a → 3 starts guided deployment; a → 6 selects manual parameters; b �
 13. Reality target checks: main d → 12. Check configured targets or a custom hostname/port/SNI; verify DNS, TCP, TLS 1.3, certificate and HTTP/2. Read-only, with bounded network timeouts; this does not test client-to-VPS connectivity.
 14. Node parameters: main b → 7 shows UUID/public key/short ID/SNI. Important data is stored on this VPS: keep it private and install/enable a firewall through d → 2 after allowing SSH and node ports.
 15. Installation checks run automatically; there is no separate preflight menu. New installs and Reality additions run preflight checks; local binds do not prove public inbound access. The short HTTPS install entry is sky9119.cc/sb.sh.
-CLI: --help, --self-check. Maintenance flags are used by owned systemd services.
+CLI: --help, --self-check, --check-port HOST PORT. Maintenance flags are used by owned systemd services.
 HELP_EN
  else cat <<'HELP_ZH'
 SKYBYTE Manager — 快速使用说明
 XHTTP：a → 3 自动部署；a → 6 手动安装；b → 11 管理节点。按需下载 Xray，双内核配置和服务独立；b → 7 查看保密参数。
 1. 安装：主菜单 a 选择 Reality、HY2或双协议。回车使用默认值，云安全组需放行实际 TCP/UDP 端口。
-2. 修改节点端口：b → 8（回车保留当前端口）；其它节点修改：主菜单b → 9，可改管理员端口、地址、SNI或增删协议，保留凭据与用量。仅改 TCP 端口保留 HY2 跳跃；更改 HY2 端口后请重新开启跳跃。
+2. 修改节点端口：b → 8（可选 Reality/HY2 或 XHTTP，回车保留当前端口）；端口检测：b → 12；其它节点修改：主菜单b → 9，可改管理员端口、地址、SNI或增删协议，保留凭据与用量。仅改 TCP 端口保留 HY2 跳跃；更改 HY2 端口后请重新开启跳跃。
 3. 导入客户端：主菜单b → 1或4，提供小火箭专用链接/二维码、v2rayN、完整 Mihomo YAML与sing-box JSON。自签名 HY2 须信任公开证书；不要分享私钥。
 4. 用户管理：主菜单c，初始化后添加用户并设额度/有效期。只分享个人节点，不要分享管理员节点；账户数量不代表真实人数，无法阻止凭据分享。
 5. 在线订阅：主菜单f → 6获取可信证书，再通过主菜单b → 6配置HTTPS服务。用户菜单16签发、重置、撤销个人链接。云安全组需允许订阅 TCP 端口。Token可获取节点凭据，链接请保密；撤销订阅不等于更换节点密码。

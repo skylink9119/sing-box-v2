@@ -20,9 +20,9 @@
 
 ---
 
-# SKYBYTE Manager V2.10.8: modular source architecture
+# SKYBYTE Manager V2.10.9: modular source architecture
 
-**v2.10.8:** Remove item 8, “VPS quality (hardware / IP / network)”, from the Server and network menu. Other menu numbers retain their existing values.
+**v2.10.9:** **b → 8** changes Reality, HY2 and XHTTP node ports. New **b → 12** diagnostics inspect services, local TCP/UDP listeners, local TCP connections and remote TCP reachability.
 
 **v2.10.3 boundary fixes:** retain HY2 hopping across non-port edits, isolate faulty user cores, reconcile account restore endpoints, reload renewed certificates even without an old baseline, and inventory managed firewall ports. Cancel is a no-op. Menu text/state reads and large-file backup I/O are lighter. [Audit fixes and validation](docs/AUDIT-2026-11-02.md).
 
@@ -59,7 +59,7 @@ V2.8.1 whole-source audit fixes: the installer checks ownership and atomically p
 
 ## Change node ports
 
-Open **b → 8** (the existing **b → 9 → 1** path still works). Only installed Reality TCP / HY2 UDP listeners are prompted. Current values are shown; Enter keeps them and `y` applies changes. UUIDs, keys, handshake sites, certificates and quota-managed account ports/usage remain intact. IPv6 backups update too. Unchanged or cancelled input does not restart services.
+Open **b → 8** and select Reality/HY2 or XHTTP when both are installed (the existing **b → 9 → 1** path still works). Only installed Reality TCP / HY2 UDP listeners are prompted. Current values are shown; Enter keeps them and `y` applies changes. UUIDs, keys, handshake sites, certificates and quota-managed account ports/usage remain intact. IPv6 backups update too. Unchanged or cancelled input does not restart services.
 
 Port validation and collision checks precede the existing backup/transaction flow. Active UFW allows changed ports before switching listeners; UFW failure preserves node ports. Configuration, service and export failures roll back. Newly added UFW rules are retained with a warning after failure; old rules are not deleted. Update provider firewall/NAT mappings and re-import client nodes yourself.
 
@@ -74,6 +74,18 @@ Open **a → 7 → 10**: `1` Reality + Vision (TCP), `2` Hysteria2 (UDP), `3` bo
 Checks cover local address readiness/ownership, IPv6 routing and UFW; WARP/TUN addresses are excluded. Active UFW must manage IPv6 and selected ports are allowed before applying. A failed local listener check rolls back this installation; added firewall rules remain for review. Self-signed HY2 certificates include the IPv6 address and still require secure client trust.
 
 Existing installations are preserved; use **d → 13 → 2** for backups on existing nodes. VPS and client IPv6 plus provider IPv6 TCP/UDP rules are required. Local checks do not guarantee public reachability. IPv6-only servers need a separate working egress to IPv4-only sites/download sources; this does not change default routes or install WARP.
+
+## Port connectivity checks
+
+Open **b → 12** and choose `1` to inspect services, TCP/UDP listeners and local TCP connectivity for installed Reality/HY2/XHTTP nodes. Choose `2` to enter a target IP/hostname and TCP port. DNS and TCP checks support IPv4/IPv6 with a 12-second network deadline per target.
+
+Test public TCP ingress from another machine with Python 3 and a downloaded manager script (root is optional):
+
+```bash
+bash singbox-v2.sh --check-port VPS_IP_OR_DOMAIN 443
+```
+
+Replace the address and port with your VPS endpoint. A successful connection confirms TCP access from that testing machine. Test Reality/XHTTP protocol authentication and CDN forwarding using the client. HY2 uses UDP/QUIC; local diagnostics report its listener and label public UDP ingress unverified. Connect with a HY2 client and transfer traffic to verify it. Match host/provider firewall and NAT rules to the actual protocol and port.
 
 ## IPv6 backup entry
 
