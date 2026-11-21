@@ -4,7 +4,7 @@ umask 077
 if [[ -t 2 && -z ${NO_COLOR:-} ]]; then RED=$'\033[1;31m'; RESET=$'\033[0m'; else RED=''; RESET=''; fi
 err(){ printf '%s%s%s\n' "$RED" "$*" "$RESET" >&2; }
 RELEASE_VERSION=2.10.9
-MANAGER_SHA256=aae2e9794d27b76876bc5a0e5a366ea95229faf4995ce5934057a30ef43bb423
+MANAGER_SHA256=ae60b579761a6d917c4c81937f44aba37b2d78b4a6b0764f91df6f0d80fb6f44
 RELEASE_URL=https://github.com/skylink9119/sing-box-v2/releases/download/v$RELEASE_VERSION
 URL=$RELEASE_URL/singbox-v2.sh
 MANAGER_DIR=/usr/local/lib/singbox-v2
